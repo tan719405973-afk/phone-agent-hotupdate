@@ -26,12 +26,13 @@
     --danger:#FA5151;
     --safe-top:0px;
     --safe-bottom:0px;
+    --font-scale:1;          /* F31 字体大小缩放（设置可调：0.85/1/1.15/1.3） */
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;height:100%;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;}
   body{
     background:#c9c9c9;display:flex;align-items:center;justify-content:center;
-    color:var(--text);font-size:16px;
+    color:var(--text);font-size:calc(16px * var(--font-scale, 1));
   }
   /* 手机屏模拟外框（电脑上预览像个 App；真机全屏时自动铺满） */
   #phone{
@@ -2757,10 +2758,16 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.4";
+var APP_VERSION = "0.2.5";
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.2.5", date:"2026-07-19", items:[
+    "新增：字体大小调节（设置 → 外观与存储 → 字体大小）",
+    "新增：清理缓存（设置 → 关于 → 清理缓存，保留聊天/设置/记忆）",
+    "新增：导出 / 备份聊天、导入恢复（设置 → 关于）",
+    "多图上传增强：一次可选多张图，图生图 / 图生视频作多参考图"
+  ]},
   { v:"0.2.4", date:"2026-07-19", items:[
     "热更新实测：本次 v0.2.4 即通过「检查更新」下发，无需重装 APK",
     "新增「更新日志」入口（设置 → 关于 → 更新日志）",
@@ -2826,7 +2833,8 @@ var DEFAULT_CFG = {
   bgImage: "",
   updateBase: "https://tan719405973-afk.github.io/phone-agent-hotupdate",   /* F35：热更新地址（GitHub Pages 为默认值，空=不检查） */
   shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
-  genParams: { size:"", n:1 }   /* F23 生成参数：尺寸(空=模型默认) / 张数 */
+  genParams: { size:"", n:1 },  /* F23 生成参数：尺寸(空=模型默认) / 张数 */
+  fontScale: 1                  /* F31 字体大小：0.85 小 / 1 标准 / 1.15 大 / 1.3 特大 */
 };
 var CFG = null;
 
@@ -3443,10 +3451,11 @@ function onSend(){
   /* 纯图片无文字：询问用途，避免默认走聊天/视觉理解 */
   if(!text && atts.length && atts.every(function(a){return a.kind==="image";})){
     var _atts = atts, _qMeta = qMeta, _prompt = prompt;
+    var _imgN = _atts.filter(function(a){return a.kind==="image";}).length;
     showActionSheet([
-      {label:"🎨 按这张图生图（图生图）", onclick:function(){ dispatchRoute("image", "", _atts, _prompt, _qMeta); }},
-      {label:"🎬 按这张图生视频", onclick:function(){ dispatchRoute("video", "", _atts, _prompt, _qMeta); }},
-      {label:"💬 描述/分析这张图片", onclick:function(){ dispatchRoute("chat", "", _atts, _prompt, _qMeta); }}
+      {label:"🎨 按这 "+_imgN+" 张图生图（多图参考）", onclick:function(){ dispatchRoute("image", "", _atts, _prompt, _qMeta); }},
+      {label:"🎬 按这 "+_imgN+" 张图生视频", onclick:function(){ dispatchRoute("video", "", _atts, _prompt, _qMeta); }},
+      {label:"💬 描述/分析图片", onclick:function(){ dispatchRoute("chat", "", _atts, _prompt, _qMeta); }}
     ]);
     return;
   }
@@ -3952,7 +3961,7 @@ document.getElementById("fileInput").addEventListener("change", function(e){
         var rd = new FileReader();
         rd.onload = function(){
           pendingAttachments.push({ id: uid(), name: f.name, mime: f.type || "text/plain", kind: "text", content: String(rd.result || ""), size: f.size });
-          renderAttachZone(); toast("已添加文件：" + f.name + "（发送时一并提交给 AI）");
+          renderAttachZone();
         };
         rd.readAsText(f);
       } else if(kind === "image"){
@@ -3961,16 +3970,17 @@ document.getElementById("fileInput").addEventListener("change", function(e){
           var b64 = rd2.result;
           var ext = (f.type||"image/jpeg").split("/")[1]||"jpg";
           pendingAttachments.push({ id: uid(), name: f.name, mime: f.type || "image", kind: "image", url: persistPickedImage(b64, ext), base64: b64, size: f.size });
-          renderAttachZone(); toast("已添加图片：" + f.name);
+          renderAttachZone();
         };
         rd2.readAsDataURL(f);
       } else {
         pendingAttachments.push({ id: uid(), name: f.name, mime: f.type || "未知", kind: "binary", size: f.size });
-        renderAttachZone(); toast("已添加：" + f.name + "（浏览器内无法读取其内容，发送时 AI 会提示）");
+        renderAttachZone();
       }
     })(files[i]);
   }
   e.target.value = "";
+  toast("已添加 " + files.length + " 个文件" + (files.length > 1 ? "（多图将作为图生图 / 视频参考图）" : ""));
 });
 
 /* ================= 设置页 ================= */
@@ -4013,6 +4023,7 @@ function renderSettings(){
     cellNav("作品", "openWorks()")+
     '<div class="gt">外观与存储</div>'+
     '<div class="cell"><span class="cl">主题与外观</span><span class="cr">'+sel(CFG.theme, themeOpts, "CFG.theme=this.value;saveCfg();applyTheme()")+'</span></div>'+
+    cellScale()+
     cellNav("聊天背景（用图片）", "pickBg()")+
     (CFG.bgImage? cellNav("清除聊天背景", "clearBg()") : "")+
     '<div class="cell"><span class="cl">文件保存位置</span><span class="cr">'+sel(CFG.saveLocation, locOpts, "CFG.saveLocation=this.value;saveCfg()")+'</span></div>'+
@@ -4024,6 +4035,9 @@ function renderSettings(){
   '<div class="group"><div class="gt">关于</div>'+
     '<div class="cell"><span class="cl">版本</span><span class="cr">v'+APP_VERSION+'</span></div>'+
     cellNav("更新日志", "openChangelog()")+
+    cellNav("清理缓存", "clearCache()")+
+    cellNav("导出 / 备份聊天", "exportChats()")+
+    cellNav("导入恢复聊天", "importChats()")+
     cellNav("崩溃日志（"+loadCrashes().length+"）", "openCrash()")+
     '<div class="cell" style="display:block;padding:10px 14px">'+
       '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">检查更新地址（电脑 / Pages 上放 index.html + version.json）</div>'+
@@ -4058,6 +4072,20 @@ function applyBg(){
   }else{
     m.style.backgroundImage = "";
   }
+}
+/* F31：字体大小缩放——把 --font-scale 设到根元素，body 用 calc 引用，全局字号跟随 */
+function applyFontScale(){
+  var sc = (CFG && CFG.fontScale) ? parseFloat(CFG.fontScale) : 1;
+  if(!sc || sc<=0) sc = 1;
+  document.documentElement.style.setProperty("--font-scale", sc);
+}
+/* 设置页「字体大小」选项 cell */
+function cellScale(){
+  var opts = [["0.85","小"],["1","标准"],["1.15","大"],["1.3","特大"]];
+  var cur = (CFG.fontScale||1).toString();
+  return '<div class="cell"><span class="cl">字体大小</span><span class="cr"><select onchange="CFG.fontScale=parseFloat(this.value);saveCfg();applyFontScale()">'+
+    opts.map(function(o){ return '<option value="'+o[0]+'"'+(cur===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+
+    '</select></span></div>';
 }
 function pickBg(){ document.getElementById("bgFileInput").click(); }
 document.getElementById("bgFileInput").addEventListener("change", function(e){
@@ -4161,6 +4189,62 @@ function clearAll(){
     renderConvList(); renderMsgs(); updateTitle();
     toast("已清空");
   }, true);
+}
+/* F33：清理缓存——清崩溃日志 + 其他临时 localStorage（保留聊天/设置/记忆），可选调原生清媒体缓存 */
+function clearCache(){
+  showConfirm("清理缓存","将清除崩溃日志等临时数据（聊天、设置、记忆均保留）。确定吗？", function(){
+    try{ localStorage.removeItem(CRASH_KEY); }catch(e){}
+    try{
+      var keep = ["pa_cfg","pa_convs","pa_memory"];
+      var keys=[]; for(var i=0;i<localStorage.length;i++){ keys.push(localStorage.key(i)); }
+      keys.forEach(function(k){ if(keep.indexOf(k)<0){ try{ localStorage.removeItem(k); }catch(e){} } });
+    }catch(e){}
+    try{ if(hasNative() && NativeBridge.clearCache) NativeBridge.clearCache(); }catch(e){}
+    renderSettings();
+    toast("缓存已清理");
+  });
+}
+/* F32：导出 / 备份聊天记录为 JSON 文件，并可导入恢复 */
+function exportChats(){
+  try{
+    var data = { app:"phone-agent", version:APP_VERSION, exportedAt:new Date().toISOString(), conversations:convs||[] };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type:"application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = "phone-agent-聊天备份-"+new Date().toISOString().slice(0,10)+".json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} }, 1500);
+    toast("聊天已导出为文件");
+  }catch(e){ toast("导出失败："+((e&&e.message)||e)); }
+}
+function importChats(){
+  var el = document.getElementById("importFileInput");
+  if(!el){
+    el = document.createElement("input");
+    el.type="file"; el.id="importFileInput"; el.accept="application/json,.json";
+    el.style.display="none";
+    el.onchange = function(ev){ doImportChats(ev); };
+    document.body.appendChild(el);
+  }
+  el.value=""; el.click();
+}
+function doImportChats(ev){
+  var f = ev.target.files && ev.target.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    try{
+      var d = JSON.parse(rd.result);
+      var arr = (d && d.conversations) ? d.conversations : (Array.isArray(d) ? d : null);
+      if(!arr || !arr.length){ toast("文件中没有对话"); return; }
+      showConfirm("导入聊天备份","将把 "+arr.length+" 个对话"+(convs&&convs.length?"合并到现有对话":"")+"。确定吗？", function(){
+        convs = (convs && convs.length) ? convs.concat(arr) : arr.slice();
+        saveConvs(); renderConvList(); renderMsgs();
+        toast("已导入 "+arr.length+" 个对话");
+      });
+    }catch(e){ toast("解析失败：文件格式不对"); }
+  };
+  rd.readAsText(f);
+  ev.target.value="";
 }
 
 /* ================= 创作二级页 ================= */
@@ -4621,6 +4705,7 @@ function updateOnline(){
   CFG = await loadCfg();   /* F34：异步解密本地配置（含加密 Key） */
   ensureInit();
   applyTheme();
+  applyFontScale();
   applyBg();
   renderConvList(); renderMsgs(); updateTitle();
   updateOnline();          /* F17：离线状态条 */
