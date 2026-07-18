@@ -433,6 +433,17 @@
     </div>
   </div>
 
+  <!-- 更新日志页（F41） -->
+  <div class="page" id="changelogPage">
+    <div class="page-head">
+      <button class="back" onclick="hide('changelogPage')">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt">更新日志</div>
+    </div>
+    <div class="page-body" id="changelogBody" style="padding:16px"></div>
+  </div>
+
   <!-- 长按操作菜单（底部上滑，F21） -->
   <div class="mask" id="asMask" onclick="closeActionSheet()"></div>
   <div class="actionsheet" id="actionSheet"></div>
@@ -2746,7 +2757,26 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.3";
+var APP_VERSION = "0.2.4";
+
+/* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
+var CHANGELOG = [
+  { v:"0.2.4", date:"2026-07-19", items:[
+    "热更新实测：本次 v0.2.4 即通过「检查更新」下发，无需重装 APK",
+    "新增「更新日志」入口（设置 → 关于 → 更新日志）",
+    "若你在手机上看到本条，说明热更新闭环已跑通 ✅"
+  ]},
+  { v:"0.2.3", date:"2026-07-18", items:[
+    "默认检查更新地址改为 GitHub Pages，新装/旧装均免填",
+    "分享给亲友二维码"
+  ]},
+  { v:"0.2.2", date:"2026-07-18", items:[
+    "热更新改用 <script> 注入绕过 CORS，兼容 GitHub Pages"
+  ]},
+  { v:"0.2.1", date:"2026-07-18", items:[
+    "热更新框架 + 分享二维码首次部署"
+  ]}
+];
 
 /* API 地址工具（取自当前选中的接口） */
 function currentApi(){
@@ -3993,6 +4023,7 @@ function renderSettings(){
   '</div>'+
   '<div class="group"><div class="gt">关于</div>'+
     '<div class="cell"><span class="cl">版本</span><span class="cr">v'+APP_VERSION+'</span></div>'+
+    cellNav("更新日志", "openChangelog()")+
     cellNav("崩溃日志（"+loadCrashes().length+"）", "openCrash()")+
     '<div class="cell" style="display:block;padding:10px 14px">'+
       '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">检查更新地址（电脑 / Pages 上放 index.html + version.json）</div>'+
@@ -4533,6 +4564,20 @@ function clearCrash(){ try{ localStorage.removeItem(CRASH_KEY); }catch(e){} rend
 
 /* ================= F36：分享给亲友（二维码，纯 JS 生成，离线可用） ================= */
 function openShare(){ renderShare(); show('sharePage'); }
+/* ================= F41：更新日志 ================= */
+function openChangelog(){ renderChangelog(); show('changelogPage'); }
+function renderChangelog(){
+  var box = document.getElementById("changelogBody");
+  if(!box) return;
+  box.innerHTML = CHANGELOG.map(function(c){
+    return '<div style="margin-bottom:18px">'+
+      '<div style="font-size:15px;font-weight:600;color:var(--text-1);margin-bottom:6px">v'+esc(c.v)+' <span style="font-size:12px;color:var(--text-3);font-weight:400">'+esc(c.date)+'</span></div>'+
+      '<div style="padding-left:4px">'+
+        c.items.map(function(it){ return '<div style="font-size:13px;color:var(--text-2);margin:6px 0;line-height:1.5">• '+esc(it)+'</div>'; }).join('')+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
 function renderShare(){
   var el = document.getElementById('shareUrl');
   if(el) el.value = CFG.shareUrl || CFG.updateBase || "";
