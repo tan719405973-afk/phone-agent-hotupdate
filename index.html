@@ -2746,7 +2746,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.2";
+var APP_VERSION = "0.2.3";
 
 /* API 地址工具（取自当前选中的接口） */
 function currentApi(){
@@ -2794,7 +2794,7 @@ var DEFAULT_CFG = {
   theme: "light",
   saveLocation: "sandbox",
   bgImage: "",
-  updateBase: "",              /* F35：热更新地址（http://电脑IP:端口 或 GitHub Pages），空=不检查 */
+  updateBase: "https://tan719405973-afk.github.io/phone-agent-hotupdate",   /* F35：热更新地址（GitHub Pages 为默认值，空=不检查） */
   shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
   genParams: { size:"", n:1 }   /* F23 生成参数：尺寸(空=模型默认) / 张数 */
 };
@@ -3996,7 +3996,7 @@ function renderSettings(){
     cellNav("崩溃日志（"+loadCrashes().length+"）", "openCrash()")+
     '<div class="cell" style="display:block;padding:10px 14px">'+
       '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">检查更新地址（电脑 / Pages 上放 index.html + version.json）</div>'+
-      '<input type="text" placeholder="http://电脑IP:端口 或 GitHub Pages" value="'+esc(CFG.updateBase||"")+'" onchange="CFG.updateBase=this.value.trim();saveCfg();toast(\'已保存更新地址\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+
+      '<input type="text" placeholder="http://电脑IP:端口 或 GitHub Pages" value="'+esc(CFG.updateBase || DEFAULT_UPDATE_BASE || "")+'" onchange="CFG.updateBase=this.value.trim();saveCfg();toast(\'已保存更新地址\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+
     '</div>'+
     cellNav("检查更新", "checkUpdate()")+
     cellNav("分享给亲友（二维码）", "openShare()")+
@@ -4044,7 +4044,11 @@ function cellNav(label, onclick){
   return '<div class="cell" onclick="'+onclick+'"><span class="cl">'+label+'</span>'+
     '<span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>';
 }
-function updateBaseUrl(){ return (CFG.updateBase||"").trim().replace(/\/+$/,""); }
+/* 默认热更新地址（GitHub Pages）。CFG.updateBase 为空时回退到此，确保新装/旧装用户都能直接检查更新 */
+var DEFAULT_UPDATE_BASE = "https://tan719405973-afk.github.io/phone-agent-hotupdate";
+function updateBaseUrl(){
+  return (CFG.updateBase || DEFAULT_UPDATE_BASE || "").trim().replace(/\/+$/,"");
+}
 /* 用 <script> 注入方式加载更新文件，绕过 GitHub Pages 等不返回 CORS 头的限制（fetch 会被跨域拦截） */
 function loadScript(url, ms){
   return new Promise(function(res, rej){

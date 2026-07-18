@@ -1,1 +1,1 @@
-window.__PA_VER__ = {"version": "0.2.2", "note": "热更新改用 <script> 注入方式，彻底兼容 GitHub Pages（不再受 CORS 跨域限制）。", "url": ""};
+window.__PA_VER__ = {"version": "0.2.3", "note": "默认检查更新地址改为 GitHub Pages（新装/旧装用户均无需手填，直接可检查更新）。", "url": ""};
