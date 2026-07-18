@@ -2746,7 +2746,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.1";
+var APP_VERSION = "0.2.2";
 
 /* API 地址工具（取自当前选中的接口） */
 function currentApi(){
@@ -4045,13 +4045,25 @@ function cellNav(label, onclick){
     '<span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>';
 }
 function updateBaseUrl(){ return (CFG.updateBase||"").trim().replace(/\/+$/,""); }
+/* 用 <script> 注入方式加载更新文件，绕过 GitHub Pages 等不返回 CORS 头的限制（fetch 会被跨域拦截） */
+function loadScript(url, ms){
+  return new Promise(function(res, rej){
+    var s = document.createElement("script");
+    var done = false;
+    var to = setTimeout(function(){ if(!done){ done=true; s.parentNode && s.parentNode.removeChild(s); rej(new Error("加载超时")); } }, ms||15000);
+    s.onload = function(){ if(!done){ done=true; clearTimeout(to); res(); } };
+    s.onerror = function(){ if(!done){ done=true; clearTimeout(to); rej(new Error("加载失败（地址不可达/被墙）")); } };
+    s.src = url;
+    document.head.appendChild(s);
+  });
+}
 function checkUpdate(){
   var base = updateBaseUrl();
   if(!base){ toast("请先在「关于 → 检查更新地址」填写更新地址"); return; }
   toast("正在检查更新…");
-  fetch(base+"/version.json?t="+Date.now(), {cache:"no-store"})
-    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
-    .then(function(j){
+  loadScript(base+"/version.js?t="+Date.now(), 15000)
+    .then(function(){
+      var j = window.__PA_VER__;
       if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
         showConfirm("发现新版本 v"+j.version, (j.note||"有新版可用")+"（点击更新将下载并立即应用，无需重装）", function(){
           doInstallUpdate(base);
@@ -4064,9 +4076,9 @@ function checkUpdate(){
 }
 function doInstallUpdate(base){
   toast("正在下载更新…");
-  fetch(base+"/index.html?t="+Date.now(), {cache:"no-store"})
-    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
-    .then(function(html){
+  loadScript(base+"/app.js?t="+Date.now(), 30000)
+    .then(function(){
+      var html = window.__PA_APPHtml__;
       if(!html || html.length < 500) throw new Error("下载到的网页内容异常");
       if(!hasNative()){
         window.open(base+"/index.html", "_blank");
@@ -4085,9 +4097,9 @@ function doInstallUpdate(base){
 function silentCheckUpdate(){
   var base = updateBaseUrl();
   if(!base) return;
-  fetch(base+"/version.json?t="+Date.now(), {cache:"no-store"})
-    .then(function(r){ if(!r.ok) return null; return r.json(); })
-    .then(function(j){
+  loadScript(base+"/version.js?t="+Date.now(), 12000)
+    .then(function(){
+      var j = window.__PA_VER__;
       if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
         toast("发现新版本 v"+j.version+"：去 设置 → 检查更新 升级");
       }
