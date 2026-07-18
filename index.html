@@ -1,0 +1,4577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>AI 创作助手</title>
+<style>
+  /* ============ 微信风格设计 token（白底 + 唯一微信绿 + 零装饰） ============ */
+  :root{
+    --green:#07C160;        /* 唯一强调色 */
+    --green-press:#06AD56;
+    --bg:#EDEDED;           /* 微信灰底 */
+    --white:#FFFFFF;        /* 卡片/面板 */
+    --card:#FFFFFF;         /* 弹窗/浮层 */
+    --input:#F4F4F4;        /* 输入框/按钮底色 */
+    --user-bubble:#95EC69;  /* 用户绿气泡 */
+    --bubble-bg:rgba(255,255,255,0.85); /* AI 气泡半透（有背景图时可见） */
+    --bubble-user-bg:rgba(149,236,105,0.85);
+    --text:#191919;
+    --text-2:#5F5E5A;
+    --text-3:#9A9A9A;
+    --line:#E3E3E3;
+    --danger:#FA5151;
+    --safe-top:0px;
+    --safe-bottom:0px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;}
+  body{
+    background:#c9c9c9;display:flex;align-items:center;justify-content:center;
+    color:var(--text);font-size:16px;
+  }
+  /* 手机屏模拟外框（电脑上预览像个 App；真机全屏时自动铺满） */
+  #phone{
+    position:relative;width:100%;max-width:400px;height:100vh;max-height:860px;
+    background:var(--bg);overflow:hidden;display:flex;flex-direction:column;
+    box-shadow:0 0 0 1px rgba(0,0,0,.05);
+  }
+  @media (max-width:420px){ #phone{max-height:none;height:100vh;} }
+
+  /* ============ 顶部栏 ============ */
+  .topbar{
+    flex:0 0 auto;height:52px;background:var(--white);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;padding:0 6px;
+    padding-top:var(--safe-top);
+  }
+  .topbar .tb-btn{
+    width:44px;height:44px;border:none;background:none;display:flex;align-items:center;
+    justify-content:center;cursor:pointer;border-radius:8px;
+  }
+  .topbar .tb-btn:active{background:var(--line);}
+  .topbar .tb-title{font-size:17px;font-weight:600;flex:1;text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;}
+  .icon{width:24px;height:24px;display:block;}
+  .icon path,.icon line,.icon circle,.icon rect,.icon polyline{stroke:var(--text);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+
+  /* ============ 消息区 ============ */
+  .msgs{flex:1 1 auto;overflow-y:auto;padding:14px 12px 4px;-webkit-overflow-scrolling:touch;}
+  .row{display:flex;margin-bottom:16px;align-items:flex-start;}
+  .row.user{flex-direction:row-reverse;}
+  .avatar{flex:0 0 auto;width:38px;height:38px;border-radius:6px;display:flex;
+    align-items:center;justify-content:center;font-size:18px;background:var(--green);color:#fff;}
+  .row.user .avatar{background:#B0B0B0;}
+  .bubble{
+    max-width:74%;margin:0 10px;padding:10px 13px;border-radius:6px;line-height:1.5;
+    background:var(--bubble-bg);word-break:break-word;white-space:pre-wrap;position:relative;font-size:15.5px;
+  }
+  .row.user .bubble{background:var(--bubble-user-bg);}
+  .bubble img,.bubble video{max-width:100%;border-radius:4px;display:block;margin-top:2px;}
+  .bubble .cap{font-size:12.5px;color:var(--text-2);margin-top:6px;}
+  .bubble .media-actions{display:flex;gap:14px;margin-top:8px;}
+  .bubble .media-actions a{font-size:13px;color:var(--green);text-decoration:none;cursor:pointer;}
+  .typing{display:inline-block;}
+  .typing .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--text-3);
+    margin:0 2px;animation:blink 1.2s infinite;}
+  .typing .dot:nth-child(2){animation-delay:.2s;} .typing .dot:nth-child(3){animation-delay:.4s;}
+  @keyframes blink{0%,60%,100%{opacity:.25;}30%{opacity:1;}}
+  .empty-tip{text-align:center;color:var(--text-3);font-size:13.5px;margin:40px 16px;line-height:1.9;}
+
+  /* ============ 输入栏 ============ */
+  .inputbar{
+    flex:0 0 auto;background:var(--white);border-top:1px solid var(--line);
+    padding:8px 8px calc(8px + var(--safe-bottom));display:flex;align-items:flex-end;gap:8px;
+  }
+  .inputbar .ib-btn{width:38px;height:38px;flex:0 0 auto;border:none;background:var(--input);border-radius:8px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;color:#555;padding:0;}
+  .inputbar .ib-btn:active{background:var(--line);}
+  .inputbar textarea{
+    flex:1 1 auto;resize:none;border:none;background:var(--input);border-radius:8px;
+    padding:9px 12px;font-size:15.5px;line-height:1.4;max-height:100px;font-family:inherit;outline:none;overflow:hidden;
+    color:var(--text);caret-color:var(--text);
+  }
+  .inputbar .send{background:var(--green);color:#fff;border:none;border-radius:8px;padding:0 16px;
+    height:38px;flex:0 0 auto;font-size:15px;cursor:pointer;}
+  .inputbar .send:active{background:var(--green-press);}
+  .inputbar .send:disabled{opacity:.5;}
+  .inputbar .send.stopping{background:#e64340;color:#fff;}
+  .inputbar .send.stopping:active{background:#c53936;}
+  .inputbar .send.guide{background:var(--green);}
+  /* F13/F14 待发送附件区 */
+  .attach-zone{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px 0;
+    background:var(--white);border-top:1px solid var(--line);}
+  .atchip{display:inline-flex;align-items:center;gap:5px;max-width:200px;
+    background:var(--input);border:1px solid var(--line);border-radius:14px;
+    padding:4px 10px;font-size:13px;color:var(--text);}
+  .atchip b{color:var(--danger);cursor:pointer;font-weight:700;font-size:15px;line-height:1;padding:0 2px;}
+  .atchip-static{display:inline-block;background:var(--input);border:1px solid var(--line);
+    border-radius:10px;padding:2px 8px;font-size:12px;color:var(--text-2);margin:2px 4px 0 0;}
+  .att-img{max-width:140px;max-height:140px;border-radius:8px;margin:4px 4px 0 0;object-fit:cover;
+    border:1px solid var(--line);background:var(--input);display:inline-block;vertical-align:top;}
+  /* 引用条（长按消息→引用，发送时把引用内容一起带给 AI） */
+  .quote-bar{flex:0 0 auto;display:none;align-items:center;gap:8px;
+    background:var(--bubble-bg);border:1px solid var(--line);border-left:3px solid var(--green);
+    border-radius:8px;padding:6px 10px;margin:0 10px;font-size:13px;color:var(--text-2);
+    max-width:calc(100% - 20px);}
+  .quote-bar .qb-ic{color:var(--green);font-size:15px;flex:0 0 auto;}
+  .quote-bar .qb-txt{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .quote-bar .qb-x{flex:0 0 auto;color:var(--text-3);font-size:18px;line-height:1;cursor:pointer;padding:0 2px;}
+  .quoted-chip{display:inline-block;background:var(--input);border-left:3px solid var(--green);
+    border-radius:4px;padding:2px 8px;margin:0 0 4px 0;font-size:12px;color:var(--text-2);
+    max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .filecard{display:flex;align-items:center;gap:10px;background:var(--white);border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;max-width:240px;margin-top:2px;}
+  .filecard .fi{font-size:24px;flex:0 0 auto;line-height:1;}
+  .filecard .fm{min-width:0;}
+  .filecard .fn{font-size:14px;color:var(--text-1);word-break:break-all;}
+  .filecard .fs{font-size:12px;color:var(--text-3);margin-top:2px;}
+
+  /* ============ 抽屉 / 遮罩 ============ */
+  .mask{position:fixed;inset:0;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;
+    transition:opacity .25s;z-index:20;}
+  .mask.show{opacity:1;pointer-events:auto;}
+  .drawer{position:absolute;top:0;bottom:0;left:0;width:78%;max-width:300px;background:var(--white);
+    transform:translateX(-100%);transition:transform .25s;z-index:30;display:flex;flex-direction:column;}
+  .drawer.show{transform:translateX(0);}
+  .drawer-head{padding:calc(16px + var(--safe-top)) 16px 12px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;}
+  .drawer-head b{font-size:17px;}
+  .drawer-head .newconv{background:var(--green);color:#fff;border:none;border-radius:16px;
+    padding:6px 12px;font-size:13px;cursor:pointer;}
+  .conv-list{flex:1;overflow-y:auto;}
+  .conv-item{padding:13px 16px;border-bottom:1px solid var(--line);cursor:pointer;position:relative;}
+  .conv-item.active{background:#f0faf3;}
+  .conv-item .cname{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conv-item .cprev{font-size:12.5px;color:var(--text-3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conv-item .cops{position:absolute;right:10px;top:12px;display:flex;gap:2px;}
+  .conv-item .cops button{border:none;background:none;font-size:12px;color:var(--text-3);
+    padding:4px 6px;cursor:pointer;border-radius:6px;}
+  .conv-item .cops button:active{background:#eee;}
+
+  /* ============ 设置页（整屏滑入） ============ */
+  .page{position:absolute;inset:0;background:var(--bg);transform:translateX(100%);
+    transition:transform .25s;z-index:40;display:flex;flex-direction:column;}
+  .page.show{transform:translateX(0);}
+  .page-head{flex:0 0 auto;height:52px;background:var(--white);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;padding:0 6px;padding-top:var(--safe-top);}
+  .page-head .back{width:44px;height:44px;border:none;background:none;display:flex;align-items:center;
+    justify-content:center;cursor:pointer;}
+  .page-head .pt{font-size:17px;font-weight:600;}
+  .page-body{flex:1;overflow-y:auto;padding-bottom:calc(30px + var(--safe-bottom));}
+  .group{margin-top:18px;}
+  .group .gt{font-size:13px;color:var(--text-3);padding:6px 16px;}
+  .cell{background:var(--white);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;
+    border-bottom:1px solid var(--line);cursor:pointer;gap:12px;}
+  .cell:active{background:var(--line);}
+  .cell .cl{font-size:15.5px;}
+  .cell .cr{font-size:14px;color:var(--text-3);display:flex;align-items:center;gap:6px;max-width:60%;
+    justify-content:flex-end;text-align:right;}
+  .cell .cr .chev{width:16px;height:16px;}
+  .cell .cr .chev path{stroke:var(--text-3);}
+  .cell input[type=text],.cell input[type=password]{border:none;text-align:right;font-size:14px;
+    outline:none;background:none;color:var(--text-2);width:100%;}
+  /* 竖排字段：标签在上、输入框占满整行左对齐，长地址可完整显示 */
+  .cell.field{display:block;cursor:default;}
+  .cell.field .cl{display:block;margin-bottom:8px;color:var(--text);font-size:14px;}
+  .cell.field .cr{max-width:100%;width:100%;display:block;}
+  .cell.field input[type=text],.cell.field input[type=password]{
+    text-align:left;border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+    background:var(--input);color:var(--text);width:100%;box-sizing:border-box;}
+  .cell.danger .cl{color:var(--danger);}
+  .cell select{border:none;background:none;font-size:14px;color:var(--text-2);outline:none;}
+
+  /* ============ 弹层 toast / 对话框 ============ */
+  #toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.8);
+    color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;z-index:100;opacity:0;
+    pointer-events:none;transition:opacity .2s;max-width:80%;text-align:center;}
+  #toast.show{opacity:1;}
+  .dlg-mask{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:90;display:none;
+    align-items:center;justify-content:center;}
+  .dlg-mask.show{display:flex;}
+  .dlg{background:var(--card);border-radius:12px;width:80%;max-width:300px;overflow:hidden;}
+  .dlg .dh{padding:20px 20px 8px;font-size:16px;font-weight:600;text-align:center;}
+  .dlg .db{padding:0 20px 16px;font-size:14px;color:var(--text-2);text-align:center;line-height:1.6;}
+  .dlg .di{margin:0 20px 16px;width:calc(100% - 40px);border:1px solid var(--line);border-radius:8px;
+    padding:10px;font-size:15px;outline:none;}
+  .dlg .df{display:flex;border-top:1px solid var(--line);}
+  .dlg .df button{flex:1;border:none;background:none;padding:13px;font-size:16px;cursor:pointer;}
+  .dlg .df button.cancel{color:var(--text-2);border-right:1px solid var(--line);}
+  .dlg .df button.ok{color:var(--green);font-weight:600;}
+  .dlg .df button.ok.danger{color:var(--danger);}
+
+  /* 创作二级页里的模式选择 */
+  .seg{display:flex;background:#f0f0f0;border-radius:8px;margin:14px 16px 0;padding:3px;}
+  .seg button{flex:1;border:none;background:none;padding:8px;font-size:14px;border-radius:6px;cursor:pointer;color:var(--text-2);}
+  .seg button.on{background:var(--card);color:var(--text);font-weight:600;}
+
+  /* 设置页下拉框（主题/保存位置） */
+  .cell .cr select{font-size:14px;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--input);max-width:160px;}
+
+  /* 创作页参考图 */
+  .refbox{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;}
+  .refthumb{position:relative;width:56px;height:56px;border-radius:8px;overflow:hidden;border:1px solid var(--line);}
+  .refthumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .refthumb .rm{position:absolute;top:1px;right:1px;width:18px;height:18px;line-height:16px;text-align:center;
+    background:rgba(0,0,0,.55);color:#fff;border-radius:50%;font-size:14px;cursor:pointer;}
+  .addref{margin:4px 0 8px;border:1px dashed var(--line);background:var(--input);color:var(--text-2);
+    border-radius:8px;padding:8px 12px;font-size:14px;cursor:pointer;}
+
+  /* 作品（资产）页 */
+  .works-sec{margin:6px 0 4px;}
+  .works-sec h4{margin:14px 16px 8px;font-size:14px;color:var(--text-2);font-weight:600;}
+  .works-empty{margin:0 16px 8px;color:var(--text-3);font-size:13px;}
+  .works-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 16px;}
+  .works-grid a{display:block;}
+  .works-grid img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;display:block;background:#eee;}
+  .works-vid{margin:0 16px 12px;}
+  .works-vid video{width:100%;border-radius:8px;background:#000;max-height:240px;}
+  .works-vid .cap{font-size:13px;color:var(--text-2);margin-top:4px;}
+  .works-item{position:relative;}
+  .works-item .dl{position:absolute;right:4px;bottom:4px;margin:0;box-shadow:0 1px 4px rgba(0,0,0,.35);}
+  .dl{display:inline-block;margin-top:6px;background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:13px;text-decoration:none;}
+  .dl-tip{font-size:12px;color:var(--text-3);margin:0 16px 8px;}
+
+  /* 深色模式（主题与外观） */
+  #phone.dark{ --bg:#111111; --white:#1e1e1e; --card:#2a2a2a; --input:#2c2c2c;
+    --text:#ffffff; --text-2:#cccccc; --text-3:#888888; --line:#3a3a3a;
+    --bubble-bg:rgba(30,30,30,0.85); --bubble-user-bg:rgba(47,93,36,0.85); --user-bubble:#2f5d24; }
+  select{font-size:14px;max-width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--white);color:var(--text);font-family:inherit;}
+  .cell select{margin-left:8px;}
+  .api-card{display:flex;align-items:center;gap:12px;background:var(--white);border:1.5px solid var(--line);border-radius:12px;padding:14px;margin:0 16px 10px;cursor:pointer;}
+  .api-card.api-cur{border-color:var(--green);background:#f3fff7;}
+  .api-icon{width:40px;height:40px;border-radius:50%;background:var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text);flex:0 0 auto;}
+  .api-info{flex:1 1 auto;min-width:0;}
+  .api-name{font-size:15px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;}
+  .api-tag{font-size:11px;color:#888;border:1px solid #ddd;border-radius:4px;padding:1px 6px;}
+  .api-url{font-size:12px;color:var(--text-3);margin-top:3px;word-break:break-all;}
+  .api-actions{display:flex;gap:8px;}
+  .api-actions button{background:var(--input);border:none;border-radius:6px;padding:5px 10px;font-size:13px;color:var(--text);cursor:pointer;}
+  .api-actions button.danger{color:#e53935;}
+
+  /* 长按操作菜单（底部上滑） */
+  .actionsheet{position:absolute;left:0;right:0;bottom:0;background:var(--white);z-index:60;
+    transform:translateY(100%);transition:transform .25s;padding-bottom:var(--safe-bottom);}
+  .actionsheet.show{transform:translateY(0);}
+  .actionsheet .as-item{padding:16px;text-align:center;font-size:16px;color:var(--text);
+    border-bottom:1px solid var(--line);cursor:pointer;}
+  .actionsheet .as-item:active{background:var(--line);}
+  .actionsheet .as-item.danger{color:var(--danger);}
+  .actionsheet .as-cancel{margin-top:6px;background:var(--white);padding:16px;text-align:center;
+    font-size:16px;font-weight:600;color:var(--text-2);cursor:pointer;}
+
+  /* 离线提示条 */
+  #offlineBar{position:absolute;top:52px;left:0;right:0;background:var(--danger);color:#fff;
+    font-size:13px;text-align:center;padding:8px;z-index:15;display:none;}
+
+  /* 加载中可取消 / 失败可重试 链接 */
+  .bubble .gen-actions{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;}
+  .bubble .gen-actions a{font-size:13px;color:var(--green);text-decoration:none;cursor:pointer;}
+
+  /* 崩溃日志页 */
+  .crash-item{background:var(--white);border-bottom:1px solid var(--line);padding:12px 16px;}
+  .crash-item .ct{font-size:12px;color:var(--text-3);}
+  .crash-item .cm{font-size:13px;color:var(--text);margin-top:4px;word-break:break-word;white-space:pre-wrap;}
+  .crash-empty{text-align:center;color:var(--text-3);font-size:13px;margin:40px 16px;}
+
+  /* 长按禁止 iOS 文字选择气泡 */
+  .bubble{ -webkit-touch-callout:none; }
+</style>
+</head>
+<body>
+<div id="phone">
+
+  <!-- 顶部栏 -->
+  <div class="topbar">
+    <button class="tb-btn" onclick="openDrawer()" aria-label="菜单">
+      <svg class="icon" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+    </button>
+    <div class="tb-title" id="topTitle">AI 创作助手</div>
+    <button class="tb-btn" onclick="openSettings()" aria-label="设置">
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+
+  <!-- 离线提示条（F17） -->
+  <div id="offlineBar">⚠ 网络已断开，请检查 Wi-Fi 或移动网络</div>
+
+  <!-- 消息区 -->
+  <div class="msgs" id="msgs"></div>
+
+  <!-- 引用条（长按消息→引用，发送时把引用内容一起带给 AI） -->
+  <div class="quote-bar" id="quoteBar" style="display:none"></div>
+
+  <!-- 待发送附件区（F13/F14） -->
+  <div class="attach-zone" id="attachZone" style="display:none"></div>
+
+  <!-- 输入栏 -->
+  <div class="inputbar">
+    <button class="ib-btn" onclick="pickFile()" aria-label="上传文件">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+    </button>
+    <textarea id="input" rows="1" maxlength="4000" oninput="autoGrow(this)" placeholder=""></textarea>
+    <button class="send guide" id="guideBtn" style="display:none" onclick="onGuideInput()">引导</button>
+    <button class="send" id="sendBtn" onclick="onSend()">发送</button>
+  </div>
+
+  <!-- 抽屉遮罩 -->
+  <div class="mask" id="drawerMask" onclick="closeDrawer()"></div>
+  <!-- 菜单抽屉 = 纯对话列表 -->
+  <div class="drawer" id="drawer">
+    <div class="drawer-head">
+      <b>对话</b>
+      <button class="newconv" onclick="newConversation()">+ 新建</button>
+    </div>
+    <div class="conv-list" id="convList"></div>
+  </div>
+
+  <!-- 设置页 -->
+  <div class="page" id="settingsPage">
+    <div class="page-head">
+      <button class="back" onclick="closeSettings()">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt">设置</div>
+    </div>
+    <div class="page-body" id="settingsBody"></div>
+  </div>
+
+  <!-- 创作二级页 -->
+  <div class="page" id="createPage">
+    <div class="page-head">
+      <button class="back" onclick="hide('createPage')">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt" id="createTitle">创作</div>
+    </div>
+    <div class="page-body" id="createBody"></div>
+  </div>
+
+  <!-- 智能制片页 -->
+  <div class="page" id="studioPage">
+    <div class="page-head">
+      <button class="back" onclick="hide('studioPage')">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt">智能制片</div>
+    </div>
+    <div class="page-body" id="studioBody"></div>
+  </div>
+
+  <!-- 作品（资产）页 -->
+  <div class="page" id="worksPage">
+    <div class="page-head">
+      <button class="back" onclick="closeWorks()">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt">作品</div>
+    </div>
+    <div class="page-body" id="worksBody"></div>
+  </div>
+
+  <!-- API 接口管理页 -->
+  <div class="page" id="apiPage">
+    <div class="page-head">
+      <button class="back" onclick="closeApiPage()">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt">API 接口管理</div>
+    </div>
+    <div class="page-body" id="apiBody"></div>
+  </div>
+
+  <!-- API 接口编辑页 -->
+  <div class="page" id="apiEditPage">
+    <div class="page-head">
+      <button class="back" onclick="closeApiEdit()">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt" id="apiEditTitle">编辑接口</div>
+    </div>
+    <div class="page-body" id="apiEditBody"></div>
+  </div>
+
+  <!-- 崩溃日志页（F18） -->
+  <div class="page" id="crashPage">
+    <div class="page-head">
+      <button class="back" onclick="hide('crashPage')">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt">崩溃日志</div>
+    </div>
+    <div class="page-body" id="crashBody"></div>
+  </div>
+
+  <!-- 我的记忆页（Phase 3 跨会话记忆） -->
+  <div class="page" id="memoryPage">
+    <div class="page-head">
+      <button class="back" onclick="hide('memoryPage')">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt">我的记忆</div>
+    </div>
+    <div class="page-body" id="memoryBody"></div>
+  </div>
+
+  <!-- 分享给亲友页（二维码，F36） -->
+  <div class="page" id="sharePage">
+    <div class="page-head">
+      <button class="back" onclick="hide('sharePage')">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt">分享给亲友</div>
+    </div>
+    <div class="page-body" style="padding:18px 16px;text-align:center">
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:12px">亲友用手机扫下方二维码，即可打开下载 / 分享页安装或更新本 App。</div>
+      <div id="shareQR" style="display:inline-block;padding:12px;background:#fff;border:1px solid var(--line);border-radius:12px;min-height:160px"></div>
+      <div style="margin:14px 0 6px;font-size:13px;color:var(--text-2);text-align:left">分享链接（可改成你的下载页 / GitHub Pages 地址）</div>
+      <input id="shareUrl" type="text" placeholder="https://你的下载页 或 http://电脑IP:端口" onchange="CFG.shareUrl=this.value.trim();saveCfg();renderShareQR();toast('已保存')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px;box-sizing:border-box">
+      <button onclick="copyShare()" style="width:100%;margin-top:10px;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:11px;font-size:14px;cursor:pointer">复制链接</button>
+      <div style="margin-top:12px;font-size:12px;color:var(--text-3);text-align:left">提示：链接留空时，二维码默认指向「检查更新地址」。把它指向一个能下载 APK 的页面，亲友扫码即可获取。</div>
+    </div>
+  </div>
+
+  <!-- 长按操作菜单（底部上滑，F21） -->
+  <div class="mask" id="asMask" onclick="closeActionSheet()"></div>
+  <div class="actionsheet" id="actionSheet"></div>
+
+</div>
+
+<div id="toast"></div>
+<div class="dlg-mask" id="dlgMask"><div class="dlg" id="dlgBox"></div></div>
+<input type="file" id="fileInput" multiple style="display:none">
+<input type="file" id="bgFileInput" accept="image/*" style="display:none">
+
+<script>
+//---------------------------------------------------------------------
+//
+// QR Code Generator for JavaScript
+//
+// Copyright (c) 2009 Kazuhiko Arase
+//
+// URL: http://www.d-project.com/
+//
+// Licensed under the MIT license:
+//  http://www.opensource.org/licenses/mit-license.php
+//
+// The word 'QR Code' is registered trademark of
+// DENSO WAVE INCORPORATED
+//  http://www.denso-wave.com/qrcode/faqpatent-e.html
+//
+//---------------------------------------------------------------------
+
+var qrcode = function() {
+
+  //---------------------------------------------------------------------
+  // qrcode
+  //---------------------------------------------------------------------
+
+  /**
+   * qrcode
+   * @param typeNumber 1 to 40
+   * @param errorCorrectionLevel 'L','M','Q','H'
+   */
+  var qrcode = function(typeNumber, errorCorrectionLevel) {
+
+    var PAD0 = 0xEC;
+    var PAD1 = 0x11;
+
+    var _typeNumber = typeNumber;
+    var _errorCorrectionLevel = QRErrorCorrectionLevel[errorCorrectionLevel];
+    var _modules = null;
+    var _moduleCount = 0;
+    var _dataCache = null;
+    var _dataList = [];
+
+    var _this = {};
+
+    var makeImpl = function(test, maskPattern) {
+
+      _moduleCount = _typeNumber * 4 + 17;
+      _modules = function(moduleCount) {
+        var modules = new Array(moduleCount);
+        for (var row = 0; row < moduleCount; row += 1) {
+          modules[row] = new Array(moduleCount);
+          for (var col = 0; col < moduleCount; col += 1) {
+            modules[row][col] = null;
+          }
+        }
+        return modules;
+      }(_moduleCount);
+
+      setupPositionProbePattern(0, 0);
+      setupPositionProbePattern(_moduleCount - 7, 0);
+      setupPositionProbePattern(0, _moduleCount - 7);
+      setupPositionAdjustPattern();
+      setupTimingPattern();
+      setupTypeInfo(test, maskPattern);
+
+      if (_typeNumber >= 7) {
+        setupTypeNumber(test);
+      }
+
+      if (_dataCache == null) {
+        _dataCache = createData(_typeNumber, _errorCorrectionLevel, _dataList);
+      }
+
+      mapData(_dataCache, maskPattern);
+    };
+
+    var setupPositionProbePattern = function(row, col) {
+
+      for (var r = -1; r <= 7; r += 1) {
+
+        if (row + r <= -1 || _moduleCount <= row + r) continue;
+
+        for (var c = -1; c <= 7; c += 1) {
+
+          if (col + c <= -1 || _moduleCount <= col + c) continue;
+
+          if ( (0 <= r && r <= 6 && (c == 0 || c == 6) )
+              || (0 <= c && c <= 6 && (r == 0 || r == 6) )
+              || (2 <= r && r <= 4 && 2 <= c && c <= 4) ) {
+            _modules[row + r][col + c] = true;
+          } else {
+            _modules[row + r][col + c] = false;
+          }
+        }
+      }
+    };
+
+    var getBestMaskPattern = function() {
+
+      var minLostPoint = 0;
+      var pattern = 0;
+
+      for (var i = 0; i < 8; i += 1) {
+
+        makeImpl(true, i);
+
+        var lostPoint = QRUtil.getLostPoint(_this);
+
+        if (i == 0 || minLostPoint > lostPoint) {
+          minLostPoint = lostPoint;
+          pattern = i;
+        }
+      }
+
+      return pattern;
+    };
+
+    var setupTimingPattern = function() {
+
+      for (var r = 8; r < _moduleCount - 8; r += 1) {
+        if (_modules[r][6] != null) {
+          continue;
+        }
+        _modules[r][6] = (r % 2 == 0);
+      }
+
+      for (var c = 8; c < _moduleCount - 8; c += 1) {
+        if (_modules[6][c] != null) {
+          continue;
+        }
+        _modules[6][c] = (c % 2 == 0);
+      }
+    };
+
+    var setupPositionAdjustPattern = function() {
+
+      var pos = QRUtil.getPatternPosition(_typeNumber);
+
+      for (var i = 0; i < pos.length; i += 1) {
+
+        for (var j = 0; j < pos.length; j += 1) {
+
+          var row = pos[i];
+          var col = pos[j];
+
+          if (_modules[row][col] != null) {
+            continue;
+          }
+
+          for (var r = -2; r <= 2; r += 1) {
+
+            for (var c = -2; c <= 2; c += 1) {
+
+              if (r == -2 || r == 2 || c == -2 || c == 2
+                  || (r == 0 && c == 0) ) {
+                _modules[row + r][col + c] = true;
+              } else {
+                _modules[row + r][col + c] = false;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    var setupTypeNumber = function(test) {
+
+      var bits = QRUtil.getBCHTypeNumber(_typeNumber);
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[Math.floor(i / 3)][i % 3 + _moduleCount - 8 - 3] = mod;
+      }
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[i % 3 + _moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
+      }
+    };
+
+    var setupTypeInfo = function(test, maskPattern) {
+
+      var data = (_errorCorrectionLevel << 3) | maskPattern;
+      var bits = QRUtil.getBCHTypeInfo(data);
+
+      // vertical
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 6) {
+          _modules[i][8] = mod;
+        } else if (i < 8) {
+          _modules[i + 1][8] = mod;
+        } else {
+          _modules[_moduleCount - 15 + i][8] = mod;
+        }
+      }
+
+      // horizontal
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 8) {
+          _modules[8][_moduleCount - i - 1] = mod;
+        } else if (i < 9) {
+          _modules[8][15 - i - 1 + 1] = mod;
+        } else {
+          _modules[8][15 - i - 1] = mod;
+        }
+      }
+
+      // fixed module
+      _modules[_moduleCount - 8][8] = (!test);
+    };
+
+    var mapData = function(data, maskPattern) {
+
+      var inc = -1;
+      var row = _moduleCount - 1;
+      var bitIndex = 7;
+      var byteIndex = 0;
+      var maskFunc = QRUtil.getMaskFunction(maskPattern);
+
+      for (var col = _moduleCount - 1; col > 0; col -= 2) {
+
+        if (col == 6) col -= 1;
+
+        while (true) {
+
+          for (var c = 0; c < 2; c += 1) {
+
+            if (_modules[row][col - c] == null) {
+
+              var dark = false;
+
+              if (byteIndex < data.length) {
+                dark = ( ( (data[byteIndex] >>> bitIndex) & 1) == 1);
+              }
+
+              var mask = maskFunc(row, col - c);
+
+              if (mask) {
+                dark = !dark;
+              }
+
+              _modules[row][col - c] = dark;
+              bitIndex -= 1;
+
+              if (bitIndex == -1) {
+                byteIndex += 1;
+                bitIndex = 7;
+              }
+            }
+          }
+
+          row += inc;
+
+          if (row < 0 || _moduleCount <= row) {
+            row -= inc;
+            inc = -inc;
+            break;
+          }
+        }
+      }
+    };
+
+    var createBytes = function(buffer, rsBlocks) {
+
+      var offset = 0;
+
+      var maxDcCount = 0;
+      var maxEcCount = 0;
+
+      var dcdata = new Array(rsBlocks.length);
+      var ecdata = new Array(rsBlocks.length);
+
+      for (var r = 0; r < rsBlocks.length; r += 1) {
+
+        var dcCount = rsBlocks[r].dataCount;
+        var ecCount = rsBlocks[r].totalCount - dcCount;
+
+        maxDcCount = Math.max(maxDcCount, dcCount);
+        maxEcCount = Math.max(maxEcCount, ecCount);
+
+        dcdata[r] = new Array(dcCount);
+
+        for (var i = 0; i < dcdata[r].length; i += 1) {
+          dcdata[r][i] = 0xff & buffer.getBuffer()[i + offset];
+        }
+        offset += dcCount;
+
+        var rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
+        var rawPoly = qrPolynomial(dcdata[r], rsPoly.getLength() - 1);
+
+        var modPoly = rawPoly.mod(rsPoly);
+        ecdata[r] = new Array(rsPoly.getLength() - 1);
+        for (var i = 0; i < ecdata[r].length; i += 1) {
+          var modIndex = i + modPoly.getLength() - ecdata[r].length;
+          ecdata[r][i] = (modIndex >= 0)? modPoly.getAt(modIndex) : 0;
+        }
+      }
+
+      var totalCodeCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalCodeCount += rsBlocks[i].totalCount;
+      }
+
+      var data = new Array(totalCodeCount);
+      var index = 0;
+
+      for (var i = 0; i < maxDcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < dcdata[r].length) {
+            data[index] = dcdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      for (var i = 0; i < maxEcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < ecdata[r].length) {
+            data[index] = ecdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      return data;
+    };
+
+    var createData = function(typeNumber, errorCorrectionLevel, dataList) {
+
+      var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, errorCorrectionLevel);
+
+      var buffer = qrBitBuffer();
+
+      for (var i = 0; i < dataList.length; i += 1) {
+        var data = dataList[i];
+        buffer.put(data.getMode(), 4);
+        buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+        data.write(buffer);
+      }
+
+      // calc num max data.
+      var totalDataCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalDataCount += rsBlocks[i].dataCount;
+      }
+
+      if (buffer.getLengthInBits() > totalDataCount * 8) {
+        throw 'code length overflow. ('
+          + buffer.getLengthInBits()
+          + '>'
+          + totalDataCount * 8
+          + ')';
+      }
+
+      // end code
+      if (buffer.getLengthInBits() + 4 <= totalDataCount * 8) {
+        buffer.put(0, 4);
+      }
+
+      // padding
+      while (buffer.getLengthInBits() % 8 != 0) {
+        buffer.putBit(false);
+      }
+
+      // padding
+      while (true) {
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD0, 8);
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD1, 8);
+      }
+
+      return createBytes(buffer, rsBlocks);
+    };
+
+    _this.addData = function(data, mode) {
+
+      mode = mode || 'Byte';
+
+      var newData = null;
+
+      switch(mode) {
+      case 'Numeric' :
+        newData = qrNumber(data);
+        break;
+      case 'Alphanumeric' :
+        newData = qrAlphaNum(data);
+        break;
+      case 'Byte' :
+        newData = qr8BitByte(data);
+        break;
+      case 'Kanji' :
+        newData = qrKanji(data);
+        break;
+      default :
+        throw 'mode:' + mode;
+      }
+
+      _dataList.push(newData);
+      _dataCache = null;
+    };
+
+    _this.isDark = function(row, col) {
+      if (row < 0 || _moduleCount <= row || col < 0 || _moduleCount <= col) {
+        throw row + ',' + col;
+      }
+      return _modules[row][col];
+    };
+
+    _this.getModuleCount = function() {
+      return _moduleCount;
+    };
+
+    _this.make = function() {
+      if (_typeNumber < 1) {
+        var typeNumber = 1;
+
+        for (; typeNumber < 40; typeNumber++) {
+          var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, _errorCorrectionLevel);
+          var buffer = qrBitBuffer();
+
+          for (var i = 0; i < _dataList.length; i++) {
+            var data = _dataList[i];
+            buffer.put(data.getMode(), 4);
+            buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+            data.write(buffer);
+          }
+
+          var totalDataCount = 0;
+          for (var i = 0; i < rsBlocks.length; i++) {
+            totalDataCount += rsBlocks[i].dataCount;
+          }
+
+          if (buffer.getLengthInBits() <= totalDataCount * 8) {
+            break;
+          }
+        }
+
+        _typeNumber = typeNumber;
+      }
+
+      makeImpl(false, getBestMaskPattern() );
+    };
+
+    _this.createTableTag = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var qrHtml = '';
+
+      qrHtml += '<table style="';
+      qrHtml += ' border-width: 0px; border-style: none;';
+      qrHtml += ' border-collapse: collapse;';
+      qrHtml += ' padding: 0px; margin: ' + margin + 'px;';
+      qrHtml += '">';
+      qrHtml += '<tbody>';
+
+      for (var r = 0; r < _this.getModuleCount(); r += 1) {
+
+        qrHtml += '<tr>';
+
+        for (var c = 0; c < _this.getModuleCount(); c += 1) {
+          qrHtml += '<td style="';
+          qrHtml += ' border-width: 0px; border-style: none;';
+          qrHtml += ' border-collapse: collapse;';
+          qrHtml += ' padding: 0px; margin: 0px;';
+          qrHtml += ' width: ' + cellSize + 'px;';
+          qrHtml += ' height: ' + cellSize + 'px;';
+          qrHtml += ' background-color: ';
+          qrHtml += _this.isDark(r, c)? '#000000' : '#ffffff';
+          qrHtml += ';';
+          qrHtml += '"/>';
+        }
+
+        qrHtml += '</tr>';
+      }
+
+      qrHtml += '</tbody>';
+      qrHtml += '</table>';
+
+      return qrHtml;
+    };
+
+    _this.createSvgTag = function(cellSize, margin, alt, title) {
+
+      var opts = {};
+      if (typeof arguments[0] == 'object') {
+        // Called by options.
+        opts = arguments[0];
+        // overwrite cellSize and margin.
+        cellSize = opts.cellSize;
+        margin = opts.margin;
+        alt = opts.alt;
+        title = opts.title;
+      }
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      // Compose alt property surrogate
+      alt = (typeof alt === 'string') ? {text: alt} : alt || {};
+      alt.text = alt.text || null;
+      alt.id = (alt.text) ? alt.id || 'qrcode-description' : null;
+
+      // Compose title property surrogate
+      title = (typeof title === 'string') ? {text: title} : title || {};
+      title.text = title.text || null;
+      title.id = (title.text) ? title.id || 'qrcode-title' : null;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var c, mc, r, mr, qrSvg='', rect;
+
+      rect = 'l' + cellSize + ',0 0,' + cellSize +
+        ' -' + cellSize + ',0 0,-' + cellSize + 'z ';
+
+      qrSvg += '<svg version="1.1" xmlns="http://www.w3.org/2000/svg"';
+      qrSvg += !opts.scalable ? ' width="' + size + 'px" height="' + size + 'px"' : '';
+      qrSvg += ' viewBox="0 0 ' + size + ' ' + size + '" ';
+      qrSvg += ' preserveAspectRatio="xMinYMin meet"';
+      qrSvg += (title.text || alt.text) ? ' role="img" aria-labelledby="' +
+          escapeXml([title.id, alt.id].join(' ').trim() ) + '"' : '';
+      qrSvg += '>';
+      qrSvg += (title.text) ? '<title id="' + escapeXml(title.id) + '">' +
+          escapeXml(title.text) + '</title>' : '';
+      qrSvg += (alt.text) ? '<description id="' + escapeXml(alt.id) + '">' +
+          escapeXml(alt.text) + '</description>' : '';
+      qrSvg += '<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>';
+      qrSvg += '<path d="';
+
+      for (r = 0; r < _this.getModuleCount(); r += 1) {
+        mr = r * cellSize + margin;
+        for (c = 0; c < _this.getModuleCount(); c += 1) {
+          if (_this.isDark(r, c) ) {
+            mc = c*cellSize+margin;
+            qrSvg += 'M' + mc + ',' + mr + rect;
+          }
+        }
+      }
+
+      qrSvg += '" stroke="transparent" fill="black"/>';
+      qrSvg += '</svg>';
+
+      return qrSvg;
+    };
+
+    _this.createDataURL = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      return createDataURL(size, size, function(x, y) {
+        if (min <= x && x < max && min <= y && y < max) {
+          var c = Math.floor( (x - min) / cellSize);
+          var r = Math.floor( (y - min) / cellSize);
+          return _this.isDark(r, c)? 0 : 1;
+        } else {
+          return 1;
+        }
+      } );
+    };
+
+    _this.createImgTag = function(cellSize, margin, alt) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+
+      var img = '';
+      img += '<img';
+      img += '\u0020src="';
+      img += _this.createDataURL(cellSize, margin);
+      img += '"';
+      img += '\u0020width="';
+      img += size;
+      img += '"';
+      img += '\u0020height="';
+      img += size;
+      img += '"';
+      if (alt) {
+        img += '\u0020alt="';
+        img += escapeXml(alt);
+        img += '"';
+      }
+      img += '/>';
+
+      return img;
+    };
+
+    var escapeXml = function(s) {
+      var escaped = '';
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charAt(i);
+        switch(c) {
+        case '<': escaped += '&lt;'; break;
+        case '>': escaped += '&gt;'; break;
+        case '&': escaped += '&amp;'; break;
+        case '"': escaped += '&quot;'; break;
+        default : escaped += c; break;
+        }
+      }
+      return escaped;
+    };
+
+    var _createHalfASCII = function(margin) {
+      var cellSize = 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r1, r2, p;
+
+      var blocks = {
+        '██': '█',
+        '█ ': '▀',
+        ' █': '▄',
+        '  ': ' '
+      };
+
+      var blocksLastLineNoMargin = {
+        '██': '▀',
+        '█ ': '▀',
+        ' █': ' ',
+        '  ': ' '
+      };
+
+      var ascii = '';
+      for (y = 0; y < size; y += 2) {
+        r1 = Math.floor((y - min) / cellSize);
+        r2 = Math.floor((y + 1 - min) / cellSize);
+        for (x = 0; x < size; x += 1) {
+          p = '█';
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r1, Math.floor((x - min) / cellSize))) {
+            p = ' ';
+          }
+
+          if (min <= x && x < max && min <= y+1 && y+1 < max && _this.isDark(r2, Math.floor((x - min) / cellSize))) {
+            p += ' ';
+          }
+          else {
+            p += '█';
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          ascii += (margin < 1 && y+1 >= max) ? blocksLastLineNoMargin[p] : blocks[p];
+        }
+
+        ascii += '\n';
+      }
+
+      if (size % 2 && margin > 0) {
+        return ascii.substring(0, ascii.length - size - 1) + Array(size+1).join('▀');
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.createASCII = function(cellSize, margin) {
+      cellSize = cellSize || 1;
+
+      if (cellSize < 2) {
+        return _createHalfASCII(margin);
+      }
+
+      cellSize -= 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r, p;
+
+      var white = Array(cellSize+1).join('██');
+      var black = Array(cellSize+1).join('  ');
+
+      var ascii = '';
+      var line = '';
+      for (y = 0; y < size; y += 1) {
+        r = Math.floor( (y - min) / cellSize);
+        line = '';
+        for (x = 0; x < size; x += 1) {
+          p = 1;
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r, Math.floor((x - min) / cellSize))) {
+            p = 0;
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          line += p ? white : black;
+        }
+
+        for (r = 0; r < cellSize; r += 1) {
+          ascii += line + '\n';
+        }
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.renderTo2dContext = function(context, cellSize) {
+      cellSize = cellSize || 2;
+      var length = _this.getModuleCount();
+      for (var row = 0; row < length; row++) {
+        for (var col = 0; col < length; col++) {
+          context.fillStyle = _this.isDark(row, col) ? 'black' : 'white';
+          context.fillRect(row * cellSize, col * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrcode.stringToBytes
+  //---------------------------------------------------------------------
+
+  qrcode.stringToBytesFuncs = {
+    'default' : function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        bytes.push(c & 0xff);
+      }
+      return bytes;
+    }
+  };
+
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['default'];
+
+  //---------------------------------------------------------------------
+  // qrcode.createStringToBytes
+  //---------------------------------------------------------------------
+
+  /**
+   * @param unicodeData base64 string of byte array.
+   * [16bit Unicode],[16bit Bytes], ...
+   * @param numChars
+   */
+  qrcode.createStringToBytes = function(unicodeData, numChars) {
+
+    // create conversion map.
+
+    var unicodeMap = function() {
+
+      var bin = base64DecodeInputStream(unicodeData);
+      var read = function() {
+        var b = bin.read();
+        if (b == -1) throw 'eof';
+        return b;
+      };
+
+      var count = 0;
+      var unicodeMap = {};
+      while (true) {
+        var b0 = bin.read();
+        if (b0 == -1) break;
+        var b1 = read();
+        var b2 = read();
+        var b3 = read();
+        var k = String.fromCharCode( (b0 << 8) | b1);
+        var v = (b2 << 8) | b3;
+        unicodeMap[k] = v;
+        count += 1;
+      }
+      if (count != numChars) {
+        throw count + ' != ' + numChars;
+      }
+
+      return unicodeMap;
+    }();
+
+    var unknownChar = '?'.charCodeAt(0);
+
+    return function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        if (c < 128) {
+          bytes.push(c);
+        } else {
+          var b = unicodeMap[s.charAt(i)];
+          if (typeof b == 'number') {
+            if ( (b & 0xff) == b) {
+              // 1byte
+              bytes.push(b);
+            } else {
+              // 2bytes
+              bytes.push(b >>> 8);
+              bytes.push(b & 0xff);
+            }
+          } else {
+            bytes.push(unknownChar);
+          }
+        }
+      }
+      return bytes;
+    };
+  };
+
+  //---------------------------------------------------------------------
+  // QRMode
+  //---------------------------------------------------------------------
+
+  var QRMode = {
+    MODE_NUMBER :    1 << 0,
+    MODE_ALPHA_NUM : 1 << 1,
+    MODE_8BIT_BYTE : 1 << 2,
+    MODE_KANJI :     1 << 3
+  };
+
+  //---------------------------------------------------------------------
+  // QRErrorCorrectionLevel
+  //---------------------------------------------------------------------
+
+  var QRErrorCorrectionLevel = {
+    L : 1,
+    M : 0,
+    Q : 3,
+    H : 2
+  };
+
+  //---------------------------------------------------------------------
+  // QRMaskPattern
+  //---------------------------------------------------------------------
+
+  var QRMaskPattern = {
+    PATTERN000 : 0,
+    PATTERN001 : 1,
+    PATTERN010 : 2,
+    PATTERN011 : 3,
+    PATTERN100 : 4,
+    PATTERN101 : 5,
+    PATTERN110 : 6,
+    PATTERN111 : 7
+  };
+
+  //---------------------------------------------------------------------
+  // QRUtil
+  //---------------------------------------------------------------------
+
+  var QRUtil = function() {
+
+    var PATTERN_POSITION_TABLE = [
+      [],
+      [6, 18],
+      [6, 22],
+      [6, 26],
+      [6, 30],
+      [6, 34],
+      [6, 22, 38],
+      [6, 24, 42],
+      [6, 26, 46],
+      [6, 28, 50],
+      [6, 30, 54],
+      [6, 32, 58],
+      [6, 34, 62],
+      [6, 26, 46, 66],
+      [6, 26, 48, 70],
+      [6, 26, 50, 74],
+      [6, 30, 54, 78],
+      [6, 30, 56, 82],
+      [6, 30, 58, 86],
+      [6, 34, 62, 90],
+      [6, 28, 50, 72, 94],
+      [6, 26, 50, 74, 98],
+      [6, 30, 54, 78, 102],
+      [6, 28, 54, 80, 106],
+      [6, 32, 58, 84, 110],
+      [6, 30, 58, 86, 114],
+      [6, 34, 62, 90, 118],
+      [6, 26, 50, 74, 98, 122],
+      [6, 30, 54, 78, 102, 126],
+      [6, 26, 52, 78, 104, 130],
+      [6, 30, 56, 82, 108, 134],
+      [6, 34, 60, 86, 112, 138],
+      [6, 30, 58, 86, 114, 142],
+      [6, 34, 62, 90, 118, 146],
+      [6, 30, 54, 78, 102, 126, 150],
+      [6, 24, 50, 76, 102, 128, 154],
+      [6, 28, 54, 80, 106, 132, 158],
+      [6, 32, 58, 84, 110, 136, 162],
+      [6, 26, 54, 82, 110, 138, 166],
+      [6, 30, 58, 86, 114, 142, 170]
+    ];
+    var G15 = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0);
+    var G18 = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0);
+    var G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1);
+
+    var _this = {};
+
+    var getBCHDigit = function(data) {
+      var digit = 0;
+      while (data != 0) {
+        digit += 1;
+        data >>>= 1;
+      }
+      return digit;
+    };
+
+    _this.getBCHTypeInfo = function(data) {
+      var d = data << 10;
+      while (getBCHDigit(d) - getBCHDigit(G15) >= 0) {
+        d ^= (G15 << (getBCHDigit(d) - getBCHDigit(G15) ) );
+      }
+      return ( (data << 10) | d) ^ G15_MASK;
+    };
+
+    _this.getBCHTypeNumber = function(data) {
+      var d = data << 12;
+      while (getBCHDigit(d) - getBCHDigit(G18) >= 0) {
+        d ^= (G18 << (getBCHDigit(d) - getBCHDigit(G18) ) );
+      }
+      return (data << 12) | d;
+    };
+
+    _this.getPatternPosition = function(typeNumber) {
+      return PATTERN_POSITION_TABLE[typeNumber - 1];
+    };
+
+    _this.getMaskFunction = function(maskPattern) {
+
+      switch (maskPattern) {
+
+      case QRMaskPattern.PATTERN000 :
+        return function(i, j) { return (i + j) % 2 == 0; };
+      case QRMaskPattern.PATTERN001 :
+        return function(i, j) { return i % 2 == 0; };
+      case QRMaskPattern.PATTERN010 :
+        return function(i, j) { return j % 3 == 0; };
+      case QRMaskPattern.PATTERN011 :
+        return function(i, j) { return (i + j) % 3 == 0; };
+      case QRMaskPattern.PATTERN100 :
+        return function(i, j) { return (Math.floor(i / 2) + Math.floor(j / 3) ) % 2 == 0; };
+      case QRMaskPattern.PATTERN101 :
+        return function(i, j) { return (i * j) % 2 + (i * j) % 3 == 0; };
+      case QRMaskPattern.PATTERN110 :
+        return function(i, j) { return ( (i * j) % 2 + (i * j) % 3) % 2 == 0; };
+      case QRMaskPattern.PATTERN111 :
+        return function(i, j) { return ( (i * j) % 3 + (i + j) % 2) % 2 == 0; };
+
+      default :
+        throw 'bad maskPattern:' + maskPattern;
+      }
+    };
+
+    _this.getErrorCorrectPolynomial = function(errorCorrectLength) {
+      var a = qrPolynomial([1], 0);
+      for (var i = 0; i < errorCorrectLength; i += 1) {
+        a = a.multiply(qrPolynomial([1, QRMath.gexp(i)], 0) );
+      }
+      return a;
+    };
+
+    _this.getLengthInBits = function(mode, type) {
+
+      if (1 <= type && type < 10) {
+
+        // 1 - 9
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 10;
+        case QRMode.MODE_ALPHA_NUM : return 9;
+        case QRMode.MODE_8BIT_BYTE : return 8;
+        case QRMode.MODE_KANJI     : return 8;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 27) {
+
+        // 10 - 26
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 12;
+        case QRMode.MODE_ALPHA_NUM : return 11;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 10;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 41) {
+
+        // 27 - 40
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 14;
+        case QRMode.MODE_ALPHA_NUM : return 13;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 12;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else {
+        throw 'type:' + type;
+      }
+    };
+
+    _this.getLostPoint = function(qrcode) {
+
+      var moduleCount = qrcode.getModuleCount();
+
+      var lostPoint = 0;
+
+      // LEVEL1
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount; col += 1) {
+
+          var sameCount = 0;
+          var dark = qrcode.isDark(row, col);
+
+          for (var r = -1; r <= 1; r += 1) {
+
+            if (row + r < 0 || moduleCount <= row + r) {
+              continue;
+            }
+
+            for (var c = -1; c <= 1; c += 1) {
+
+              if (col + c < 0 || moduleCount <= col + c) {
+                continue;
+              }
+
+              if (r == 0 && c == 0) {
+                continue;
+              }
+
+              if (dark == qrcode.isDark(row + r, col + c) ) {
+                sameCount += 1;
+              }
+            }
+          }
+
+          if (sameCount > 5) {
+            lostPoint += (3 + sameCount - 5);
+          }
+        }
+      };
+
+      // LEVEL2
+
+      for (var row = 0; row < moduleCount - 1; row += 1) {
+        for (var col = 0; col < moduleCount - 1; col += 1) {
+          var count = 0;
+          if (qrcode.isDark(row, col) ) count += 1;
+          if (qrcode.isDark(row + 1, col) ) count += 1;
+          if (qrcode.isDark(row, col + 1) ) count += 1;
+          if (qrcode.isDark(row + 1, col + 1) ) count += 1;
+          if (count == 0 || count == 4) {
+            lostPoint += 3;
+          }
+        }
+      }
+
+      // LEVEL3
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount - 6; col += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row, col + 1)
+              &&  qrcode.isDark(row, col + 2)
+              &&  qrcode.isDark(row, col + 3)
+              &&  qrcode.isDark(row, col + 4)
+              && !qrcode.isDark(row, col + 5)
+              &&  qrcode.isDark(row, col + 6) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount - 6; row += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row + 1, col)
+              &&  qrcode.isDark(row + 2, col)
+              &&  qrcode.isDark(row + 3, col)
+              &&  qrcode.isDark(row + 4, col)
+              && !qrcode.isDark(row + 5, col)
+              &&  qrcode.isDark(row + 6, col) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      // LEVEL4
+
+      var darkCount = 0;
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount; row += 1) {
+          if (qrcode.isDark(row, col) ) {
+            darkCount += 1;
+          }
+        }
+      }
+
+      var ratio = Math.abs(100 * darkCount / moduleCount / moduleCount - 50) / 5;
+      lostPoint += ratio * 10;
+
+      return lostPoint;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // QRMath
+  //---------------------------------------------------------------------
+
+  var QRMath = function() {
+
+    var EXP_TABLE = new Array(256);
+    var LOG_TABLE = new Array(256);
+
+    // initialize tables
+    for (var i = 0; i < 8; i += 1) {
+      EXP_TABLE[i] = 1 << i;
+    }
+    for (var i = 8; i < 256; i += 1) {
+      EXP_TABLE[i] = EXP_TABLE[i - 4]
+        ^ EXP_TABLE[i - 5]
+        ^ EXP_TABLE[i - 6]
+        ^ EXP_TABLE[i - 8];
+    }
+    for (var i = 0; i < 255; i += 1) {
+      LOG_TABLE[EXP_TABLE[i] ] = i;
+    }
+
+    var _this = {};
+
+    _this.glog = function(n) {
+
+      if (n < 1) {
+        throw 'glog(' + n + ')';
+      }
+
+      return LOG_TABLE[n];
+    };
+
+    _this.gexp = function(n) {
+
+      while (n < 0) {
+        n += 255;
+      }
+
+      while (n >= 256) {
+        n -= 255;
+      }
+
+      return EXP_TABLE[n];
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrPolynomial
+  //---------------------------------------------------------------------
+
+  function qrPolynomial(num, shift) {
+
+    if (typeof num.length == 'undefined') {
+      throw num.length + '/' + shift;
+    }
+
+    var _num = function() {
+      var offset = 0;
+      while (offset < num.length && num[offset] == 0) {
+        offset += 1;
+      }
+      var _num = new Array(num.length - offset + shift);
+      for (var i = 0; i < num.length - offset; i += 1) {
+        _num[i] = num[i + offset];
+      }
+      return _num;
+    }();
+
+    var _this = {};
+
+    _this.getAt = function(index) {
+      return _num[index];
+    };
+
+    _this.getLength = function() {
+      return _num.length;
+    };
+
+    _this.multiply = function(e) {
+
+      var num = new Array(_this.getLength() + e.getLength() - 1);
+
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        for (var j = 0; j < e.getLength(); j += 1) {
+          num[i + j] ^= QRMath.gexp(QRMath.glog(_this.getAt(i) ) + QRMath.glog(e.getAt(j) ) );
+        }
+      }
+
+      return qrPolynomial(num, 0);
+    };
+
+    _this.mod = function(e) {
+
+      if (_this.getLength() - e.getLength() < 0) {
+        return _this;
+      }
+
+      var ratio = QRMath.glog(_this.getAt(0) ) - QRMath.glog(e.getAt(0) );
+
+      var num = new Array(_this.getLength() );
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        num[i] = _this.getAt(i);
+      }
+
+      for (var i = 0; i < e.getLength(); i += 1) {
+        num[i] ^= QRMath.gexp(QRMath.glog(e.getAt(i) ) + ratio);
+      }
+
+      // recursive call
+      return qrPolynomial(num, 0).mod(e);
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // QRRSBlock
+  //---------------------------------------------------------------------
+
+  var QRRSBlock = function() {
+
+    var RS_BLOCK_TABLE = [
+
+      // L
+      // M
+      // Q
+      // H
+
+      // 1
+      [1, 26, 19],
+      [1, 26, 16],
+      [1, 26, 13],
+      [1, 26, 9],
+
+      // 2
+      [1, 44, 34],
+      [1, 44, 28],
+      [1, 44, 22],
+      [1, 44, 16],
+
+      // 3
+      [1, 70, 55],
+      [1, 70, 44],
+      [2, 35, 17],
+      [2, 35, 13],
+
+      // 4
+      [1, 100, 80],
+      [2, 50, 32],
+      [2, 50, 24],
+      [4, 25, 9],
+
+      // 5
+      [1, 134, 108],
+      [2, 67, 43],
+      [2, 33, 15, 2, 34, 16],
+      [2, 33, 11, 2, 34, 12],
+
+      // 6
+      [2, 86, 68],
+      [4, 43, 27],
+      [4, 43, 19],
+      [4, 43, 15],
+
+      // 7
+      [2, 98, 78],
+      [4, 49, 31],
+      [2, 32, 14, 4, 33, 15],
+      [4, 39, 13, 1, 40, 14],
+
+      // 8
+      [2, 121, 97],
+      [2, 60, 38, 2, 61, 39],
+      [4, 40, 18, 2, 41, 19],
+      [4, 40, 14, 2, 41, 15],
+
+      // 9
+      [2, 146, 116],
+      [3, 58, 36, 2, 59, 37],
+      [4, 36, 16, 4, 37, 17],
+      [4, 36, 12, 4, 37, 13],
+
+      // 10
+      [2, 86, 68, 2, 87, 69],
+      [4, 69, 43, 1, 70, 44],
+      [6, 43, 19, 2, 44, 20],
+      [6, 43, 15, 2, 44, 16],
+
+      // 11
+      [4, 101, 81],
+      [1, 80, 50, 4, 81, 51],
+      [4, 50, 22, 4, 51, 23],
+      [3, 36, 12, 8, 37, 13],
+
+      // 12
+      [2, 116, 92, 2, 117, 93],
+      [6, 58, 36, 2, 59, 37],
+      [4, 46, 20, 6, 47, 21],
+      [7, 42, 14, 4, 43, 15],
+
+      // 13
+      [4, 133, 107],
+      [8, 59, 37, 1, 60, 38],
+      [8, 44, 20, 4, 45, 21],
+      [12, 33, 11, 4, 34, 12],
+
+      // 14
+      [3, 145, 115, 1, 146, 116],
+      [4, 64, 40, 5, 65, 41],
+      [11, 36, 16, 5, 37, 17],
+      [11, 36, 12, 5, 37, 13],
+
+      // 15
+      [5, 109, 87, 1, 110, 88],
+      [5, 65, 41, 5, 66, 42],
+      [5, 54, 24, 7, 55, 25],
+      [11, 36, 12, 7, 37, 13],
+
+      // 16
+      [5, 122, 98, 1, 123, 99],
+      [7, 73, 45, 3, 74, 46],
+      [15, 43, 19, 2, 44, 20],
+      [3, 45, 15, 13, 46, 16],
+
+      // 17
+      [1, 135, 107, 5, 136, 108],
+      [10, 74, 46, 1, 75, 47],
+      [1, 50, 22, 15, 51, 23],
+      [2, 42, 14, 17, 43, 15],
+
+      // 18
+      [5, 150, 120, 1, 151, 121],
+      [9, 69, 43, 4, 70, 44],
+      [17, 50, 22, 1, 51, 23],
+      [2, 42, 14, 19, 43, 15],
+
+      // 19
+      [3, 141, 113, 4, 142, 114],
+      [3, 70, 44, 11, 71, 45],
+      [17, 47, 21, 4, 48, 22],
+      [9, 39, 13, 16, 40, 14],
+
+      // 20
+      [3, 135, 107, 5, 136, 108],
+      [3, 67, 41, 13, 68, 42],
+      [15, 54, 24, 5, 55, 25],
+      [15, 43, 15, 10, 44, 16],
+
+      // 21
+      [4, 144, 116, 4, 145, 117],
+      [17, 68, 42],
+      [17, 50, 22, 6, 51, 23],
+      [19, 46, 16, 6, 47, 17],
+
+      // 22
+      [2, 139, 111, 7, 140, 112],
+      [17, 74, 46],
+      [7, 54, 24, 16, 55, 25],
+      [34, 37, 13],
+
+      // 23
+      [4, 151, 121, 5, 152, 122],
+      [4, 75, 47, 14, 76, 48],
+      [11, 54, 24, 14, 55, 25],
+      [16, 45, 15, 14, 46, 16],
+
+      // 24
+      [6, 147, 117, 4, 148, 118],
+      [6, 73, 45, 14, 74, 46],
+      [11, 54, 24, 16, 55, 25],
+      [30, 46, 16, 2, 47, 17],
+
+      // 25
+      [8, 132, 106, 4, 133, 107],
+      [8, 75, 47, 13, 76, 48],
+      [7, 54, 24, 22, 55, 25],
+      [22, 45, 15, 13, 46, 16],
+
+      // 26
+      [10, 142, 114, 2, 143, 115],
+      [19, 74, 46, 4, 75, 47],
+      [28, 50, 22, 6, 51, 23],
+      [33, 46, 16, 4, 47, 17],
+
+      // 27
+      [8, 152, 122, 4, 153, 123],
+      [22, 73, 45, 3, 74, 46],
+      [8, 53, 23, 26, 54, 24],
+      [12, 45, 15, 28, 46, 16],
+
+      // 28
+      [3, 147, 117, 10, 148, 118],
+      [3, 73, 45, 23, 74, 46],
+      [4, 54, 24, 31, 55, 25],
+      [11, 45, 15, 31, 46, 16],
+
+      // 29
+      [7, 146, 116, 7, 147, 117],
+      [21, 73, 45, 7, 74, 46],
+      [1, 53, 23, 37, 54, 24],
+      [19, 45, 15, 26, 46, 16],
+
+      // 30
+      [5, 145, 115, 10, 146, 116],
+      [19, 75, 47, 10, 76, 48],
+      [15, 54, 24, 25, 55, 25],
+      [23, 45, 15, 25, 46, 16],
+
+      // 31
+      [13, 145, 115, 3, 146, 116],
+      [2, 74, 46, 29, 75, 47],
+      [42, 54, 24, 1, 55, 25],
+      [23, 45, 15, 28, 46, 16],
+
+      // 32
+      [17, 145, 115],
+      [10, 74, 46, 23, 75, 47],
+      [10, 54, 24, 35, 55, 25],
+      [19, 45, 15, 35, 46, 16],
+
+      // 33
+      [17, 145, 115, 1, 146, 116],
+      [14, 74, 46, 21, 75, 47],
+      [29, 54, 24, 19, 55, 25],
+      [11, 45, 15, 46, 46, 16],
+
+      // 34
+      [13, 145, 115, 6, 146, 116],
+      [14, 74, 46, 23, 75, 47],
+      [44, 54, 24, 7, 55, 25],
+      [59, 46, 16, 1, 47, 17],
+
+      // 35
+      [12, 151, 121, 7, 152, 122],
+      [12, 75, 47, 26, 76, 48],
+      [39, 54, 24, 14, 55, 25],
+      [22, 45, 15, 41, 46, 16],
+
+      // 36
+      [6, 151, 121, 14, 152, 122],
+      [6, 75, 47, 34, 76, 48],
+      [46, 54, 24, 10, 55, 25],
+      [2, 45, 15, 64, 46, 16],
+
+      // 37
+      [17, 152, 122, 4, 153, 123],
+      [29, 74, 46, 14, 75, 47],
+      [49, 54, 24, 10, 55, 25],
+      [24, 45, 15, 46, 46, 16],
+
+      // 38
+      [4, 152, 122, 18, 153, 123],
+      [13, 74, 46, 32, 75, 47],
+      [48, 54, 24, 14, 55, 25],
+      [42, 45, 15, 32, 46, 16],
+
+      // 39
+      [20, 147, 117, 4, 148, 118],
+      [40, 75, 47, 7, 76, 48],
+      [43, 54, 24, 22, 55, 25],
+      [10, 45, 15, 67, 46, 16],
+
+      // 40
+      [19, 148, 118, 6, 149, 119],
+      [18, 75, 47, 31, 76, 48],
+      [34, 54, 24, 34, 55, 25],
+      [20, 45, 15, 61, 46, 16]
+    ];
+
+    var qrRSBlock = function(totalCount, dataCount) {
+      var _this = {};
+      _this.totalCount = totalCount;
+      _this.dataCount = dataCount;
+      return _this;
+    };
+
+    var _this = {};
+
+    var getRsBlockTable = function(typeNumber, errorCorrectionLevel) {
+
+      switch(errorCorrectionLevel) {
+      case QRErrorCorrectionLevel.L :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 0];
+      case QRErrorCorrectionLevel.M :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 1];
+      case QRErrorCorrectionLevel.Q :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 2];
+      case QRErrorCorrectionLevel.H :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 3];
+      default :
+        return undefined;
+      }
+    };
+
+    _this.getRSBlocks = function(typeNumber, errorCorrectionLevel) {
+
+      var rsBlock = getRsBlockTable(typeNumber, errorCorrectionLevel);
+
+      if (typeof rsBlock == 'undefined') {
+        throw 'bad rs block @ typeNumber:' + typeNumber +
+            '/errorCorrectionLevel:' + errorCorrectionLevel;
+      }
+
+      var length = rsBlock.length / 3;
+
+      var list = [];
+
+      for (var i = 0; i < length; i += 1) {
+
+        var count = rsBlock[i * 3 + 0];
+        var totalCount = rsBlock[i * 3 + 1];
+        var dataCount = rsBlock[i * 3 + 2];
+
+        for (var j = 0; j < count; j += 1) {
+          list.push(qrRSBlock(totalCount, dataCount) );
+        }
+      }
+
+      return list;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrBitBuffer
+  //---------------------------------------------------------------------
+
+  var qrBitBuffer = function() {
+
+    var _buffer = [];
+    var _length = 0;
+
+    var _this = {};
+
+    _this.getBuffer = function() {
+      return _buffer;
+    };
+
+    _this.getAt = function(index) {
+      var bufIndex = Math.floor(index / 8);
+      return ( (_buffer[bufIndex] >>> (7 - index % 8) ) & 1) == 1;
+    };
+
+    _this.put = function(num, length) {
+      for (var i = 0; i < length; i += 1) {
+        _this.putBit( ( (num >>> (length - i - 1) ) & 1) == 1);
+      }
+    };
+
+    _this.getLengthInBits = function() {
+      return _length;
+    };
+
+    _this.putBit = function(bit) {
+
+      var bufIndex = Math.floor(_length / 8);
+      if (_buffer.length <= bufIndex) {
+        _buffer.push(0);
+      }
+
+      if (bit) {
+        _buffer[bufIndex] |= (0x80 >>> (_length % 8) );
+      }
+
+      _length += 1;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrNumber
+  //---------------------------------------------------------------------
+
+  var qrNumber = function(data) {
+
+    var _mode = QRMode.MODE_NUMBER;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _data;
+
+      var i = 0;
+
+      while (i + 2 < data.length) {
+        buffer.put(strToNum(data.substring(i, i + 3) ), 10);
+        i += 3;
+      }
+
+      if (i < data.length) {
+        if (data.length - i == 1) {
+          buffer.put(strToNum(data.substring(i, i + 1) ), 4);
+        } else if (data.length - i == 2) {
+          buffer.put(strToNum(data.substring(i, i + 2) ), 7);
+        }
+      }
+    };
+
+    var strToNum = function(s) {
+      var num = 0;
+      for (var i = 0; i < s.length; i += 1) {
+        num = num * 10 + chatToNum(s.charAt(i) );
+      }
+      return num;
+    };
+
+    var chatToNum = function(c) {
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      }
+      throw 'illegal char :' + c;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrAlphaNum
+  //---------------------------------------------------------------------
+
+  var qrAlphaNum = function(data) {
+
+    var _mode = QRMode.MODE_ALPHA_NUM;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var s = _data;
+
+      var i = 0;
+
+      while (i + 1 < s.length) {
+        buffer.put(
+          getCode(s.charAt(i) ) * 45 +
+          getCode(s.charAt(i + 1) ), 11);
+        i += 2;
+      }
+
+      if (i < s.length) {
+        buffer.put(getCode(s.charAt(i) ), 6);
+      }
+    };
+
+    var getCode = function(c) {
+
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      } else if ('A' <= c && c <= 'Z') {
+        return c.charCodeAt(0) - 'A'.charCodeAt(0) + 10;
+      } else {
+        switch (c) {
+        case ' ' : return 36;
+        case '$' : return 37;
+        case '%' : return 38;
+        case '*' : return 39;
+        case '+' : return 40;
+        case '-' : return 41;
+        case '.' : return 42;
+        case '/' : return 43;
+        case ':' : return 44;
+        default :
+          throw 'illegal char :' + c;
+        }
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qr8BitByte
+  //---------------------------------------------------------------------
+
+  var qr8BitByte = function(data) {
+
+    var _mode = QRMode.MODE_8BIT_BYTE;
+    var _data = data;
+    var _bytes = qrcode.stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _bytes.length;
+    };
+
+    _this.write = function(buffer) {
+      for (var i = 0; i < _bytes.length; i += 1) {
+        buffer.put(_bytes[i], 8);
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrKanji
+  //---------------------------------------------------------------------
+
+  var qrKanji = function(data) {
+
+    var _mode = QRMode.MODE_KANJI;
+    var _data = data;
+
+    var stringToBytes = qrcode.stringToBytesFuncs['SJIS'];
+    if (!stringToBytes) {
+      throw 'sjis not supported.';
+    }
+    !function(c, code) {
+      // self test for sjis support.
+      var test = stringToBytes(c);
+      if (test.length != 2 || ( (test[0] << 8) | test[1]) != code) {
+        throw 'sjis not supported.';
+      }
+    }('\u53cb', 0x9746);
+
+    var _bytes = stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return ~~(_bytes.length / 2);
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _bytes;
+
+      var i = 0;
+
+      while (i + 1 < data.length) {
+
+        var c = ( (0xff & data[i]) << 8) | (0xff & data[i + 1]);
+
+        if (0x8140 <= c && c <= 0x9FFC) {
+          c -= 0x8140;
+        } else if (0xE040 <= c && c <= 0xEBBF) {
+          c -= 0xC140;
+        } else {
+          throw 'illegal char at ' + (i + 1) + '/' + c;
+        }
+
+        c = ( (c >>> 8) & 0xff) * 0xC0 + (c & 0xff);
+
+        buffer.put(c, 13);
+
+        i += 2;
+      }
+
+      if (i < data.length) {
+        throw 'illegal char at ' + (i + 1);
+      }
+    };
+
+    return _this;
+  };
+
+  //=====================================================================
+  // GIF Support etc.
+  //
+
+  //---------------------------------------------------------------------
+  // byteArrayOutputStream
+  //---------------------------------------------------------------------
+
+  var byteArrayOutputStream = function() {
+
+    var _bytes = [];
+
+    var _this = {};
+
+    _this.writeByte = function(b) {
+      _bytes.push(b & 0xff);
+    };
+
+    _this.writeShort = function(i) {
+      _this.writeByte(i);
+      _this.writeByte(i >>> 8);
+    };
+
+    _this.writeBytes = function(b, off, len) {
+      off = off || 0;
+      len = len || b.length;
+      for (var i = 0; i < len; i += 1) {
+        _this.writeByte(b[i + off]);
+      }
+    };
+
+    _this.writeString = function(s) {
+      for (var i = 0; i < s.length; i += 1) {
+        _this.writeByte(s.charCodeAt(i) );
+      }
+    };
+
+    _this.toByteArray = function() {
+      return _bytes;
+    };
+
+    _this.toString = function() {
+      var s = '';
+      s += '[';
+      for (var i = 0; i < _bytes.length; i += 1) {
+        if (i > 0) {
+          s += ',';
+        }
+        s += _bytes[i];
+      }
+      s += ']';
+      return s;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64EncodeOutputStream
+  //---------------------------------------------------------------------
+
+  var base64EncodeOutputStream = function() {
+
+    var _buffer = 0;
+    var _buflen = 0;
+    var _length = 0;
+    var _base64 = '';
+
+    var _this = {};
+
+    var writeEncoded = function(b) {
+      _base64 += String.fromCharCode(encode(b & 0x3f) );
+    };
+
+    var encode = function(n) {
+      if (n < 0) {
+        // error.
+      } else if (n < 26) {
+        return 0x41 + n;
+      } else if (n < 52) {
+        return 0x61 + (n - 26);
+      } else if (n < 62) {
+        return 0x30 + (n - 52);
+      } else if (n == 62) {
+        return 0x2b;
+      } else if (n == 63) {
+        return 0x2f;
+      }
+      throw 'n:' + n;
+    };
+
+    _this.writeByte = function(n) {
+
+      _buffer = (_buffer << 8) | (n & 0xff);
+      _buflen += 8;
+      _length += 1;
+
+      while (_buflen >= 6) {
+        writeEncoded(_buffer >>> (_buflen - 6) );
+        _buflen -= 6;
+      }
+    };
+
+    _this.flush = function() {
+
+      if (_buflen > 0) {
+        writeEncoded(_buffer << (6 - _buflen) );
+        _buffer = 0;
+        _buflen = 0;
+      }
+
+      if (_length % 3 != 0) {
+        // padding
+        var padlen = 3 - _length % 3;
+        for (var i = 0; i < padlen; i += 1) {
+          _base64 += '=';
+        }
+      }
+    };
+
+    _this.toString = function() {
+      return _base64;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64DecodeInputStream
+  //---------------------------------------------------------------------
+
+  var base64DecodeInputStream = function(str) {
+
+    var _str = str;
+    var _pos = 0;
+    var _buffer = 0;
+    var _buflen = 0;
+
+    var _this = {};
+
+    _this.read = function() {
+
+      while (_buflen < 8) {
+
+        if (_pos >= _str.length) {
+          if (_buflen == 0) {
+            return -1;
+          }
+          throw 'unexpected end of file./' + _buflen;
+        }
+
+        var c = _str.charAt(_pos);
+        _pos += 1;
+
+        if (c == '=') {
+          _buflen = 0;
+          return -1;
+        } else if (c.match(/^\s$/) ) {
+          // ignore if whitespace.
+          continue;
+        }
+
+        _buffer = (_buffer << 6) | decode(c.charCodeAt(0) );
+        _buflen += 6;
+      }
+
+      var n = (_buffer >>> (_buflen - 8) ) & 0xff;
+      _buflen -= 8;
+      return n;
+    };
+
+    var decode = function(c) {
+      if (0x41 <= c && c <= 0x5a) {
+        return c - 0x41;
+      } else if (0x61 <= c && c <= 0x7a) {
+        return c - 0x61 + 26;
+      } else if (0x30 <= c && c <= 0x39) {
+        return c - 0x30 + 52;
+      } else if (c == 0x2b) {
+        return 62;
+      } else if (c == 0x2f) {
+        return 63;
+      } else {
+        throw 'c:' + c;
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // gifImage (B/W)
+  //---------------------------------------------------------------------
+
+  var gifImage = function(width, height) {
+
+    var _width = width;
+    var _height = height;
+    var _data = new Array(width * height);
+
+    var _this = {};
+
+    _this.setPixel = function(x, y, pixel) {
+      _data[y * _width + x] = pixel;
+    };
+
+    _this.write = function(out) {
+
+      //---------------------------------
+      // GIF Signature
+
+      out.writeString('GIF87a');
+
+      //---------------------------------
+      // Screen Descriptor
+
+      out.writeShort(_width);
+      out.writeShort(_height);
+
+      out.writeByte(0x80); // 2bit
+      out.writeByte(0);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Global Color Map
+
+      // black
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+
+      // white
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+
+      //---------------------------------
+      // Image Descriptor
+
+      out.writeString(',');
+      out.writeShort(0);
+      out.writeShort(0);
+      out.writeShort(_width);
+      out.writeShort(_height);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Local Color Map
+
+      //---------------------------------
+      // Raster Data
+
+      var lzwMinCodeSize = 2;
+      var raster = getLZWRaster(lzwMinCodeSize);
+
+      out.writeByte(lzwMinCodeSize);
+
+      var offset = 0;
+
+      while (raster.length - offset > 255) {
+        out.writeByte(255);
+        out.writeBytes(raster, offset, 255);
+        offset += 255;
+      }
+
+      out.writeByte(raster.length - offset);
+      out.writeBytes(raster, offset, raster.length - offset);
+      out.writeByte(0x00);
+
+      //---------------------------------
+      // GIF Terminator
+      out.writeString(';');
+    };
+
+    var bitOutputStream = function(out) {
+
+      var _out = out;
+      var _bitLength = 0;
+      var _bitBuffer = 0;
+
+      var _this = {};
+
+      _this.write = function(data, length) {
+
+        if ( (data >>> length) != 0) {
+          throw 'length over';
+        }
+
+        while (_bitLength + length >= 8) {
+          _out.writeByte(0xff & ( (data << _bitLength) | _bitBuffer) );
+          length -= (8 - _bitLength);
+          data >>>= (8 - _bitLength);
+          _bitBuffer = 0;
+          _bitLength = 0;
+        }
+
+        _bitBuffer = (data << _bitLength) | _bitBuffer;
+        _bitLength = _bitLength + length;
+      };
+
+      _this.flush = function() {
+        if (_bitLength > 0) {
+          _out.writeByte(_bitBuffer);
+        }
+      };
+
+      return _this;
+    };
+
+    var getLZWRaster = function(lzwMinCodeSize) {
+
+      var clearCode = 1 << lzwMinCodeSize;
+      var endCode = (1 << lzwMinCodeSize) + 1;
+      var bitLength = lzwMinCodeSize + 1;
+
+      // Setup LZWTable
+      var table = lzwTable();
+
+      for (var i = 0; i < clearCode; i += 1) {
+        table.add(String.fromCharCode(i) );
+      }
+      table.add(String.fromCharCode(clearCode) );
+      table.add(String.fromCharCode(endCode) );
+
+      var byteOut = byteArrayOutputStream();
+      var bitOut = bitOutputStream(byteOut);
+
+      // clear code
+      bitOut.write(clearCode, bitLength);
+
+      var dataIndex = 0;
+
+      var s = String.fromCharCode(_data[dataIndex]);
+      dataIndex += 1;
+
+      while (dataIndex < _data.length) {
+
+        var c = String.fromCharCode(_data[dataIndex]);
+        dataIndex += 1;
+
+        if (table.contains(s + c) ) {
+
+          s = s + c;
+
+        } else {
+
+          bitOut.write(table.indexOf(s), bitLength);
+
+          if (table.size() < 0xfff) {
+
+            if (table.size() == (1 << bitLength) ) {
+              bitLength += 1;
+            }
+
+            table.add(s + c);
+          }
+
+          s = c;
+        }
+      }
+
+      bitOut.write(table.indexOf(s), bitLength);
+
+      // end code
+      bitOut.write(endCode, bitLength);
+
+      bitOut.flush();
+
+      return byteOut.toByteArray();
+    };
+
+    var lzwTable = function() {
+
+      var _map = {};
+      var _size = 0;
+
+      var _this = {};
+
+      _this.add = function(key) {
+        if (_this.contains(key) ) {
+          throw 'dup key:' + key;
+        }
+        _map[key] = _size;
+        _size += 1;
+      };
+
+      _this.size = function() {
+        return _size;
+      };
+
+      _this.indexOf = function(key) {
+        return _map[key];
+      };
+
+      _this.contains = function(key) {
+        return typeof _map[key] != 'undefined';
+      };
+
+      return _this;
+    };
+
+    return _this;
+  };
+
+  var createDataURL = function(width, height, getPixel) {
+    var gif = gifImage(width, height);
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        gif.setPixel(x, y, getPixel(x, y) );
+      }
+    }
+
+    var b = byteArrayOutputStream();
+    gif.write(b);
+
+    var base64 = base64EncodeOutputStream();
+    var bytes = b.toByteArray();
+    for (var i = 0; i < bytes.length; i += 1) {
+      base64.writeByte(bytes[i]);
+    }
+    base64.flush();
+
+    return 'data:image/gif;base64,' + base64;
+  };
+
+  //---------------------------------------------------------------------
+  // returns qrcode function.
+
+  return qrcode;
+}();
+
+// multibyte support
+!function() {
+
+  qrcode.stringToBytesFuncs['UTF-8'] = function(s) {
+    // http://stackoverflow.com/questions/18729405/how-to-convert-utf8-string-to-byte-array
+    function toUTF8Array(str) {
+      var utf8 = [];
+      for (var i=0; i < str.length; i++) {
+        var charcode = str.charCodeAt(i);
+        if (charcode < 0x80) utf8.push(charcode);
+        else if (charcode < 0x800) {
+          utf8.push(0xc0 | (charcode >> 6),
+              0x80 | (charcode & 0x3f));
+        }
+        else if (charcode < 0xd800 || charcode >= 0xe000) {
+          utf8.push(0xe0 | (charcode >> 12),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+        // surrogate pair
+        else {
+          i++;
+          // UTF-16 encodes 0x10000-0x10FFFF by
+          // subtracting 0x10000 and splitting the
+          // 20 bits of 0x0-0xFFFFF into two halves
+          charcode = 0x10000 + (((charcode & 0x3ff)<<10)
+            | (str.charCodeAt(i) & 0x3ff));
+          utf8.push(0xf0 | (charcode >>18),
+              0x80 | ((charcode>>12) & 0x3f),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+      }
+      return utf8;
+    }
+    return toUTF8Array(s);
+  };
+
+}();
+
+(function (factory) {
+  if (typeof define === 'function' && define.amd) {
+      define([], factory);
+  } else if (typeof exports === 'object') {
+      module.exports = factory();
+  }
+}(function () {
+    return qrcode;
+}));
+
+</script>
+<script>
+/* ================= 配置 ================= */
+var APP_VERSION = "0.2.1";
+
+/* API 地址工具（取自当前选中的接口） */
+function currentApi(){
+  var apis = CFG && CFG.apis;
+  if(!apis || !apis.length) return makeDefaultApi();
+  var id = CFG.currentApiId;
+  var a = apis.find(function(x){return x.id===id;}) || apis[0];
+  return a;
+}
+function currentApiKey(){ return currentApi().key||""; }
+function apiBase(){ return (currentApi().baseUrl||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
+function pollBase(){ return apiBase().replace(/\/v1$/,"")+"/agnesapi"; }
+function currentModel(kind){ var m = (currentApi().models||{})[kind]; if(m && m.trim()) return m.trim(); return MODEL_DEFAULTS[kind]||""; }
+/* 官方推荐的默认模型（用户没填/填空时兜底，避免“模型乱填”导致功能失效） */
+var MODEL_DEFAULTS = { text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0" };
+/* 模型名容错：把常见简写/漏写 -flash 的补全成官方正式名；认不出时原样返回 */
+function normalizeModel(name){
+  if(!name) return "";
+  var s = String(name).trim().toLowerCase().replace(/\s+/g,"");
+  var map = {
+    "agnes-image-2.0": "agnes-image-2.0-flash",
+    "agnes-image-2.1": "agnes-image-2.1-flash",
+    "agnes-image-2.0flash": "agnes-image-2.0-flash",
+    "agnes-image-2.1flash": "agnes-image-2.1-flash",
+    "image-2.0": "agnes-image-2.0-flash",
+    "image-2.1": "agnes-image-2.1-flash"
+  };
+  if(map[s]) return map[s];
+  if(/^agnes-image-2\.0$/.test(s)) return "agnes-image-2.0-flash";
+  if(/^agnes-image-2\.1$/.test(s)) return "agnes-image-2.1-flash";
+  return name.trim();
+}
+function makeDefaultApi(id){
+  return { id:id||"agnes-default", name:"Agnes", icon:"A", baseUrl:"https://apihub.agnes-ai.com/v1", key:"",
+           models:{text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0"},
+           modelsList:["agnes-2.0-flash","agnes-2.5-flash","agnes-image-2.0-flash","agnes-image-2.1-flash","agnes-video-v2.0"],
+           routable:true };
+}
+function genId(){ return "api_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6); }
+
+/* 默认设置（可在设置页改） */
+var DEFAULT_CFG = {
+  currentApiId: "agnes-default",
+  apis: [ makeDefaultApi() ],
+  theme: "light",
+  saveLocation: "sandbox",
+  bgImage: "",
+  updateBase: "",              /* F35：热更新地址（http://电脑IP:端口 或 GitHub Pages），空=不检查 */
+  shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
+  genParams: { size:"", n:1 }   /* F23 生成参数：尺寸(空=模型默认) / 张数 */
+};
+var CFG = null;
+
+/* 待发送附件（F13/F14：文件操作/信息提取）——选文件后暂存，发送时随文字一并提交给 AI */
+var pendingAttachments = [];
+/* 当前引用的消息（长按→引用：把被引用内容随发送一并带给 AI，照片当参考图、文件带内容、文字作上下文） */
+var quotedMsg = null;
+
+/* ================= C 组：体验闭环（F20/F21/F24/F17/F18） ================= */
+var activeAbort = null;        /* 聊天流式 AbortController（F20 停止生成） */
+var abortReason = null;        /* 'stop' | 'timeout' */
+var retryStore = {};           /* 失败消息 → 重试闭包（F24，不入 localStorage） */
+var videoPollCancel = false;   /* 视频轮询取消标记（F24） */
+var pendingGuide = null;        /* 实时插话引导语（abort 后以此续写，F20+） */
+
+/* F20：生成中把发送键变「停止」、显「引导」；结束后还原 */
+function setGenState(on){
+  var b = document.getElementById("sendBtn"); if(!b) return;
+  var g = document.getElementById("guideBtn");
+  if(on){
+    b.textContent = "停止"; b.classList.add("stopping"); b.onclick = stopGenerate;
+    if(g) g.style.display = "";
+  } else {
+    b.textContent = "发送"; b.classList.remove("stopping"); b.onclick = onSend;
+    if(g) g.style.display = "none";
+  }
+}
+function stopGenerate(){
+  if(activeAbort){ abortReason = "stop"; try{ activeAbort.abort(); }catch(e){} }
+}
+/* 实时插话引导（F20+）：生成中基于已生成半截 + 新指令改道续写 */
+function onGuideInput(){
+  var el = document.getElementById("input");
+  var g = el.value.trim();
+  if(!g){ toast("先在输入框写引导语，例如：改成第一人称 / 缩短到100字 / 换个角度"); return; }
+  if(!activeAbort){ return; }       /* 未在生成中 */
+  pendingGuide = g;
+  el.value = ""; autoGrow(el);
+  abortReason = "guide";
+  try{ activeAbort.abort(); }catch(e){}
+}
+function cancelVideoPoll(){
+  videoPollCancel = true;
+  toast("已取消视频生成");
+}
+/* F24：给失败消息挂重试 */
+function attachRetry(msgId, fn){
+  retryStore[msgId] = fn;
+}
+function retryMsg(id){
+  var fn = retryStore[id];
+  delete retryStore[id];
+  if(fn){ removeMsg(id); renderMsgs(); fn(); }
+}
+function clearRetry(id){ delete retryStore[id]; }
+
+/* F21：长按操作菜单（底部上滑） */
+function showActionSheet(items){
+  var box = document.getElementById("actionSheet");
+  window._asItems = items;
+  box.innerHTML = items.map(function(it,i){
+    return '<div class="as-item'+(it.danger?" danger":"")+'" onclick="runAction('+i+')">'+esc(it.label)+'</div>';
+  }).join("") + '<div class="as-cancel" onclick="closeActionSheet()">取消</div>';
+  document.getElementById("asMask").classList.add("show");
+  requestAnimationFrame(function(){ box.classList.add("show"); });
+}
+function runAction(i){
+  var items = window._asItems; closeActionSheet();
+  if(items && items[i] && items[i].onclick) items[i].onclick();
+}
+function closeActionSheet(){
+  var box = document.getElementById("actionSheet"); if(box) box.classList.remove("show");
+  var m = document.getElementById("asMask"); if(m) m.classList.remove("show");
+  window._asItems = null;
+}
+/* 长按：触摸 480ms 触发，或桌面右键 */
+function bindLongPress(el, cb){
+  var timer = null;
+  el.addEventListener("touchstart", function(){ timer = setTimeout(function(){ timer=null; cb(); }, 480); }, {passive:true});
+  el.addEventListener("touchmove", function(){ if(timer){ clearTimeout(timer); timer=null; } });
+  el.addEventListener("touchend", function(){ if(timer){ clearTimeout(timer); timer=null; } });
+  el.addEventListener("contextmenu", function(e){ e.preventDefault(); cb(); });
+}
+function onRowLongPress(m){
+  var items = [];
+  if(m.type === "text"){
+    items.push({label:"复制文字", onclick:function(){ copyText(m.text||""); }});
+    if(m.role === "user") items.push({label:"重发", onclick:function(){ resendUser(m); }});
+    if(m.role === "assistant") items.push({label:"保存为文件", onclick:function(){ downloadMsg(m.id); }});
+  } else if(m.type === "image"){
+    items.push({label:"保存图片", onclick:function(){ downloadUrl(m.media.url, (m.media.caption||"image")+".png"); }});
+    items.push({label:"复制链接", onclick:function(){ copyText(m.media.url); }});
+  } else if(m.type === "video"){
+    items.push({label:"保存视频", onclick:function(){ downloadUrl(m.media.url, "video.mp4"); }});
+  }
+  if(m.type !== "loading"){
+    items.push({label:"引用", onclick:function(){ quoteMsg(m); }});
+    items.push({label:"删除这条消息", danger:true, onclick:function(){ deleteMsg(m.id); }});
+  }
+  if(items.length) showActionSheet(items);
+}
+function resendUser(m){
+  var el = document.getElementById("input");
+  el.value = m.text || ""; autoGrow(el); onSend();
+}
+/* 引用：长按消息→引用，把被引用内容随下一次发送带给 AI */
+function quoteSummary(m){
+  if(m.type === "image") return "🖼 " + ((m.media && m.media.caption) || "图片");
+  if(m.type === "video") return "🎬 视频";
+  if(m.type === "file") return "📄 " + ((m.media && m.media.name) || (m.attachments && m.attachments[0] && m.attachments[0].name) || "文件");
+  return (m.text || "").slice(0, 40);
+}
+function quoteMsg(m){
+  quotedMsg = m; renderQuoteBar();
+  try{ document.getElementById("input").focus(); }catch(e){}
+}
+function renderQuoteBar(){
+  var bar = document.getElementById("quoteBar");
+  if(!bar) return;
+  if(!quotedMsg){ bar.style.display = "none"; bar.innerHTML = ""; return; }
+  bar.style.display = "flex";
+  bar.innerHTML = '<div class="qb-ic">↩</div><div class="qb-txt">'+esc(quoteSummary(quotedMsg))+
+                  '</div><div class="qb-x" onclick="clearQuote()">×</div>';
+}
+function clearQuote(){ quotedMsg = null; renderQuoteBar(); }
+function deleteMsg(id){
+  clearRetry(id);
+  var c = current(); if(!c) return;
+  c.messages = c.messages.filter(function(x){ return x.id !== id; });
+  saveConvs(); renderMsgs(); renderConvList(); updateTitle();
+}
+function downloadUrl(url, name){
+  if(!url){ toast("无可下载内容"); return; }
+  /* 同源 / data URL / blob URL：直接点 a[download] 即可 */
+  if(url.indexOf("data:")===0 || url.indexOf("blob:")===0 || url.indexOf(location.origin)===0){
+    try{
+      var a = document.createElement("a");
+      a.href = url; a.download = name || "download";
+      document.body.appendChild(a); a.click(); a.remove();
+      toast("已开始下载");
+    }catch(e){ toast("下载失败：" + friendlyErr(e)); }
+    return;
+  }
+  /* 跨域： Agnes CDN 有 ACAO:*，先 fetch blob 再下载 */
+  toast("正在拉取文件…");
+  fetchTimeout(url, {method:"GET", mode:"cors", referrerPolicy:"no-referrer"}, 30000)
+    .then(function(r){ return r.blob(); })
+    .then(function(b){
+      var blobUrl = URL.createObjectURL(b);
+      var a = document.createElement("a");
+      a.href = blobUrl; a.download = name || "download";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 5000);
+      toast("已开始下载");
+    })
+    .catch(function(e){
+      toast("下载失败，已打开预览，请长按保存");
+      window.open(url, "_blank");
+    });
+}
+/* F17：带超时的 fetch（超时即抛错，便于区分「超时」与「网络不通」） */
+function fetchTimeout(url, opts, ms){
+  return new Promise(function(resolve, reject){
+    var done = false;
+    var t = setTimeout(function(){ done = true; reject(new Error("请求超时（等待超过 "+(ms/1000)+" 秒），可能是网络慢或服务繁忙")); }, ms);
+    fetch(url, opts).then(function(r){ if(!done){ clearTimeout(t); resolve(r); } })
+      .catch(function(e){ if(!done){ clearTimeout(t); reject(e); } });
+  });
+}
+
+/* ================= 存储（F34：本地加密） ================= */
+/* 安全目标：localStorage 内不再存明文 API Key。
+   真加密 = Web Crypto AES-GCM（需 secure context：https 或 localhost）。
+   降级 = http 局域网预览下 crypto.subtle 不可用，退化为 Base64 编码（仅防明文，非强加密，APK/https 自动升级 AES）。 */
+var ENC_AES = "__pa_aes__";
+var ENC_B64 = "__pa_b64__";
+var ENC_SALT = "phone-agent-salt-v1";
+function hasCrypto(){ return !!(window.crypto && window.crypto.subtle); }
+function b64enc(bytes){ var u=new Uint8Array(bytes), s=""; for(var i=0;i<u.length;i++) s+=String.fromCharCode(u[i]); return btoa(s); }
+function b64dec(b64){ var s=atob(b64); var u=new Uint8Array(s.length); for(var i=0;i<s.length;i++)u[i]=s.charCodeAt(i); return u; }
+async function getCryptoKey(){
+  var enc = new TextEncoder();
+  var mat = await crypto.subtle.importKey("raw", enc.encode(ENC_SALT+"::"+(navigator.userAgent||"web")), {name:"PBKDF2"}, false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt: enc.encode(ENC_SALT), iterations:100000, hash:"SHA-256"},
+    mat, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+async function encryptStr(plain){
+  if(hasCrypto()){
+    var key = await getCryptoKey();
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    var ct = await crypto.subtle.encrypt({name:"AES-GCM", iv:iv}, key, new TextEncoder().encode(plain));
+    return ENC_AES + b64enc(iv) + "::" + b64enc(ct);
+  }
+  return ENC_B64 + btoa(unescape(encodeURIComponent(plain)));
+}
+async function decryptStr(cipher){
+  if(cipher.indexOf(ENC_AES)===0){
+    var parts = cipher.slice(ENC_AES.length).split("::");
+    var key = await getCryptoKey();
+    var pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64dec(parts[0])}, key, b64dec(parts[1]));
+    return new TextDecoder().decode(pt);
+  }
+  if(cipher.indexOf(ENC_B64)===0){
+    return decodeURIComponent(escape(atob(cipher.slice(ENC_B64.length))));
+  }
+  return cipher;
+}
+function loadCfg(){
+  return (async function(){
+    try{
+      var raw = localStorage.getItem("pa_cfg");
+      if(!raw) return Object.assign({}, DEFAULT_CFG);
+      var obj;
+      if(raw.indexOf(ENC_AES)===0 || raw.indexOf(ENC_B64)===0){ obj = JSON.parse(await decryptStr(raw)); }
+      else { obj = JSON.parse(raw); }  /* 旧明文兼容 */
+      /* 旧版单接口 → 新版接口列表 */
+      if(!obj.apis || !obj.apis.length){
+        var a = makeDefaultApi("migrated-"+genId());
+        a.name = obj.apiKey ? "已保存接口" : "Agnes";
+        a.key = obj.apiKey || "";
+        a.baseUrl = obj.baseUrl || a.baseUrl;
+        a.models = { text: obj.modelText||a.models.text, image: obj.modelImage||a.models.image, imageEdit: obj.modelImageEdit||a.models.imageEdit, video: obj.modelVideo||a.models.video };
+        if(!a.models.imageEdit) a.models.imageEdit = a.models.image;   /* 旧版只有单图像模型：复用它作为图生图/编辑模型 */
+        a.modelsList = [];
+        a.routable = true;
+        obj.apis = [a];
+        obj.currentApiId = a.id;
+        delete obj.apiKey; delete obj.baseUrl; delete obj.modelText; delete obj.modelImage; delete obj.modelVideo;
+      }
+      /* 兜底：已有接口列表但缺 imageEdit 模型字段（旧版/手动改配置） */
+      if(Array.isArray(obj.apis)){
+        obj.apis.forEach(function(a){
+          if(!a.models) a.models = {};
+          if(!a.models.imageEdit) a.models.imageEdit = a.models.image || makeDefaultApi().models.imageEdit;
+        });
+      }
+      return obj;
+    }catch(e){ return Object.assign({}, DEFAULT_CFG); }
+  })();
+}
+function saveCfg(){
+  var json; try{ json = JSON.stringify(CFG); }catch(e){ return; }
+  encryptStr(json).then(function(c){ try{ localStorage.setItem("pa_cfg", c); }catch(e){} }).catch(function(){});
+}
+
+/* ===== 原生存储桥（Phase 0/1）：APK 内用 NativeBridge 落本地文件，浏览器回退 localStorage ===== */
+function hasNative(){ try{ return (typeof NativeBridge!=="undefined") && NativeBridge && typeof NativeBridge.load==="function"; }catch(e){ return false; } }
+function nLoad(key){ try{ return NativeBridge.load(key); }catch(e){ return ""; } }
+function nSave(key, val){ try{ return NativeBridge.save(key, val); }catch(e){ return "err"; } }
+function nExist(key){ try{ return NativeBridge.exist(key)==="1"; }catch(e){ return false; } }
+/* 选中图片 base64 → 落本地（APK），浏览器保留 base64（5MB 风险仅预览期） */
+function persistPickedImage(base64, ext){
+  if(!hasNative()) return base64;
+  try{ var uri = NativeBridge.saveMedia(base64, ext||"jpg"); if(uri && uri.indexOf("err:")!==0) return uri; }catch(e){}
+  return base64;
+}
+/* 把图片 URL（content://、http(s)://、data:）转成 base64 dataURL，供 AI API 使用 */
+function localImageToBase64(url){
+  return new Promise(function(resolve, reject){
+    if(!url) return reject("no url");
+    if(url.indexOf("data:")===0) return resolve(url);
+    fetch(url).then(function(r){
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      return r.blob();
+    }).then(function(blob){
+      var rd = new FileReader();
+      rd.onload = function(){ resolve(rd.result); };
+      rd.onerror = function(){ reject("read fail"); };
+      rd.readAsDataURL(blob);
+    }).catch(reject);
+  });
+}
+function ensureImageBase64(a){
+  if(a.base64 && a.base64.indexOf("data:")===0) return Promise.resolve(a.base64);
+  if(a.url) return localImageToBase64(a.url);
+  return Promise.resolve(null);
+}
+/* 生成媒体 URL → 异步落地本地；返回最终可显示 URL（失败回退远程） */
+function landMedia(url, ext, cb){
+  if(!hasNative() || !url || url.indexOf("data:")===0 || url.indexOf("content:")===0){ cb(url); return; }
+  fetch(url).then(function(r){ if(!r.ok) throw 0; return r.blob(); }).then(function(blob){
+    var rd = new FileReader();
+    rd.onload = function(){
+      try{ var uri = NativeBridge.saveMedia(String(rd.result), ext||"jpg");
+        cb((uri && uri.indexOf("err:")!==0) ? uri : url);
+      }catch(e){ cb(url); }
+    };
+    rd.onerror = function(){ cb(url); };
+    rd.readAsDataURL(blob);
+  }).catch(function(){ cb(url); });
+}
+function landAndAppend(type, url, caption, ext){
+  landMedia(url, ext, function(finalUrl){
+    appendMessage({role:"assistant", type:type, media:{url:finalUrl, caption:caption, remote:url}});
+    renderMsgs(); renderConvList();
+  });
+}
+function mediaExt(url){
+  var m = String(url).match(/\.(jpg|jpeg|png|gif|webp|mp4|webm)(?:[?#]|$)/i);
+  if(m) return m[1].toLowerCase();
+  return (String(url).indexOf("video")>=0) ? "mp4" : "jpg";
+}
+
+function loadConvs(){
+  try{
+    if(hasNative()){
+      var raw = nLoad("conversations");
+      if(raw){ var d = JSON.parse(raw); return (d && d.conversations) ? d.conversations : null; }
+      /* 首次迁移：把旧 localStorage 对话搬到原生存储，搬完清旧键 */
+      var old = localStorage.getItem("pa_convs");
+      if(old){ try{ nSave("conversations", old); }catch(e){} try{ localStorage.removeItem("pa_convs"); }catch(e){}
+        var od = JSON.parse(old); return (od&&od.conversations)?od.conversations:null; }
+      return null;
+    }
+    var raw2 = localStorage.getItem("pa_convs");
+    if(!raw2) return null;
+    var d2 = JSON.parse(raw2);
+    return (d2 && d2.conversations) ? d2.conversations : null;
+  }catch(e){ return null; }
+}
+function saveConvs(){
+  try{
+    var data = JSON.stringify({version:1, conversations:convs});
+    if(hasNative()){ nSave("conversations", data); }
+    else { localStorage.setItem("pa_convs", data); }
+  }catch(e){}
+}
+
+/* ================= 多对话状态 ================= */
+var convs = loadConvs();
+var currentId = null;
+
+function uid(p){ return (p||"id")+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6); }
+
+function ensureInit(){
+  if(!convs || !convs.length){
+    convs = [ makeConv("新对话") ];
+  }
+  currentId = convs[0].id;
+}
+function makeConv(name){
+  var t = Date.now();
+  return { id:uid("conv"), name:name||"新对话", createdAt:t, updatedAt:t, preview:"", messages:[] };
+}
+function getConv(id){ for(var i=0;i<convs.length;i++){ if(convs[i].id===id) return convs[i]; } return null; }
+function current(){ return getConv(currentId); }
+
+/* ===== AI 跨会话记忆（Phase 3，v1 token 注入式；Agnes embeddings 503 故不语义） ===== */
+var MEM_SYS_PROMPT = "你是用户的创作助手。下面是从用户过往对话中整理出的长期记忆（仅供参考，请自行判断是否相关）：";
+var MEM = null;
+function loadMem(){
+  if(MEM) return MEM;
+  var raw = hasNative() ? (nLoad("memory")||"") : (localStorage.getItem("pa_memory")||"");
+  try{ MEM = raw ? JSON.parse(raw) : {profile:"", entries:[]}; }catch(e){ MEM = {profile:"", entries:[]}; }
+  if(!MEM.entries) MEM.entries = [];
+  return MEM;
+}
+function saveMem(){
+  if(!MEM) return;
+  var data = JSON.stringify(MEM);
+  if(hasNative()) nSave("memory", data); else localStorage.setItem("pa_memory", data);
+}
+function summarizeConv(conv, done){
+  if(!conv){ done&&done(); return; }
+  var txt = conv.messages.filter(function(m){return m.type==="text" && m.text;}).slice(-20)
+    .map(function(m){ return (m.role==="user"?"用户":"助手")+"："+m.text; }).join("\n");
+  if(txt.length < 30){ done&&done(); return; }
+  var prompt = "请总结以下对话中值得长期记住的信息（用户身份/偏好/正在做的项目/待办/关键结论），用 3-5 条中文要点，每条一行，不要序号、不要任何解释或引号：\n\n"+txt;
+  fetchTimeout(apiBase()+"/chat/completions",{
+    method:"POST", headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    body: JSON.stringify({ model:currentModel("text"), stream:false, messages:[{role:"user", content:prompt}] })
+  }, 60000).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
+    var s = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if(s){ s = String(s).trim(); loadMem();
+      MEM.entries.unshift({ id: uid("mem"), ts: Date.now(), conv: conv.name||"对话", summary: s });
+      if(MEM.entries.length > 50) MEM.entries = MEM.entries.slice(0,50);
+      saveMem();
+    }
+    done&&done();
+  }).catch(function(){ done&&done(); });
+}
+function buildMemoryContext(input){
+  loadMem();
+  if((!MEM.entries || !MEM.entries.length) && !MEM.profile) return "";
+  var kw = (input||"").toLowerCase();
+  var recent = MEM.entries.slice(0,5);
+  var extra = MEM.entries.slice(5).filter(function(e){
+    return (e.summary && e.summary.toLowerCase().indexOf(kw)>=0) || (e.conv && e.conv.toLowerCase().indexOf(kw)>=0);
+  }).slice(0,5);
+  var picked = recent.concat(extra);
+  var parts = [];
+  if(MEM.profile) parts.push("【用户画像】\n"+MEM.profile);
+  if(picked.length){
+    parts.push("【过往对话要点】");
+    picked.forEach(function(e){ parts.push("· ("+new Date(e.ts).toLocaleDateString()+") "+e.summary.replace(/\n/g,"；")); });
+  }
+  return parts.join("\n");
+}
+function openMemory(){
+  loadMem();
+  var list = MEM.entries.map(function(e, i){
+    return '<div class="cell" style="display:block"><div style="font-size:13px;color:#555;line-height:1.5">'+esc(e.summary)+
+      '</div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'+
+      '<span style="font-size:11px;color:#aaa">'+(e.conv||"")+' · '+new Date(e.ts).toLocaleDateString()+'</span>'+
+      '<b style="color:#e64340;font-size:13px" onclick="delMem('+i+')">删除</b></div></div>';
+  }).join("") || '<div style="padding:20px;text-align:center;color:#999">还没有记忆。多聊几句，切到别的对话时会自动总结。</div>';
+  document.getElementById("memoryBody").innerHTML =
+    '<div class="group"><div class="gt">用户画像（AI 会参考，可手动编辑）</div>'+
+      '<div class="cell" style="display:block"><textarea id="memProfile" rows="4" style="width:100%;border:none;outline:none;font-size:14px;font-family:inherit;resize:none">'+esc(MEM.profile||"")+'</textarea></div>'+
+      '<div style="padding:10px 16px"><button style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer" onclick="saveMemProfile()">保存画像</button></div>'+
+    '</div>'+
+    '<div class="group"><div class="gt">对话要点（'+MEM.entries.length+' 条）</div>'+ list +'</div>'+
+    '<div style="padding:16px"><button style="width:100%;background:#fff;color:#e64340;border:1px solid #e64340;border-radius:8px;padding:11px;font-size:14px;cursor:pointer" onclick="clearMem()">清空所有记忆</button></div>';
+  show('memoryPage');
+}
+function saveMemProfile(){
+  loadMem();
+  MEM.profile = (document.getElementById("memProfile")||{}).value || "";
+  saveMem(); toast("画像已保存");
+}
+function delMem(i){ loadMem(); MEM.entries.splice(i,1); saveMem(); openMemory(); }
+function clearMem(){
+  MEM = {profile:"", entries:[]}; saveMem();
+  try{ if(hasNative()) nSave("memory", JSON.stringify(MEM)); else localStorage.removeItem("pa_memory"); }catch(e){}
+  openMemory(); toast("记忆已清空");
+}
+
+function newConversation(){
+  var _old = current();
+  if(_old && _old.messages.length) summarizeConv(_old);
+  var c = makeConv("新对话");
+  convs.unshift(c);
+  currentId = c.id;
+  saveConvs(); renderConvList(); renderMsgs(); updateTitle();
+  closeDrawer();
+}
+function switchConversation(id){
+  var _old = current();
+  if(_old && _old.id!==id && _old.messages.length) summarizeConv(_old);
+  currentId = id; renderConvList(); renderMsgs(); updateTitle(); closeDrawer();
+}
+function renameConversation(id){
+  var c = getConv(id); if(!c) return;
+  showPrompt("重命名对话", c.name, function(v){
+    if(v && v.trim()){ c.name = v.trim(); c.updatedAt=Date.now(); saveConvs(); renderConvList(); updateTitle(); }
+  });
+}
+function deleteConversation(id){
+  showConfirm("删除对话", "确定删除这个对话？记录将无法恢复。", function(){
+    convs = convs.filter(function(c){ return c.id!==id; });
+    if(!convs.length){ convs=[makeConv("新对话")]; }
+    if(id===currentId){ currentId = convs[0].id; }
+    saveConvs(); renderConvList(); renderMsgs(); updateTitle();
+  }, true);
+}
+function appendMessage(msg){
+  var c = current(); if(!c) return null;
+  msg.id = msg.id || uid("msg");
+  msg.createdAt = Date.now();
+  c.messages.push(msg);
+  c.updatedAt = Date.now();
+  c.preview = msg.type==="text" ? (msg.text||"").slice(0,20)
+            : (msg.type==="image"?"[图片]":msg.type==="video"?"[视频]":"[文件]");
+  if(c.name==="新对话" && msg.role==="user" && msg.type==="text" && msg.text){
+    c.name = msg.text.slice(0,12);  // 首条用户消息自动命名
+  }
+  saveConvs();
+  return msg;
+}
+
+/* ================= 渲染 ================= */
+function updateTitle(){ var c=current(); document.getElementById("topTitle").textContent = c ? c.name : "AI 创作助手"; }
+
+function renderConvList(){
+  var box = document.getElementById("convList");
+  box.innerHTML = "";
+  convs.slice().sort(function(a,b){return b.updatedAt-a.updatedAt;}).forEach(function(c){
+    var d = document.createElement("div");
+    d.className = "conv-item" + (c.id===currentId?" active":"");
+    d.onclick = function(e){ if(e.target.tagName!=="BUTTON") switchConversation(c.id); };
+    d.innerHTML =
+      '<div class="cname">'+esc(c.name)+'</div>'+
+      '<div class="cprev">'+esc(c.preview||"暂无消息")+'</div>'+
+      '<div class="cops">'+
+        '<button onclick="renameConversation(\''+c.id+'\')">改名</button>'+
+        '<button onclick="deleteConversation(\''+c.id+'\')">删除</button>'+
+      '</div>';
+    box.appendChild(d);
+  });
+}
+
+function renderMsgs(){
+  var box = document.getElementById("msgs");
+  var c = current();
+  box.innerHTML = "";
+  if(!c || !c.messages.length){
+    box.innerHTML = '<div class="empty-tip">你好，我是 AI 创作助手 👋<br>可以聊天、画图、生成视频。<br>试试发「画一只戴帽子的猫」<br><br>（首次使用请先到右上角设置里填入 API Key）</div>';
+    return;
+  }
+  c.messages.forEach(function(m){ box.appendChild(renderRow(m)); });
+  scrollBottom();
+}
+function renderRow(m){
+  var row = document.createElement("div");
+  row.className = "row " + (m.role==="user"?"user":"ai");
+  row.dataset.mid = m.id;
+  var av = m.role==="user" ? "我" : "AI";
+  var inner = "";
+  if(m.type==="text"){
+    var extra = "";
+    if(m.quoted){ extra += '<div class="quoted-chip">↩ '+esc(m.quoted)+'</div>'; }
+    if(m.attachments && m.attachments.length){
+      extra += m.attachments.map(function(a){
+        if(a.kind === "image" && (a.url || a.base64)){
+          return '<img src="'+esc(a.url || a.base64)+'" class="att-img" onerror="this.style.opacity=.3" alt="图片">';
+        }
+        return '<span class="atchip-static">📎 '+esc(a.name)+'</span>';
+      }).join("") + "<br>";
+    }
+    inner = extra + esc(m.text||"");
+    if(m.role==="assistant"){
+      inner += '<div class="media-actions"><a onclick="downloadMsg(\''+m.id+'\')">下载回复</a>'+
+               (m._err?'<a onclick="retryMsg(\''+m.id+'\')">重试</a>':'')+'</div>';
+    }
+  } else if(m.type==="image"){
+    inner = '<img src="'+esc(m.media.url)+'" alt="图片" onerror="this.style.opacity=.3">'+
+            (m.media.caption?'<div class="cap">'+esc(m.media.caption)+'</div>':'')+
+            mediaActions(m.media.url,"图片")+
+            '</div>';
+  } else if(m.type==="video"){
+    inner = '<video src="'+esc(m.media.url)+'" controls playsinline></video>'+
+            (m.media.caption?'<div class="cap">'+esc(m.media.caption)+'</div>':'')+
+            mediaActions(m.media.url,"视频");
+  } else if(m.type==="file"){
+    var fm0 = m.media||{};
+    var sz = fm0.size ? (fm0.size/1048576>=1 ? (fm0.size/1048576).toFixed(1)+" MB" : Math.round(fm0.size/1024)+" KB") : "";
+    inner = '<div class="filecard"><div class="fi">📄</div><div class="fm"><div class="fn">'+esc(fm0.name||"文件")+'</div>'+
+            '<div class="fs">'+esc(fm0.mime||"文件")+(sz?(" · "+sz):"")+'</div></div></div>';
+  } else if(m.type==="loading"){
+    inner = '<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>'+
+            (m.text?' <span style="color:var(--text-3);font-size:13px">'+esc(m.text)+'</span>':'')+
+            (m._cancelable?'<div class="gen-actions"><a onclick="cancelVideoPoll()">停止生成</a></div>':'');
+  }
+  row.innerHTML = '<div class="avatar">'+av+'</div><div class="bubble">'+inner+'</div>';
+  bindLongPress(row, function(){ onRowLongPress(m); });
+  return row;
+}
+function mediaActions(url,label){
+  var fname = label === "视频" ? "video.mp4" : "image.png";
+  return '<div class="media-actions">'+
+    '<a onclick="downloadUrl(\''+esc(url)+'\',\''+fname+'\')">下载</a>'+
+    '<a onclick="copyText(\''+esc(url)+'\')">复制链接</a>'+
+    '</div>';
+}
+/* F13/F14：把 AI 的文本回复下载成文件（改写后的文档 / 提取的 JSON 等） */
+function downloadMsg(id){
+  var c = current(); if(!c) return;
+  var m = null;
+  for(var i=0;i<c.messages.length;i++){ if(c.messages[i].id===id){ m=c.messages[i]; break; } }
+  if(!m) return;
+  var txt = m.text || "";
+  var name = (m.fileResult && m.fileResult.name) || "回复.txt";
+  if(/^[[{]/.test(txt.trim())){
+    try{ JSON.parse(txt.trim()); if(!/\.json$/i.test(name)) name = name.replace(/\.[^.]+$/,"")+".json"; }catch(e){}
+  }
+  downloadText(name, txt);
+}
+function downloadText(name, text){
+  try{
+    var blob = new Blob([String(text)], {type:"text/plain;charset=utf-8"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 120);
+  }catch(e){ toast("下载失败："+ (e && e.message ? e.message : e)); }
+}
+function scrollBottom(){ var b=document.getElementById("msgs"); setTimeout(function(){b.scrollTop=b.scrollHeight;},30); }
+
+/* ================= 发送主流程 ================= */
+function autoGrow(el){ el.style.height="auto"; el.style.height=Math.min(el.scrollHeight,100)+"px"; }
+
+function onSend(){
+  if(activeAbort){ var t=document.getElementById("input").value.trim(); if(t){ onGuideInput(); } else { stopGenerate(); } return; }   /* 生成中：有字=引导改道，无字=停止 */
+  var el = document.getElementById("input");
+  var text = el.value.trim();
+  if(!text && pendingAttachments.length === 0) return;
+  if(!currentApiKey()){
+    toast("当前接口未填 API Key：设置 → API 接口管理 → 编辑接口");
+    return;
+  }
+  /* 收集待发送附件，随文字一并提交（F13/F14） */
+  var atts = pendingAttachments.slice();
+  /* 引用内容并入：照片→参考图、文件→带内容、文字/视频→前缀 */
+  var quotePrefix = "";
+  if(quotedMsg){
+    if(quotedMsg.type === "image"){
+      atts.push({ name:"引用图片", mime:"image", kind:"image", url: quotedMsg.media.url, _quoted:true });
+    } else if(quotedMsg.type === "file"){
+      var fc = (quotedMsg.media && quotedMsg.media.content) || (quotedMsg.attachments && quotedMsg.attachments[0] && quotedMsg.attachments[0].content);
+      if(fc) atts.push({ name:(quotedMsg.media && quotedMsg.media.name) || "引用文件", mime:"text/plain", kind:"text", content:fc, _quoted:true });
+    } else if(quotedMsg.type === "text"){
+      quotePrefix = "（引用：「" + (quotedMsg.text||"").slice(0,200) + "」）\n";
+    } else if(quotedMsg.type === "video"){
+      quotePrefix = "（引用视频：" + ((quotedMsg.media && quotedMsg.media.url) || "") + "）\n";
+    }
+  }
+  var qMeta = quotedMsg ? quoteSummary(quotedMsg) : null;
+  var route = routeIntent(text);
+  var prompt = cleanPrompt(text, route);
+  prompt = quotePrefix + prompt;
+
+  /* 纯图片无文字：询问用途，避免默认走聊天/视觉理解 */
+  if(!text && atts.length && atts.every(function(a){return a.kind==="image";})){
+    var _atts = atts, _qMeta = qMeta, _prompt = prompt;
+    showActionSheet([
+      {label:"🎨 按这张图生图（图生图）", onclick:function(){ dispatchRoute("image", "", _atts, _prompt, _qMeta); }},
+      {label:"🎬 按这张图生视频", onclick:function(){ dispatchRoute("video", "", _atts, _prompt, _qMeta); }},
+      {label:"💬 描述/分析这张图片", onclick:function(){ dispatchRoute("chat", "", _atts, _prompt, _qMeta); }}
+    ]);
+    return;
+  }
+  if(!text && atts.length) route = "chat";          /* 纯附件 → 走对话线处理 */
+  dispatchRoute(route, text, atts, prompt, qMeta);
+}
+
+function dispatchRoute(route, text, atts, prompt, qMeta){
+  var meta = atts.map(function(a){
+    var m = { name:a.name, mime:a.mime, kind:a.kind, size:a.size, content:a.content };
+    if(a.kind === "image"){ m.url = a.url; m.base64 = a.base64; }
+    return m;
+  });
+  appendMessage({role:"user", type:"text", text: text || ("[附件：" + atts.map(function(a){return a.name;}).join(", ") + "]"), attachments: meta, quoted: qMeta });
+  renderMsgs(); renderConvList();
+  pendingAttachments = []; renderAttachZone();
+  var el = document.getElementById("input"); el.value = ""; autoGrow(el);
+  clearQuote();   /* 引用内容已并入 atts/prompt，清除全局引用态 */
+  if(route === "image"){
+    var imgRefs = atts.filter(function(a){return a.kind==="image";}).map(function(a){return a.url;});
+    return doImage(prompt, imgRefs, CFG.genParams);
+  }
+  if(route === "video"){
+    var vRefs = atts.filter(function(a){return a.kind==="image";}).map(function(a){return a.url;});
+    return doVideo(prompt, vRefs, CFG.genParams);
+  }
+  return doChat(prompt, atts);
+}
+
+/* 极简意图路由（前端粗判，真正规划由线①做；这里先给可见的三线分流） */
+function routeIntent(t){
+  var s = t.toLowerCase();
+  if(/(生图|生成图片|生成图像|作图|画|绘制|做张图|做个图|来张图|来一张图|来一幅|我要一张|我要一个|给我画|帮我画|海报|logo|插画|图片)/.test(t)) return "image";
+  if(/(生视频|生成视频|做视频|制作视频|做段视频|做个视频|短片|动画|视频片段|生成一段|生成短片|来个视频|做个短片|变视频|转视频|转成视频|视频一下|动起来|动图|mv|宣传片)/.test(t)) return "video";
+  return "chat";
+}
+function cleanPrompt(t, intent){
+  t = t.replace(/^(调用|帮我|给我|请|你)(帮我|给我|)?[，,、]?\s*/, "");
+  if(intent === "image"){
+    t = t.replace(/^(生图|生成图片|生成图像|画图|画一张|画一个|画幅|画位|画作|绘制|作图|做张图|做个图|来张图|来一张图|来一幅|我要一张|我要一个|我要画|给我画|帮我画|画)\s*[，,、]?\s*/, "");
+  } else if(intent === "video"){
+    t = t.replace(/^(生视频|生成视频|生成短片|做视频|制作视频|做段视频|做个视频|做短片|来个视频|生成一段|做个短片|变视频|转视频|转成视频|视频一下|动起来|动图|mv|宣传片)\s*[，,、]?\s*/, "");
+  }
+  return t.trim();
+}
+
+/* ---- 线① 文本对话（流式打字机 F22）+ F13/F14 附件处理 ---- */
+function doChat(text, attachments){
+  attachments = attachments || [];
+  var c = current();
+  var hist = c.messages.filter(function(m){return m.type==="text";})
+    .slice(-10).map(function(m){return {role:m.role==="user"?"user":"assistant", content:m.text};});
+  var _memCtx = buildMemoryContext(text);
+  if(_memCtx){ hist = [{role:"system", content: MEM_SYS_PROMPT + "\n" + _memCtx}].concat(hist); }
+  var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
+  renderMsgs();
+  var rowBubble = function(){ var r=document.querySelector('.row[data-mid="'+aiMsg.id+'"] .bubble'); return r; };
+  var b = rowBubble(); if(b) b.innerHTML='<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+
+  var textAtts = attachments.filter(function(a){return a.kind==="text";});
+  var imgAtts  = attachments.filter(function(a){return a.kind==="image";});
+  var binAtts  = attachments.filter(function(a){return a.kind==="binary";});
+
+  Promise.all(imgAtts.map(ensureImageBase64)).then(function(imgB64s){
+    var userContent;
+    if(attachments.length){
+      var parts = [{ type:"text", text: text || "（请处理我上传的附件）" }];
+      textAtts.forEach(function(a){
+        parts.push({ type:"text", text:"\n\n【用户上传的文件："+a.name+"】\n```\n"+(a.content||"").slice(0,40000)+"\n```" });
+      });
+      imgB64s.forEach(function(b64){
+        if(b64) parts.push({ type:"image_url", image_url:{ url:b64 } });
+      });
+      if(binAtts.length){
+        parts.push({ type:"text", text:"\n（注："+binAtts.map(function(a){return a.name;}).join("、")+" 的内容无法在浏览器内读取，如需处理请把文字内容粘贴发我）" });
+      }
+      userContent = parts;
+    } else {
+      userContent = text || "（请继续）";
+    }
+
+    /* F20/F24：可打断 + 失败可重试 + 超时保护 */
+    abortReason = null;
+    var ac = new AbortController();
+    activeAbort = ac; setGenState(true);
+    var chatAcc = "";
+    var chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 240000);
+
+    fetch(apiBase()+"/chat/completions",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+      signal: ac.signal,
+      body: JSON.stringify({ model:currentModel("text"), stream:true, messages: hist.concat([{role:"user", content:userContent}]) })
+    }).then(function(resp){
+      if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,120)); });
+      var reader = resp.body.getReader(); var dec=new TextDecoder(); var buf="";
+      function pump(){
+        return reader.read().then(function(r){
+          if(r.done){ finalizeChat(aiMsg,chatAcc,attachments); return; }
+          buf += dec.decode(r.value,{stream:true});
+          var lines = buf.split("\n"); buf = lines.pop();
+          lines.forEach(function(line){
+            line=line.trim();
+            if(line.indexOf("data:")===0){
+              var d=line.slice(5).trim();
+              if(d==="[DONE]") return;
+              try{ var j=JSON.parse(d); var delta=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
+                if(delta){ chatAcc+=delta; var bb=rowBubble(); if(bb) bb.textContent=chatAcc.replace(/^\s+/,""); scrollBottom(); } }catch(e){}
+            }
+          });
+          return pump();
+        });
+      }
+      return pump();
+    }).then(function(){
+      clearTimeout(chatTimer); clearRetry(aiMsg.id);
+    }).catch(function(err){
+      clearTimeout(chatTimer);
+      if(err && (err.name==="AbortError" || /abort/i.test(err.message||""))){
+        var note = abortReason==="timeout" ? "\n\n（请求超时，已自动停止）"
+                 : abortReason==="guide" ? "\n\n（已按新指令改写）"
+                 : "\n\n（已停止生成）";
+        finalizeChat(aiMsg, (chatAcc||"（已停止生成）")+note, attachments);
+        return;
+      }
+      attachRetry(aiMsg.id, function(){ doChat(text, attachments); });
+      aiMsg._err = true;
+      finalizeChat(aiMsg, "⚠️ 出错了："+friendlyErr(err), attachments);
+    }).then(function(){
+      activeAbort = null; abortReason = null;
+      if(pendingGuide){
+        var g = pendingGuide; pendingGuide = null;
+        setTimeout(function(){ doChat(g); }, 30);   /* 引导续写：半截已落历史，以引导语开新请求 */
+        return;   /* 保持停止态，待 doChat 重新接管 */
+      }
+      setGenState(false);
+    });
+  }).catch(function(err){
+    aiMsg._err = true;
+    finalizeChat(aiMsg, "⚠️ 附件图片读取失败："+friendlyErr(err), attachments);
+    activeAbort = null; abortReason = null; setGenState(false);
+  });
+}
+function finalizeChat(aiMsg, txt, atts){
+  txt = (txt||"").replace(/^\s+/,"") || "（无内容）";
+  aiMsg.text = txt;
+  /* F13/F14：带附件的请求，给结果标注可下载文件名 */
+  if(atts && atts.length){
+    var first = atts[0];
+    var base = (first.name || "result").replace(/\.[^.]+$/, "");
+    var ext  = ((first.name||"").match(/\.[^.]+$/)||[""])[0];
+    var fname = /^[[{]/.test(txt.trim()) ? (base + "_result.json") : (base + "_已处理" + ext);
+    aiMsg.fileResult = { name: fname };
+  }
+  saveConvs(); renderMsgs(); renderConvList();
+}
+
+/* ---- 线② 生图 F07 ----
+   有参考图：优先直接图生图（传 image 参数），失败再回退两段管线
+   无参考图：直接文生图 */
+/* 加载图片真实尺寸（用于图生图比例差异检测，防拉伸） */
+function loadImgDims(url){
+  return new Promise(function(res){
+    var im = new Image();
+    im.onload = function(){ res({ w:im.naturalWidth, h:im.naturalHeight }); };
+    im.onerror = function(){ res(null); };
+    im.src = url;
+  });
+}
+/* 比例差异（归一化：0=同比例，值越大差异越大） */
+function ratioDiff(rw, rh, tw, th){
+  if(!rw||!rh||!tw||!th) return 0;
+  var r1 = rw/rh, r2 = tw/th;
+  return Math.abs(r1-r2)/Math.min(r1, r2);
+}
+function doImage(prompt, refs, params){
+  if(refs && refs.length){
+    var _sz = (params && params.size) || "1024x1024";   /* 没选尺寸时按默认 1:1 比对 */
+    var _wh = String(_sz).split("x");
+    var tw = parseInt(_wh[0],10), th = parseInt(_wh[1],10);
+    var loading = appendMessage({role:"assistant", type:"loading", text:"正在参考图片绘制…"});
+    renderMsgs();
+    Promise.all(refs.map(ensureImageBase64)).then(function(b64Refs){
+      var validRefs = b64Refs.filter(function(x){ return x; });
+      if(!validRefs.length) validRefs = refs; /* 转换失败时回退原 URL */
+      loadImgDims(validRefs[0]).then(function(d){
+        if(d){
+          var dlt = ratioDiff(d.w, d.h, tw, th);
+          if(dlt >= 0.5){
+            /* 比例差异极大（竖图↔横图等）：直接图生图必拉伸，改走理解重绘 */
+            loading.text = "参考图与输出比例差异大，已自动改走「理解重绘」避免拉伸…"; renderMsgs();
+            doImageTwoStage(prompt, validRefs, params, loading);
+            return;
+          }
+          if(dlt >= 0.2){
+            /* 比例有差异：在提示词里强制要求保持主体比例、不拉伸 */
+            prompt = prompt + "（注意：参考图比例为 "+d.w+":"+d.h+"，输出比例为 "+tw+":"+th+"，请保持画面主体/人物比例不变、不要拉伸变形，通过扩展或裁切背景来适配目标画幅）";
+          }
+        }
+        genImageDirect(prompt, validRefs, params, loading);
+      });
+    }).catch(function(err){
+      loading._err = true;
+      replaceLoading(loading, "⚠️ 参考图读取失败："+friendlyErr(err));
+    });
+  } else {
+    var loading2 = appendMessage({role:"assistant", type:"loading", text:"正在画图（默认调用图像模型）…"});
+    renderMsgs();
+    genImageOnly(prompt, loading2, null, params);
+  }
+}
+
+/* 图生图专用模型解析：用户若把 2.1（仅文生图）误当图生图模型，或留空，强制回退到官方 2.0-flash */
+function resolveImageEditModel(){
+  var m = currentModel("imageEdit");
+  if(m && /2\.1/.test(m)) return MODEL_DEFAULTS.imageEdit;   /* 2.1 不支持图生图，自动换 2.0 */
+  return m || MODEL_DEFAULTS.imageEdit;
+}
+/* 直接图生图：把参考图作为 image 参数传给 /images/generations */
+function genImageDirect(prompt, refs, params, loading){
+  params = params || CFG.genParams || {};
+  function tryWith(model){
+    var ib = { model:model, prompt:prompt, size:(params.size||"1024x1024") };
+    ib.extra_body = { image: refs, response_format: "url" };   /* 图生图：image 必须放 extra_body 内（数组），不能放顶层 */
+    return fetchTimeout(apiBase()+"/images/generations",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+      body: JSON.stringify(ib)
+    }, 120000).then(function(r){
+      if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
+      return r.json();
+    }).then(function(j){
+      var url = j.data && j.data[0] && (j.data[0].url || j.data[0].b64_json);
+      if(!url) throw new Error("未返回图片");
+      if(j.data[0].b64_json) url = "data:image/png;base64,"+j.data[0].b64_json;
+      removeMsg(loading.id); clearRetry(loading.id);
+      landAndAppend("image", url, prompt, mediaExt(url));
+    });
+  }
+  var m0 = resolveImageEditModel();
+  tryWith(m0).catch(function(err){
+    /* 图生图失败兜底：若用户配的模型不是官方 2.0-flash，自动用官方图生图模型再试一次（防“模型乱填”） */
+    if(m0 !== MODEL_DEFAULTS.imageEdit){
+      loading.text = "图生图模型不可用，自动切换到官方 2.0-flash 重试…"; renderMsgs();
+      return tryWith(MODEL_DEFAULTS.imageEdit).catch(function(e2){
+        loading.text = "直接绘制失败，改用参考图理解+重绘…"; renderMsgs();
+        doImageTwoStage(prompt, refs, params, loading);
+      });
+    }
+    /* 直接绘制失败：回退到两段管线（视觉理解 + 纯文生图） */
+    loading.text = "直接绘制失败，改用参考图理解+重绘…";
+    renderMsgs();
+    doImageTwoStage(prompt, refs, params, loading);
+  });
+}
+
+/* 两段管线：视觉模型读参考图 → 生成融合提示词 → 纯文生图 */
+function doImageTwoStage(prompt, refs, params, loading){
+  var content = [{ type:"text", text:
+    "请仔细观察这 "+refs.length+" 张参考图，结合我的要求：「"+prompt+"」，"+
+    "生成一段用于文生图模型的详细画面提示词（涵盖主体、风格、色调、构图、光影、细节）。"+
+    "只输出提示词本身，不要任何解释、前缀或引号。" }];
+  refs.forEach(function(u){ content.push({ type:"image_url", image_url:{ url:u } }); });
+  fetchTimeout(apiBase()+"/chat/completions",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    body: JSON.stringify({ model:currentModel("text"), stream:false, messages:[{role:"user", content:content}] })
+  }, 120000).then(function(r){
+    if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
+    return r.json();
+  }).then(function(j){
+    var fused = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if(!fused) throw new Error("未能从参考图生成提示词");
+    fused = String(fused).trim();
+    loading.text = "已读参考图，正在按新提示词绘制…";
+    renderMsgs();
+    genImageOnly(fused, loading, prompt, params);   /* caption 仍显示用户原始描述 */
+  }).catch(function(err){
+    loading._err = true;
+    attachRetry(loading.id, function(){ doImage(prompt, refs, params); });
+    replaceLoading(loading, "⚠️ 参考图理解失败："+friendlyErr(err));
+  });
+}
+
+/* 纯文生图（无参考图 / 两段管线第二段共用） */
+function genImageOnly(prompt, loading, origPrompt, params){
+  params = params || CFG.genParams || {};
+  var ib = { model:currentModel("image"), prompt:prompt, size:(params.size||"1024x1024") };
+  ib.extra_body = { response_format: "url" };   /* 官方要求 response_format 放 extra_body 内（不能放顶层） */
+  fetchTimeout(apiBase()+"/images/generations",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    body: JSON.stringify(ib)
+  }, 120000).then(function(r){
+    if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
+    return r.json();
+  }).then(function(j){
+    var url = j.data && j.data[0] && (j.data[0].url || j.data[0].b64_json);
+    if(!url) throw new Error("未返回图片");
+    if(j.data[0].b64_json) url = "data:image/png;base64,"+j.data[0].b64_json;
+    removeMsg(loading.id); clearRetry(loading.id);
+    landAndAppend("image", url, (origPrompt||prompt), mediaExt(url));
+  }).catch(function(err){
+    loading._err = true;
+    attachRetry(loading.id, function(){ genImageOnly(prompt, loading, origPrompt); });
+    replaceLoading(loading, "⚠️ 画图失败："+friendlyErr(err));
+  });
+}
+
+/* ---- 线③ 生视频（异步轮询 F08） ---- */
+function doVideo(prompt, refs, params){
+  videoPollCancel = false;
+  var loading = appendMessage({role:"assistant", type:"loading", text:"正在生成视频（约 1-3 分钟）…"});
+  loading._cancelable = true; renderMsgs();
+  Promise.all((refs || []).map(ensureImageBase64)).then(function(b64Refs){
+    var validRefs = b64Refs.filter(function(x){ return x; });
+    if(refs && refs.length && !validRefs.length) validRefs = refs;
+    var body = { model:currentModel("video"), prompt:prompt };
+    if(validRefs && validRefs.length) body.image = validRefs.length === 1 ? validRefs[0] : validRefs;   /* 图生视频：单图传字符串，多图传数组 */
+    if(params && params.size && !(validRefs && validRefs.length)){ var _wh=String(params.size).split("x"); if(_wh.length===2){ if(parseInt(_wh[0],10)) body.width=parseInt(_wh[0],10); if(parseInt(_wh[1],10)) body.height=parseInt(_wh[1],10); } }   /* 视频用 width/height；图生视频不传宽高 */
+    if(params && params.durationFrames){ body.num_frames = Number(params.durationFrames); body.frame_rate = 24; }   /* 时长：帧数(8n+1)÷帧率=秒 */
+    fetchTimeout(apiBase()+"/videos",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+      body: JSON.stringify(body)
+    }, 30000).then(function(r){
+      if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
+      return r.json();
+    }).then(function(j){
+      var vid = j.video_id || j.id || (j.data&&j.data.video_id);
+      if(!vid) throw new Error("未返回 video_id");
+      pollVideo(vid, loading, 0);
+    }).catch(function(err){
+      loading._err = true;
+      attachRetry(loading.id, function(){ doVideo(prompt, refs, params); });
+      replaceLoading(loading, "⚠️ 视频生成失败："+friendlyErr(err));
+    });
+  }).catch(function(err){
+    loading._err = true;
+    replaceLoading(loading, "⚠️ 参考图读取失败："+friendlyErr(err));
+  });
+}
+function pollVideo(vid, loading, tries){
+  if(videoPollCancel){ videoPollCancel=false; replaceLoading(loading,"（已取消视频生成）"); return; }
+  if(tries>60){ loading._err=true; replaceLoading(loading,"⚠️ 视频生成超时，请稍后重试"); return; }
+  fetch(pollBase()+"?video_id="+encodeURIComponent(vid),{
+    headers:{ "Authorization":"Bearer "+currentApiKey() }
+  }).then(function(r){ return r.json(); }).then(function(j){
+    var url = j.url || (j.data&&j.data.url) || j.video_url;
+    var status = j.status || (j.data&&j.data.status);
+    if(url){
+      removeMsg(loading.id); clearRetry(loading.id);
+      landAndAppend("video", url, "视频已生成", mediaExt(url));
+    } else if(status==="failed"){
+      loading._err=true; replaceLoading(loading,"⚠️ 视频生成失败");
+    } else {
+      setTimeout(function(){ pollVideo(vid, loading, tries+1); }, 3000);
+    }
+  }).catch(function(){
+    setTimeout(function(){ pollVideo(vid, loading, tries+1); }, 3000);
+  });
+}
+
+/* ================= F11 智能制片：主题→规划→出图→出视频 串联 ================= */
+function openStudio(){
+  var body = document.getElementById("studioBody");
+  body.innerHTML =
+    '<div class="group"><div class="gt">主题（一句话描述你想做的短片）</div>'+
+      '<div class="cell" style="display:block"><textarea id="studioTheme" rows="3" style="width:100%;border:none;outline:none;font-size:15px;font-family:inherit;resize:none"></textarea></div>'+
+    '</div>'+
+    '<div class="group"><div class="gt">分镜数</div>'+
+      '<div class="cell"><span class="cl">分镜</span><span class="cr"><select id="studioShots">'+[2,3,4,5].map(function(n){return '<option value="'+n+'"'+(n===3?' selected':'')+'>'+n+' 镜</option>';}).join('')+'</select></span></div>'+
+    '</div>'+
+    '<div class="group"><div class="gt">风格（可选）</div>'+
+      '<div class="cell"><span class="cl">风格</span><span class="cr"><select id="studioStyle"><option value="">默认</option><option value="写实电影感">写实电影感</option><option value="动漫">动漫</option><option value="水彩">水彩</option><option value="赛博朋克">赛博朋克</option><option value="极简插画">极简插画</option></select></span></div>'+
+    '</div>'+
+    '<div style="padding:16px"><button style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:13px;font-size:16px;cursor:pointer" onclick="runStudio()">开始制片</button></div>';
+  show('studioPage');
+}
+function parseStudioPlan(txt){
+  if(!txt) return null;
+  txt = String(txt).trim().replace(/^```[a-zA-Z]*\n?/,"").replace(/```$/,"").trim();
+  var s = txt.indexOf("["), e = txt.lastIndexOf("]");
+  if(s<0 || e<=s) return null;
+  try{ var a = JSON.parse(txt.slice(s, e+1)); return Array.isArray(a)?a:null; }catch(err){ return null; }
+}
+function runStudio(){
+  var theme = (document.getElementById("studioTheme")||{}).value;
+  theme = theme ? theme.trim() : "";
+  if(!theme){ toast("先写个主题"); return; }
+  if(!currentApiKey()){ toast("请先在 API 接口管理里填入 Key"); return; }
+  var shots = parseInt((document.getElementById("studioShots")||{}).value,10) || 3;
+  var style = (document.getElementById("studioStyle")||{}).value || "";
+  var params = CFG.genParams || {};
+  hide('studioPage'); closeSettings();
+  appendMessage({role:"user", type:"text", text:"[智能制片] "+theme});
+  renderMsgs(); renderConvList();
+  var loading = appendMessage({role:"assistant", type:"loading", text:"① 规划分镜中…"});
+  renderMsgs();
+  var planPrompt = "你是一位短片分镜导演。主题：「"+theme+"」"+(style?(" 风格倾向："+style):"")+"。请规划 "+shots+" 个分镜，只输出一个 JSON 数组（不要 markdown 代码块、不要任何解释），"+
+    "每个元素结构：{\"shot\":\"分镜画面简述(中文)\",\"prompt\":\"用于文生图模型的英文详细提示词(主体/风格/色调/构图/光影/细节)\",\"video_prompt\":\"该分镜对应的视频动态描述(英文，含运镜与动作)\"}。";
+  fetchTimeout(apiBase()+"/chat/completions",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    body: JSON.stringify({ model:currentModel("text"), stream:false, messages:[{role:"user", content:planPrompt}] })
+  }, 120000).then(function(r){
+    if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
+    return r.json();
+  }).then(function(j){
+    var txt = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    var arr = parseStudioPlan(txt);
+    if(!arr || !arr.length) throw new Error("分镜规划解析失败");
+    loading.text = "② 逐镜出图（0/"+arr.length+"）"; renderMsgs();
+    studioGenShots(arr, 0, loading, params, theme, style);
+  }).catch(function(err){
+    loading._err = true;
+    attachRetry(loading.id, function(){ runStudio(); });
+    replaceLoading(loading, "⚠️ 智能制片规划失败："+friendlyErr(err));
+  });
+}
+function studioGenShots(arr, idx, loading, params, theme, style){
+  if(idx >= arr.length){
+    loading.text = "③ 合成视频中…"; renderMsgs();
+    studioMakeVideo(arr, loading, params, theme, style);
+    return;
+  }
+  var shot = arr[idx] || {};
+  loading.text = "② 逐镜出图（"+(idx+1)+"/"+arr.length+"）："+(shot.shot || ("第"+(idx+1)+"镜"));
+  renderMsgs();
+  var prompt = shot.prompt || shot.shot || theme;
+  fetchTimeout(apiBase()+"/images/generations",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    body: JSON.stringify({ model:currentModel("image"), prompt:prompt, size:(params.size||"1024x1024"), extra_body:{ response_format:"url" } })
+  }, 120000).then(function(r){
+    if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
+    return r.json();
+  }).then(function(j){
+    var url = j.data && j.data[0] && (j.data[0].url || j.data[0].b64_json);
+    if(!url) throw new Error("分镜"+(idx+1)+"未返回图片");
+    if(j.data[0].b64_json) url = "data:image/png;base64,"+j.data[0].b64_json;
+    appendMessage({role:"assistant", type:"image", media:{url:url, caption:"分镜"+(idx+1)+"："+(shot.shot||"")}});
+    renderMsgs(); renderConvList();
+    studioGenShots(arr, idx+1, loading, params, theme, style);
+  }).catch(function(err){
+    appendMessage({role:"assistant", type:"text", text:"⚠️ 分镜"+(idx+1)+"出图失败："+friendlyErr(err)});
+    renderMsgs(); renderConvList();
+    studioGenShots(arr, idx+1, loading, params, theme, style);
+  });
+}
+function studioMakeVideo(arr, loading, params, theme, style){
+  var c = current(); if(!c){ return; }
+  var lastImg = null;
+  for(var i=c.messages.length-1;i>=0;i--){
+    if(c.messages[i].type==="image"){ lastImg = c.messages[i].media.url; break; }
+  }
+  var vprompt = theme + (style?("，"+style):"") + "；动态：" + arr.map(function(s){return s.video_prompt||"";}).filter(Boolean).join("；");
+  removeMsg(loading.id);
+  doVideo(vprompt, lastImg?[lastImg]:[], params);
+}
+
+function removeMsg(id){
+  var c=current(); if(!c) return;
+  c.messages = c.messages.filter(function(m){return m.id!==id;});
+  saveConvs();
+}
+function replaceLoading(loading, text){
+  loading.type="text"; loading.text=text; saveConvs(); renderMsgs(); renderConvList();
+}
+
+/* ================= F13/F14 文件上传（统一走「待发送附件区」） ================= */
+function pickFile(){ document.getElementById("fileInput").click(); }
+function fileKind(f){
+  var t = f.type || "";
+  if(t.indexOf("image/") === 0) return "image";
+  if(t.indexOf("text/") === 0) return "text";
+  var ext = (f.name.split(".").pop() || "").toLowerCase();
+  var textExt = ["txt","md","markdown","csv","json","xml","log","yml","yaml","ini","conf","js","ts","jsx","tsx","py","java","c","cpp","h","hpp","cs","go","rb","php","sh","bat","ps1","html","htm","css","scss","sql","tex","srt","vtt","toml","gitignore","env","csv"];
+  if(textExt.indexOf(ext) >= 0) return "text";
+  var imgExt = ["jpg","jpeg","png","gif","webp","bmp","heic","heif","avif"];
+  if(imgExt.indexOf(ext) >= 0) return "image";
+  return "binary";
+}
+function renderAttachZone(){
+  var z = document.getElementById("attachZone");
+  if(!z) return;
+  if(!pendingAttachments.length){ z.style.display = "none"; z.innerHTML = ""; return; }
+  z.style.display = "flex";
+  z.innerHTML = pendingAttachments.map(function(a, i){
+    var sz = a.size ? (a.size/1048576 >= 1 ? (a.size/1048576).toFixed(1)+"M" : Math.round(a.size/1024)+"K") : "";
+    var tag = a.kind === "image" ? "🖼" : (a.kind === "binary" ? "📦" : "📄");
+    return '<span class="atchip">'+tag+' '+esc(a.name)+(sz?(" "+sz):"")+' <b onclick="removeAtt('+i+')">×</b></span>';
+  }).join("");
+}
+function removeAtt(i){ pendingAttachments.splice(i, 1); renderAttachZone(); }
+document.getElementById("fileInput").addEventListener("change", function(e){
+  var files = e.target.files;
+  if(!files || !files.length) return;
+  for(var i = 0; i < files.length; i++){
+    (function(f){
+      var kind = fileKind(f);
+      if(kind === "text"){
+        var rd = new FileReader();
+        rd.onload = function(){
+          pendingAttachments.push({ id: uid(), name: f.name, mime: f.type || "text/plain", kind: "text", content: String(rd.result || ""), size: f.size });
+          renderAttachZone(); toast("已添加文件：" + f.name + "（发送时一并提交给 AI）");
+        };
+        rd.readAsText(f);
+      } else if(kind === "image"){
+        var rd2 = new FileReader();
+        rd2.onload = function(){
+          var b64 = rd2.result;
+          var ext = (f.type||"image/jpeg").split("/")[1]||"jpg";
+          pendingAttachments.push({ id: uid(), name: f.name, mime: f.type || "image", kind: "image", url: persistPickedImage(b64, ext), base64: b64, size: f.size });
+          renderAttachZone(); toast("已添加图片：" + f.name);
+        };
+        rd2.readAsDataURL(f);
+      } else {
+        pendingAttachments.push({ id: uid(), name: f.name, mime: f.type || "未知", kind: "binary", size: f.size });
+        renderAttachZone(); toast("已添加：" + f.name + "（浏览器内无法读取其内容，发送时 AI 会提示）");
+      }
+    })(files[i]);
+  }
+  e.target.value = "";
+});
+
+/* ================= 设置页 ================= */
+function modelPicker(key, label, presets){
+  var cur = CFG[key]||"";
+  var isPreset = presets.indexOf(cur)>=0;
+  var opts = presets.map(function(m){
+    return '<option value="'+m+'"'+(cur===m?' selected':'')+'>'+m+'</option>';
+  }).join('') + '<option value="__custom__"'+(isPreset?'':' selected')+'>自定义…</option>';
+  var inp = '<input type="text" id="custom_'+key+'" placeholder="输入其他模型名" value="'+(isPreset?'':esc(cur))+'" '
+    + 'style="width:100%;margin-top:6px;display:'+(isPreset?'none':'block')+'" oninput="CFG[\''+key+'\']=this.value;saveCfg()">';
+  return '<div class="cell"><span class="cl">'+label+'</span>'
+    + '<span class="cr" style="flex:1 1 auto;display:flex;flex-direction:column;align-items:flex-end;gap:0">'
+    + '<select onchange="onModelPick(\''+key+'\', this.value)">'+opts+'</select>'+inp+'</span></div>';
+}
+function onModelPick(key, val){
+  if(val==="__custom__"){
+    var inp = document.getElementById("custom_"+key);
+    if(inp){ inp.style.display="block"; inp.focus(); }
+    return;
+  }
+  CFG[key]=val; saveCfg();
+  var inp = document.getElementById("custom_"+key);
+  if(inp){ inp.style.display="none"; inp.value=""; }
+}
+function renderSettings(){
+  var body = document.getElementById("settingsBody");
+  var themeOpts = [["light","浅色"],["dark","深色"],["system","跟随系统"]];
+  var locOpts = [["sandbox","App 沙盒"],["authorized","用户授权目录"]];
+  function sel(val, opts, onch){
+    return '<select onchange="'+onch+'">'+opts.map(function(o){
+      return '<option value="'+o[0]+'"'+(val===o[0]?' selected':'')+'>'+o[1]+'</option>';
+    }).join('')+'</select>';
+  }
+  body.innerHTML =
+  '<div class="group"><div class="gt">创作</div>'+
+    cellNav("生图 / 图生图", "openCreate(\'image\')")+
+    cellNav("生视频", "openCreate(\'video\')")+
+    cellNav("智能制片", "openStudio()")+
+    cellNav("作品", "openWorks()")+
+    '<div class="gt">外观与存储</div>'+
+    '<div class="cell"><span class="cl">主题与外观</span><span class="cr">'+sel(CFG.theme, themeOpts, "CFG.theme=this.value;saveCfg();applyTheme()")+'</span></div>'+
+    cellNav("聊天背景（用图片）", "pickBg()")+
+    (CFG.bgImage? cellNav("清除聊天背景", "clearBg()") : "")+
+    '<div class="cell"><span class="cl">文件保存位置</span><span class="cr">'+sel(CFG.saveLocation, locOpts, "CFG.saveLocation=this.value;saveCfg()")+'</span></div>'+
+  '</div>'+
+  '<div class="group"><div class="gt">账号</div>'+
+    cellNav("API 接口管理（当前："+esc(currentApi().name)+"）", "openApiPage()")+
+    cellNav("我的记忆", "openMemory()")+
+  '</div>'+
+  '<div class="group"><div class="gt">关于</div>'+
+    '<div class="cell"><span class="cl">版本</span><span class="cr">v'+APP_VERSION+'</span></div>'+
+    cellNav("崩溃日志（"+loadCrashes().length+"）", "openCrash()")+
+    '<div class="cell" style="display:block;padding:10px 14px">'+
+      '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">检查更新地址（电脑 / Pages 上放 index.html + version.json）</div>'+
+      '<input type="text" placeholder="http://电脑IP:端口 或 GitHub Pages" value="'+esc(CFG.updateBase||"")+'" onchange="CFG.updateBase=this.value.trim();saveCfg();toast(\'已保存更新地址\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+
+    '</div>'+
+    cellNav("检查更新", "checkUpdate()")+
+    cellNav("分享给亲友（二维码）", "openShare()")+
+    (hasNative()? cellNav("恢复内置版本（清掉热更）", "resetBuiltinUpdate()") : "")+
+    cellNav("开源 / 隐私声明", "toast(\'仅亲友试用，数据均存本地\')")+
+  '</div>'+
+  '<div class="group">'+
+    '<div class="cell danger" onclick="clearAll()"><span class="cl">清空所有记录</span>'+
+      '<span class="cr"></span></div>'+
+  '</div>'+
+  '<div style="text-align:center;color:var(--text-3);font-size:12px;margin:24px 0 8px">大脑由 Agnes 全模态驱动 · 仅供亲友试用</div>';
+  applyTheme();
+}
+function applyTheme(){
+  var t = CFG.theme||"light";
+  var dark = (t==="dark");
+  var ph = document.getElementById("phone");
+  if(ph) ph.classList.toggle("dark", dark);
+}
+function applyBg(){
+  var m = document.getElementById("msgs");
+  if(!m) return;
+  if(CFG.bgImage){
+    m.style.backgroundImage = "url("+CFG.bgImage+")";
+    m.style.backgroundSize = "cover";
+    m.style.backgroundPosition = "center";
+    m.style.backgroundRepeat = "no-repeat";
+  }else{
+    m.style.backgroundImage = "";
+  }
+}
+function pickBg(){ document.getElementById("bgFileInput").click(); }
+document.getElementById("bgFileInput").addEventListener("change", function(e){
+  var f = e.target.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    CFG.bgImage = rd.result; saveCfg(); applyBg(); renderSettings();
+    toast("聊天背景已更新");
+  };
+  rd.readAsDataURL(f);
+  e.target.value = "";
+});
+function clearBg(){ CFG.bgImage=""; saveCfg(); applyBg(); renderSettings(); toast("已清除背景"); }
+function cellNav(label, onclick){
+  return '<div class="cell" onclick="'+onclick+'"><span class="cl">'+label+'</span>'+
+    '<span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>';
+}
+function updateBaseUrl(){ return (CFG.updateBase||"").trim().replace(/\/+$/,""); }
+function checkUpdate(){
+  var base = updateBaseUrl();
+  if(!base){ toast("请先在「关于 → 检查更新地址」填写更新地址"); return; }
+  toast("正在检查更新…");
+  fetch(base+"/version.json?t="+Date.now(), {cache:"no-store"})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(function(j){
+      if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
+        showConfirm("发现新版本 v"+j.version, (j.note||"有新版可用")+"（点击更新将下载并立即应用，无需重装）", function(){
+          doInstallUpdate(base);
+        });
+      } else {
+        toast("当前已是最新版 v"+APP_VERSION);
+      }
+    })
+    .catch(function(e){ toast("检查更新失败："+(e&&e.message||e)+"（确认地址可访问）"); });
+}
+function doInstallUpdate(base){
+  toast("正在下载更新…");
+  fetch(base+"/index.html?t="+Date.now(), {cache:"no-store"})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+    .then(function(html){
+      if(!html || html.length < 500) throw new Error("下载到的网页内容异常");
+      if(!hasNative()){
+        window.open(base+"/index.html", "_blank");
+        toast("当前为浏览器预览，请在手机 App 内更新");
+        return;
+      }
+      var r = NativeBridge.installUpdate(html);
+      if(r && r.indexOf("err:")===0) throw new Error(r.slice(4));
+      toast("更新完成，正在重启…");
+    })
+    .catch(function(e){
+      toast("更新失败："+(e&&e.message||e)+"（点「检查更新」可重试）");
+    });
+}
+/* 启动静默检查：有新版本仅提示，不自动下载（避免误耗流量） */
+function silentCheckUpdate(){
+  var base = updateBaseUrl();
+  if(!base) return;
+  fetch(base+"/version.json?t="+Date.now(), {cache:"no-store"})
+    .then(function(r){ if(!r.ok) return null; return r.json(); })
+    .then(function(j){
+      if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
+        toast("发现新版本 v"+j.version+"：去 设置 → 检查更新 升级");
+      }
+    })
+    .catch(function(e){ /* 静默忽略 */ });
+}
+function resetBuiltinUpdate(){
+  if(!hasNative()){ toast("内置版本即当前，无需恢复"); return; }
+  showConfirm("恢复内置版本","将清除已下载的热更网页，回退到安装包内置版本。确定吗？", function(){
+    var r = NativeBridge.resetUpdate();
+    if(r && r.indexOf("err:")===0){ toast("恢复失败："+r.slice(4)); return; }
+    toast("已恢复内置版本，正在重启…");
+  });
+}
+function compareVer(a, b){
+  var pa=String(a).split(".").map(Number), pb=String(b).split(".").map(Number);
+  for(var i=0;i<3;i++){ var x=pa[i]||0, y=pb[i]||0; if(x>y) return 1; if(x<y) return -1; }
+  return 0;
+}
+function clearAll(){
+  showConfirm("清空所有记录","将删除全部对话与设置，且无法恢复。确定吗？",function(){
+    try{ localStorage.removeItem("pa_convs"); }catch(e){}
+    convs=null; ensureInit(); saveConvs();
+    renderConvList(); renderMsgs(); updateTitle();
+    toast("已清空");
+  }, true);
+}
+
+/* ================= 创作二级页 ================= */
+var createRefs = [];
+function openCreate(mode){
+  createRefs = [];
+  var gp = CFG.genParams || { size:"", n:1 };
+  function sopt(v,t){ return '<option value="'+v+'"'+(gp.size===v?' selected':'')+'>'+t+'</option>'; }
+  function nopt(v){ return '<option value="'+v+'"'+((gp.n||1)===v?' selected':'')+'>'+v+' 张</option>'; }
+  var sizeSel = (mode==="video"
+    ? '<select id="cSize">'+sopt("","默认（模型决定）")+sopt("1280x720","720p 横版")+sopt("1920x1080","1080p 横版")+sopt("720x1280","720p 竖版")+sopt("1080x1920","1080p 竖版")+'</select>'
+    : '<select id="cSize">'+sopt("","默认（模型决定）")+sopt("1024x1024","正方形 1:1")+sopt("1024x1792","竖版 9:16")+sopt("1792x1024","横版 16:9")+'</select>');
+  var nSel = '<select id="cN">'+nopt(1)+nopt(2)+nopt(4)+'</select>';
+  /* 视频时长：Agnes 无 duration 参数，靠 num_frames(8n+1) ÷ frame_rate(24) 换算；UI 给“约X秒”档位 */
+  var DUR_MAP = [["81","约 3 秒"],["121","约 5 秒"],["241","约 10 秒"],["441","约 18 秒"]];
+  var durSel = '<select id="cDur"><option value=""'+(!gp.durationFrames?' selected':'')+'>默认（模型决定）</option>'+
+    DUR_MAP.map(function(o){ return '<option value="'+o[0]+'"'+(gp.durationFrames===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>';
+  var body = document.getElementById("createBody");
+  var isVideo = (mode==="video");
+  var isEdit = (mode==="imageEdit");
+  document.getElementById("createTitle").textContent = isVideo?"视频":(isEdit?"图生图":"生图");
+  var paramRows =
+    '<div class="cell"><span class="cl">尺寸 / 比例</span><span class="cr">'+sizeSel+'</span></div>'+
+    (isVideo
+      ? '<div class="cell"><span class="cl">时长</span><span class="cr">'+durSel+'</span></div>'
+      : '<div class="cell"><span class="cl">张数</span><span class="cr">'+nSel+'</span></div>');
+  /* tab 分组：图片组显示「生图 | 图生图」；视频组只显示「视频」 */
+  var seg = isVideo
+    ? '<div class="seg" id="cseg"><button class="on">视频</button></div>'
+    : '<div class="seg" id="cseg">'+
+        '<button class="'+(mode==="image"?"on":"")+'" onclick="setCreateMode(\'image\')">生图</button>'+
+        '<button class="'+(isEdit?"on":"")+'" onclick="setCreateMode(\'imageEdit\')">图生图</button>'+
+      '</div>';
+  var refHint = isVideo ? "参考图（可选，可加多张，作视频画面参考）"
+    : (isEdit ? "参考图（必传，按这张图改画/换风格）" : "参考图（可选，加了就按图重绘）");
+  var promptHint = isEdit ? "想怎么改这张图（如：换成夜景 / 改成油画风 / 加一只猫）" : "描述你想要的画面";
+  body.innerHTML =
+    seg +
+    '<div class="group"><div class="gt">'+promptHint+'</div>'+
+      '<div class="cell" style="display:block"><textarea id="createPrompt" rows="3" style="width:100%;border:none;outline:none;font-size:15px;font-family:inherit;resize:none"></textarea></div>'+
+    '</div>'+
+    '<div class="group"><div class="gt">'+refHint+'</div>'+
+      '<div class="refbox" id="refBox"></div>'+
+      '<button class="addref" onclick="addRef()">+ 添加图片</button>'+
+      '<input type="file" id="refInput" accept="image/*" multiple style="display:none" onchange="onRefPick(event)">'+
+    '</div>'+
+    '<div class="group"><div class="gt">参数（可选，留空用模型默认）</div>'+ paramRows +
+    '</div>'+
+    '<div style="padding:16px"><button style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:13px;font-size:16px;cursor:pointer" onclick="runCreate()">开始生成</button></div>';
+  body.dataset.mode = mode;
+  renderRefs();
+  show('createPage');
+}
+function addRef(){ var el=document.getElementById("refInput"); if(el) el.click(); }
+function onRefPick(e){
+  var files = e.target.files || [];
+  for(var i=0;i<files.length;i++){
+    var f=files[i]; if(f.type.indexOf("image/")!==0) continue;
+    var rd=new FileReader();
+    rd.onload=function(){ createRefs.push(this.result); renderRefs(); };
+    rd.readAsDataURL(f);
+  }
+  e.target.value="";
+}
+function renderRefs(){
+  var box=document.getElementById("refBox"); if(!box) return;
+  box.innerHTML = createRefs.map(function(u,i){
+    return '<div class="refthumb"><img src="'+u+'"><span class="rm" onclick="removeRef('+i+')">×</span></div>';
+  }).join('');
+}
+function removeRef(i){ createRefs.splice(i,1); renderRefs(); }
+function setCreateMode(mode){ openCreate(mode); }
+function runCreate(){
+  var mode = document.getElementById("createBody").dataset.mode;
+  var p = document.getElementById("createPrompt").value.trim();
+  if(!p){ toast("请先描述画面"); return; }
+  if(mode==="imageEdit" && !createRefs.length){ toast("图生图需要先添加一张参考图"); return; }
+  if(!currentApiKey()){ toast("请先在 API 接口管理里填入 Key"); return; }
+  var size = (document.getElementById("cSize")||{}).value || "";
+  if(mode==="video"){
+    var dur = (document.getElementById("cDur")||{}).value || "";
+    CFG.genParams = { size:size, durationFrames: dur };
+  } else {
+    var n = parseInt((document.getElementById("cN")||{}).value,10) || 1;
+    CFG.genParams = { size:size, n:n };
+  }
+  saveCfg();
+  hide('createPage'); closeSettings();
+  var tag = mode==="video"?"[视频] ":(mode==="imageEdit"?"[图生图] ":"[生图] ");
+  var txt = tag + p + (createRefs.length?(" （参考图×"+createRefs.length+"）"):"") + (size?(" ["+size+"]"):"");
+  appendMessage({role:"user", type:"text", text:txt});
+  renderMsgs(); renderConvList();
+  var refs = createRefs.slice();
+  var params = CFG.genParams;
+  if(mode==="video") doVideo(p, refs, params); else doImage(p, refs, params);
+}
+
+/* ================= 作品（资产）页：图片 / 视频 / 文件 分开 ================= */
+function openWorks(){ renderWorks(); show('worksPage'); }
+function closeWorks(){ hide('worksPage'); renderSettings(); show('settingsPage'); }
+
+/* ================= API 接口管理页 ================= */
+var API_EDITING_ID = null;
+function openApiPage(){ renderApiList(); show('apiPage'); }
+function closeApiPage(){ hide('apiPage'); renderSettings(); show('settingsPage'); }
+function renderApiList(){
+  var box = document.getElementById("apiBody"); if(!box) return;
+  var list = (CFG.apis||[]).map(function(a){
+    var isCur = a.id === CFG.currentApiId;
+    var tag = a.routable ? '需要路由' : '不支持路由';
+    return '<div class="api-card '+(isCur?'api-cur':'')+'" onclick="switchApi(\''+a.id+'\')">'+
+      '<div class="api-icon">'+esc(a.icon||'A')+'</div>'+
+      '<div class="api-info">'+
+        '<div class="api-name">'+esc(a.name)+' <span class="api-tag">'+esc(tag)+'</span></div>'+
+        '<div class="api-url">'+esc(a.baseUrl)+'</div>'+
+      '</div>'+
+      '<div class="api-actions" onclick="event.stopPropagation()">'+
+        '<button onclick="editApi(\''+a.id+'\')">编辑</button>'+
+        (CFG.apis.length>1 ? '<button class="danger" onclick="deleteApi(\''+a.id+'\')">删除</button>' : '')+
+      '</div>'+
+    '</div>';
+  }).join('');
+  box.innerHTML =
+    '<div class="group" style="margin-top:8px">'+
+      '<div class="gt">当前使用（点击切换）</div>'+list+
+    '</div>'+
+    '<div style="padding:16px">'+
+      '<button style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:13px;font-size:16px;cursor:pointer" onclick="addApi()">+ 新增 API 接口</button>'+
+    '</div>';
+}
+function switchApi(id){
+  CFG.currentApiId = id; saveCfg(); renderApiList(); toast("已切换到："+currentApi().name);
+}
+function addApi(){ API_EDITING_ID = null; renderApiEdit(); show('apiEditPage'); }
+function editApi(id){ API_EDITING_ID = id; renderApiEdit(); show('apiEditPage'); }
+function deleteApi(id){
+  showConfirm("删除接口", "确定删除这个 API 接口吗？", function(){
+    CFG.apis = CFG.apis.filter(function(a){return a.id!==id;});
+    if(CFG.currentApiId===id) CFG.currentApiId = (CFG.apis[0]&&CFG.apis[0].id) || "";
+    saveCfg(); renderApiList(); toast("已删除");
+  });
+}
+var API_EDIT_FETCHED = [];
+function renderApiEdit(){
+  var a = API_EDITING_ID ? (CFG.apis.find(function(x){return x.id===API_EDITING_ID;}) || makeDefaultApi()) : makeDefaultApi(genId());
+  API_EDIT_FETCHED = (a.modelsList && a.modelsList.length) ? a.modelsList.slice() : (API_EDIT_FETCHED || []);
+  var body = document.getElementById("apiEditBody"); if(!body) return;
+  function modelOpts(kind, val){ return modelOptsFromList(API_EDIT_FETCHED, val); }
+  function showCustom(v){ return (API_EDIT_FETCHED.indexOf(v)<0 && v) ? "block" : "none"; }
+  body.innerHTML =
+    '<div class="group" style="margin-top:8px">'+
+      '<div class="gt">接口信息</div>'+
+      '<div class="cell field"><span class="cl">名称</span><span class="cr"><input type="text" id="aeName" value="'+esc(a.name)+'"></span></div>'+
+      '<div class="cell field"><span class="cl">图标文字</span><span class="cr"><input type="text" id="aeIcon" maxlength="2" value="'+esc(a.icon)+'"></span></div>'+
+      '<div class="cell field"><span class="cl">API 请求地址</span><span class="cr"><input type="text" id="aeBase" value="'+esc(a.baseUrl)+'"></span></div>'+
+      '<div class="cell field"><span class="cl">API Key</span><span class="cr"><input type="password" id="aeKey" placeholder="点此输入" value="'+esc(a.key||"")+'"></span></div>'+
+    '</div>'+
+    '<div class="group"><div class="gt">模型设置（从上游获取，可自定义）</div>'+
+      '<div class="cell" style="display:block">'+
+        '<button type="button" onclick="fetchUpstreamModels()" style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:11px;font-size:14px;cursor:pointer">从上游获取模型列表</button>'+
+        '<button type="button" onclick="resetModelsToRecommended()" style="width:100%;background:var(--input);color:var(--text);border:none;border-radius:8px;padding:9px;font-size:13px;cursor:pointer;margin-top:8px">一键恢复推荐模型</button>'+
+        '<div style="font-size:12px;color:#9A9A9A;margin-top:6px;line-height:1.5">不是每家接口都用 Agnes。点上面按钮，用你填的「请求地址 + Key」从上游拉取真实模型；拉不到（部分接口不支持 /models）就直接在下面手填模型名。图生图/编辑必须用 2.0-flash（2.1 仅文生图）。</div>'+
+      '</div>'+
+      '<div class="cell"><span class="cl">文本模型</span><span class="cr"><select id="aeModelText">'+modelOpts("text", a.models.text)+'</select><input type="text" id="aeModelTextCustom" placeholder="自定义模型名" value="'+esc(API_EDIT_FETCHED.indexOf(a.models.text)<0?a.models.text:"")+'" style="width:100%;margin-top:6px;display:'+showCustom(a.models.text)+'"></span></div>'+
+      '<div class="cell"><span class="cl">图像模型（文生图）</span><span class="cr"><select id="aeModelImage">'+modelOpts("image", a.models.image)+'</select><input type="text" id="aeModelImageCustom" placeholder="自定义模型名" value="'+esc(API_EDIT_FETCHED.indexOf(a.models.image)<0&&a.models.image?a.models.image:"")+'" style="width:100%;margin-top:6px;display:'+showCustom(a.models.image)+'"></span></div>'+
+      '<div class="cell"><span class="cl">图生图/编辑模型</span><span class="cr"><select id="aeModelImageEdit">'+modelOpts("imageEdit", a.models.imageEdit)+'</select><input type="text" id="aeModelImageEditCustom" placeholder="自定义模型名" value="'+esc(API_EDIT_FETCHED.indexOf(a.models.imageEdit)<0&&a.models.imageEdit?a.models.imageEdit:"")+'" style="width:100%;margin-top:6px;display:'+showCustom(a.models.imageEdit)+'"></span></div>'+
+      '<div class="cell"><span class="cl">视频模型</span><span class="cr"><select id="aeModelVideo">'+modelOpts("video", a.models.video)+'</select><input type="text" id="aeModelVideoCustom" placeholder="自定义模型名" value="'+esc(API_EDIT_FETCHED.indexOf(a.models.video)<0&&a.models.video?a.models.video:"")+'" style="width:100%;margin-top:6px;display:'+showCustom(a.models.video)+'"></span></div>'+
+    '</div>'+
+    '<div class="group"><div class="gt">路由能力</div>'+
+      '<div class="cell"><span class="cl">三线都走该接口</span><span class="cr"><input type="checkbox" id="aeRoutable" '+(a.routable?'checked':'')+'></span></div>'+
+    '</div>'+
+    '<div style="padding:16px">'+
+      '<button style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:13px;font-size:16px;cursor:pointer;margin-bottom:10px" onclick="saveApi()">保存</button>'+
+      '<button style="width:100%;background:var(--input);color:var(--text);border:none;border-radius:8px;padding:13px;font-size:16px;cursor:pointer" onclick="closeApiEdit()">取消</button>'+
+    '</div>';
+  function wire(selId, customId){
+    var sel = document.getElementById(selId);
+    var cst = document.getElementById(customId);
+    if(sel && cst) sel.onchange = function(){ cst.style.display = (sel.value===""?"block":"none"); if(sel.value!=="") cst.value=""; };
+  }
+  wire("aeModelText","aeModelTextCustom"); wire("aeModelImage","aeModelImageCustom"); wire("aeModelImageEdit","aeModelImageEditCustom"); wire("aeModelVideo","aeModelVideoCustom");
+}
+function modelOptsFromList(list, val){
+  var opts = (list||[]).map(function(m){ return '<option value="'+esc(m)+'"'+(val===m?' selected':'')+'>'+esc(m)+'</option>'; }).join('');
+  opts += '<option value=""'+(list&&list.indexOf(val)<0&&val?'':' selected')+'>自定义</option>';
+  return opts;
+}
+function fetchUpstreamModels(){
+  var rawBase = (document.getElementById("aeBase").value.trim()||"https://apihub.agnes-ai.com/v1");
+  var key = document.getElementById("aeKey").value.trim();
+  if(!key){ toast("请先填写 API Key 再获取"); return; }
+  toast("正在从上游获取模型…");
+  // 严格按用户填写的地址请求，不猜测补 /v1（部分上游并非 /v1 前缀）
+  var url = rawBase.replace(/\/+$/,'') + "/models";
+  fetch(url, {headers:{"Authorization":"Bearer "+key}}).then(function(r){
+    if(!r.ok){
+      if(r.status===401||r.status===403) throw new Error("鉴权失败(401/403)，Key 可能无效");
+      if(r.status===404) throw new Error("接口未找到(404)，请确认请求地址填到 /models 所在前缀");
+      throw new Error("HTTP "+r.status);
+    }
+    return r.json();
+  }).then(function(j){
+    var list = [];
+    if(j && Array.isArray(j.data)) list = j.data.map(function(m){return m.id;}).filter(Boolean);
+    else if(Array.isArray(j)) list = j.map(function(m){return (m&&m.id)||m;}).filter(Boolean);
+    if(!list.length) throw new Error("上游未返回模型列表");
+    API_EDIT_FETCHED = list;
+    rebuildModelSelects();
+    toast("已获取 "+list.length+" 个模型");
+  }).catch(function(e){
+    var msg = e && e.message ? e.message : "";
+    if(msg.indexOf("Failed to fetch")>=0 || msg.indexOf("NetworkError")>=0) msg = "网络/跨域被拦截（确认地址是 https 且可达）";
+    toast("获取失败："+msg+"（可手动填模型名）");
+  });
+}
+function resetModelsToRecommended(){
+  var rec = MODEL_DEFAULTS;
+  [["aeModelText","aeModelTextCustom",rec.text],["aeModelImage","aeModelImageCustom",rec.image],["aeModelImageEdit","aeModelImageEditCustom",rec.imageEdit],["aeModelVideo","aeModelVideoCustom",rec.video]].forEach(function(p){
+    var sel=document.getElementById(p[0]), cst=document.getElementById(p[1]);
+    if(sel) sel.value="";
+    if(cst){ cst.value=p[2]; cst.style.display="block"; }
+  });
+  toast("已填入推荐模型，点「保存」生效");
+}
+function rebuildModelSelects(){
+  [["aeModelText","aeModelTextCustom"],["aeModelImage","aeModelImageCustom"],["aeModelImageEdit","aeModelImageEditCustom"],["aeModelVideo","aeModelVideoCustom"]].forEach(function(p){
+    var sel = document.getElementById(p[0]); if(!sel) return;
+    var cur = sel.value;
+    sel.innerHTML = modelOptsFromList(API_EDIT_FETCHED, cur);
+    var cst = document.getElementById(p[1]);
+    if(cst){ cst.style.display = (API_EDIT_FETCHED.indexOf(cur)<0 && cur) ? "block" : "none"; }
+    sel.onchange = function(){ if(cst){ cst.style.display = (sel.value===""?"block":"none"); if(sel.value!=="") cst.value=""; } };
+  });
+}
+function saveApi(){
+  var name = document.getElementById("aeName").value.trim() || "未命名接口";
+  var baseUrl = document.getElementById("aeBase").value.trim() || "https://apihub.agnes-ai.com/v1";
+  var key = document.getElementById("aeKey").value.trim();
+  var icon = document.getElementById("aeIcon").value.trim() || "A";
+  function getModel(selId, customId){
+    var sel = document.getElementById(selId);
+    var cst = document.getElementById(customId);
+    var v = sel.value || (cst&&cst.value.trim()) || "";
+    return normalizeModel(v);   /* 保存时自动补全简写（如 agnes-image-2.0 → -flash），防乱填 */
+  }
+  var models = {
+    text: getModel("aeModelText","aeModelTextCustom"),
+    image: getModel("aeModelImage","aeModelImageCustom"),
+    imageEdit: getModel("aeModelImageEdit","aeModelImageEditCustom"),
+    video: getModel("aeModelVideo","aeModelVideoCustom")
+  };
+  var routable = document.getElementById("aeRoutable").checked;
+  if(API_EDITING_ID){
+    var idx = CFG.apis.findIndex(function(x){return x.id===API_EDITING_ID;});
+    if(idx>=0) CFG.apis[idx] = { id:API_EDITING_ID, name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable };
+  }else{
+    CFG.apis.push({ id:genId(), name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable });
+  }
+  saveCfg(); closeApiEdit(); renderApiList(); toast("已保存");
+}
+function closeApiEdit(){ hide('apiEditPage'); renderApiList(); show('apiPage'); }
+
+function renderWorks(){
+  var box = document.getElementById("worksBody"); if(!box) return;
+  var imgs=[], vids=[], files=[];
+  (convs||[]).forEach(function(c){
+    (c.messages||[]).forEach(function(m){
+      if(m.type==="image" && m.media && m.media.url) imgs.push(m);
+      else if(m.type==="video" && m.media && m.media.url) vids.push(m);
+      else if(m.type==="file" && m.media && m.media.url) files.push(m);
+    });
+  });
+  function dl(url, name){
+    if(!url) return '';
+    return '<a class="dl" href="'+esc(url)+'" download="'+esc(name||"download")+'" target="_blank" onclick="event.stopPropagation()">下载</a>';
+  }
+  function sec(title, items, html){
+    if(!items.length) return '<div class="works-sec"><h4>'+title+'</h4><div class="works-empty">暂无，去生图 / 生视频生成后这里会出现</div></div>';
+    return '<div class="works-sec"><h4>'+title+'（'+items.length+' 项）</h4><div class="dl-tip">点「下载」可存到本地</div>'+html+'</div>';
+  }
+  var imgHtml = '<div class="works-grid">'+imgs.map(function(m){
+    return '<div class="works-item"><a href="'+esc(m.media.url)+'" target="_blank"><img src="'+esc(m.media.url)+'" onerror="this.style.opacity=.3"></a>'+dl(m.media.url,(m.media.caption||"image")+".png")+'</div>';
+  }).join('')+'</div>';
+  var vidHtml = vids.map(function(m){
+    return '<div class="works-vid"><video src="'+esc(m.media.url)+'" controls playsinline></video>'+
+      (m.media.caption?'<div class="cap">'+esc(m.media.caption)+'</div>':'')+dl(m.media.url,(m.media.caption||"video")+".mp4")+'</div>';
+  }).join('');
+  var fileHtml = files.map(function(m){
+    var fm=m.media||{}; var sz=fm.size?(fm.size/1048576>=1?(fm.size/1048576).toFixed(1)+" MB":Math.round(fm.size/1024)+" KB"):"";
+    return '<div class="filecard"><div class="fi">📄</div><div class="fm"><div class="fn">'+esc(fm.name||"文件")+'</div><div class="fs">'+esc(fm.mime||"文件")+(sz?(" · "+sz):"")+'</div></div>'+dl(fm.url,fm.name)+'</div>';
+  }).join('');
+  box.innerHTML =
+    sec("图片资产（生成的图 + 下载的图）", imgs, imgHtml)+
+    sec("视频资产（生成的视频）", vids, vidHtml)+
+    sec("文件资产（下载/上传的文件）", files, fileHtml);
+}
+
+/* ================= 导航 / 弹层 ================= */
+function openDrawer(){ document.getElementById("drawer").classList.add("show"); document.getElementById("drawerMask").classList.add("show"); renderConvList(); }
+function closeDrawer(){ document.getElementById("drawer").classList.remove("show"); document.getElementById("drawerMask").classList.remove("show"); }
+function openSettings(){ renderSettings(); show('settingsPage'); }
+function closeSettings(){ hide('settingsPage'); }
+function show(id){ document.getElementById(id).classList.add("show"); }
+function hide(id){ document.getElementById(id).classList.remove("show"); }
+
+var _toastT;
+function toast(msg){
+  var t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(_toastT); _toastT=setTimeout(function(){t.classList.remove("show");},2200);
+}
+function copyText(t){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(function(){ toast("已复制"); })
+      .catch(function(){ fallbackCopy(t); });
+  } else {
+    fallbackCopy(t);
+  }
+}
+function fallbackCopy(t){
+  var ta = document.createElement("textarea");
+  ta.value = t; ta.style.position="fixed"; ta.style.opacity="0"; ta.style.left="-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  try{ document.execCommand("copy"); toast("已复制"); }catch(e){ toast("复制失败，请长按手动复制"); }
+  document.body.removeChild(ta);
+}
+function showPrompt(title, val, cb){
+  var box=document.getElementById("dlgBox");
+  box.innerHTML='<div class="dh">'+esc(title)+'</div>'+
+    '<input class="di" id="dlgInput" value="'+esc(val||"")+'">'+
+    '<div class="df"><button class="cancel" onclick="closeDlg()">取消</button>'+
+    '<button class="ok" id="dlgOk">确定</button></div>';
+  document.getElementById("dlgMask").classList.add("show");
+  document.getElementById("dlgInput").focus();
+  document.getElementById("dlgOk").onclick=function(){ var v=document.getElementById("dlgInput").value; closeDlg(); cb&&cb(v); };
+}
+function showConfirm(title, msg, cb, danger){
+  var box=document.getElementById("dlgBox");
+  box.innerHTML='<div class="dh">'+esc(title)+'</div><div class="db">'+esc(msg)+'</div>'+
+    '<div class="df"><button class="cancel" onclick="closeDlg()">取消</button>'+
+    '<button class="ok'+(danger?" danger":"")+'" id="dlgOk">确定</button></div>';
+  document.getElementById("dlgMask").classList.add("show");
+  document.getElementById("dlgOk").onclick=function(){ closeDlg(); cb&&cb(); };
+}
+function closeDlg(){ document.getElementById("dlgMask").classList.remove("show"); }
+
+/* ================= 工具 ================= */
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function friendlyErr(err){
+  var m = (err && err.message) || String(err);
+  // 超时（F17：与「网络不通」区分开）
+  if(/超时|TimeoutError|timeout/i.test(m)) return "请求超时（服务响应太慢或网络卡顿）：请检查网络，稍后重试";
+  // 网络不通 / 跨域被拦截（浏览器 fetch 失败时只有 Failed to fetch，无 HTTP 状态码）
+  if(/Failed to fetch|NetworkError|net::|Load failed|TypeError/i.test(m) && !/HTTP \d/.test(m)){
+    var net = (typeof navigator!=="undefined" && navigator.onLine===false) ? "（当前网络似乎已断开）" : "";
+    return "网络/跨域被拦截"+net+"：请确认本机网络通畅、请求地址是 https 且可达";
+  }
+  // 鉴权失败
+  if(/401|403|Unauthorized|Forbidden/i.test(m)) return "API Key 无效或无权访问，请到设置检查接口 Key";
+  // 频率限制
+  if(/429|Too Many|rate/i.test(m)) return "请求太频繁(429)，请稍后再试";
+  // 服务端 5xx 细分
+  var sm = m.match(/HTTP (5\d\d)/);
+  if(sm){
+    var code = sm[1];
+    if(code==="503") return "服务端返回 503（服务/网关临时不可用），请稍后重试";
+    if(code==="502") return "服务端返回 502（网关错误），请稍后重试";
+    if(code==="504") return "服务端返回 504（网关超时），请稍后重试";
+    return "服务端返回 "+code+"，请稍后重试";
+  }
+  // 其他 4xx
+  var s4 = m.match(/HTTP (4\d\d)/);
+  if(s4) return "请求被拒绝("+s4[1]+")，请检查接口地址或参数";
+  return m.slice(0,80);
+}
+
+/* ================= F18：崩溃日志留痕 ================= */
+var CRASH_KEY = "pa_errors";
+function loadCrashes(){ try{ return JSON.parse(localStorage.getItem(CRASH_KEY)||"[]"); }catch(e){ return []; } }
+function logCrash(msg){
+  var arr = loadCrashes();
+  arr.unshift({ t:new Date().toISOString(), m:String(msg).slice(0,500) });
+  if(arr.length>20) arr = arr.slice(0,20);
+  try{ localStorage.setItem(CRASH_KEY, JSON.stringify(arr)); }catch(e){}
+}
+function installErrorCapture(){
+  if(typeof window==="undefined") return;
+  window.addEventListener("error", function(e){ logCrash((e.message||"error")+(e.filename?(" @ "+e.filename+":"+e.lineno):"")); });
+  window.addEventListener("unhandledrejection", function(e){ var r=e.reason; logCrash("Promise 未处理："+((r&&r.message)||r||"unknown")); });
+}
+function openCrash(){ renderCrash(); show('crashPage'); }
+function renderCrash(){
+  var box = document.getElementById("crashBody"); if(!box) return;
+  var arr = loadCrashes();
+  if(!arr.length){ box.innerHTML = '<div class="crash-empty">暂无崩溃记录 🎉</div>'; return; }
+  box.innerHTML =
+    '<div style="padding:12px 16px"><button style="width:100%;background:var(--input);color:var(--danger);border:none;border-radius:8px;padding:11px;font-size:14px;cursor:pointer" onclick="clearCrash()">清空日志</button></div>'+
+    arr.map(function(c){ return '<div class="crash-item"><div class="ct">'+esc(c.t)+'</div><div class="cm">'+esc(c.m)+'</div></div>'; }).join('');
+}
+function clearCrash(){ try{ localStorage.removeItem(CRASH_KEY); }catch(e){} renderCrash(); toast("已清空崩溃日志"); }
+
+/* ================= F36：分享给亲友（二维码，纯 JS 生成，离线可用） ================= */
+function openShare(){ renderShare(); show('sharePage'); }
+function renderShare(){
+  var el = document.getElementById('shareUrl');
+  if(el) el.value = CFG.shareUrl || CFG.updateBase || "";
+  renderShareQR();
+}
+function renderShareQR(){
+  var box = document.getElementById('shareQR');
+  if(!box) return;
+  var url = (CFG.shareUrl || CFG.updateBase || "").trim();
+  if(!url){ box.innerHTML = '<div style="color:#999;font-size:13px;padding:50px 12px">请先在下方填写分享链接</div>'; return; }
+  try{
+    var qr = qrcode(0, 'M');
+    qr.addData(url); qr.make();
+    box.innerHTML = qr.createImgTag(5, 10);
+  }catch(e){ box.innerHTML = '<div style="color:#c00;font-size:13px;padding:24px 12px">二维码生成失败：'+((e&&e.message)||e)+'</div>'; }
+}
+function copyShare(){
+  var el = document.getElementById('shareUrl');
+  var v = el ? el.value.trim() : "";
+  if(!v){ toast("请先填写分享链接"); return; }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(v).then(function(){ toast("链接已复制"); }, function(){ fallbackCopy(v); });
+  } else { fallbackCopy(v); }
+}
+function fallbackCopy(v){
+  try{
+    var ta = document.createElement('textarea'); ta.value = v; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast("链接已复制");
+  }catch(e){ toast("复制失败，请手动长按选择"); }
+}
+
+/* ================= F17：离线状态条 ================= */
+function updateOnline(){
+  var bar = document.getElementById("offlineBar");
+  if(bar) bar.style.display = (typeof navigator!=="undefined" && navigator.onLine===false) ? "block" : "none";
+}
+
+/* ================= 启动 ================= */
+(async function init(){
+  installErrorCapture();   /* F18：捕获全局崩溃 */
+  CFG = await loadCfg();   /* F34：异步解密本地配置（含加密 Key） */
+  ensureInit();
+  applyTheme();
+  applyBg();
+  renderConvList(); renderMsgs(); updateTitle();
+  updateOnline();          /* F17：离线状态条 */
+  window.addEventListener("offline", function(){ updateOnline(); toast("网络已断开，发送可能失败"); });
+  window.addEventListener("online", function(){ updateOnline(); toast("网络已恢复"); });
+
+  silentCheckUpdate();       /* F35：启动静默检查热更新 */
+  var input=document.getElementById("input");
+  input.addEventListener("keydown",function(e){
+    if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); onSend(); }
+  });
+})();
+</script>
+</body>
+</html>
