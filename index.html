@@ -2846,7 +2846,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.19";
+var APP_VERSION = "0.2.20";
 /* APK 安装包版本号：每次重打包 +1，用于「APK 自动更新」比对（与 android/app/build.gradle 的 versionCode 保持一致） */
 var APK_VERSION_CODE = 20260720;
 /* APK 更新信息地址（apk-version.json 所在目录，含 versionCode / versionName / apkUrl）。为空时用默认发布地址 */
@@ -2934,7 +2934,7 @@ function currentApi(){
 function currentApiKey(){ return currentApi().key||""; }
 function apiBase(){ return (currentApi().baseUrl||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
 function pollBase(){ return apiBase().replace(/\/v1$/,"")+"/agnesapi"; }
-function currentModel(kind){ var m = (currentApi().models||{})[kind]; if(m && m.trim()) return m.trim(); return MODEL_DEFAULTS[kind]||""; }
+function currentModel(kind){ var m = normalizeModel((currentApi().models||{})[kind]); if(m && m.trim()) return m.trim(); return MODEL_DEFAULTS[kind]||""; }
 /* ============ 技能系统（A：人设 / 提示词插件，纯前端、用户可自建） ============ */
 function getApiById(id){ var apis=CFG&&CFG.apis; if(!apis) return null; return apis.find(function(x){return x.id===id;})||null; }
 function apiBaseFor(a){ return ((a&&a.baseUrl)||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
@@ -2973,6 +2973,9 @@ function normalizeModel(name){
   if(!name) return "";
   var s = String(name).trim().toLowerCase().replace(/\s+/g,"");
   var map = {
+    "agnes-2.5": "agnes-2.0-flash",
+    "agnes-2.5-flash": "agnes-2.0-flash",
+    "agnes-2.5flash": "agnes-2.0-flash",
     "agnes-image-2.0": "agnes-image-2.0-flash",
     "agnes-image-2.1": "agnes-image-2.1-flash",
     "agnes-image-2.0flash": "agnes-image-2.0-flash",
@@ -2981,6 +2984,7 @@ function normalizeModel(name){
     "image-2.1": "agnes-image-2.1-flash"
   };
   if(map[s]) return map[s];
+  if(/^agnes-2\.5/.test(s)) return "agnes-2.0-flash";
   if(/^agnes-image-2\.0$/.test(s)) return "agnes-image-2.0-flash";
   if(/^agnes-image-2\.1$/.test(s)) return "agnes-image-2.1-flash";
   return name.trim();
@@ -3704,6 +3708,7 @@ function scrollBottom(){ var b=document.getElementById("msgs"); setTimeout(funct
 function autoGrow(el){ el.style.height="auto"; el.style.height=Math.min(el.scrollHeight,100)+"px"; }
 
 function onSend(){
+  if(chatStreaming && !activeAbort){ chatStreaming = false; setGenState(false); }  /* 防御：清除 stale 生成态 */
   if(chatStreaming){ var t=document.getElementById("input").value.trim(); if(t){ onGuideInput(); } else { stopGenerate(); } return; }   /* 仅流式聊天生成中拦截：有字=引导改道，无字=停止（生图/生视频是独立后台任务，不走到这、不挡发消息） */
   var el = document.getElementById("input");
   var text = el.value.trim();
@@ -3890,10 +3895,14 @@ function doChat(text, attachments){
   chatStreaming = false; /* 防御：清理上一轮可能残留的生成态，避免 onSend 误拦截 */
   attachments = attachments || [];
   var c = current();
+  if(!c){ toast("⚠️ 当前会话不存在，请新建对话"); return; }
   /* 技能系统（A）：当前会话若绑定技能，则临时选用该技能的接口/模型，并注入人设提示词 */
   var skill = (c && c.skillId) ? getSkill(c.skillId) : null;
   var useApi = (skill && skill.apiId && getApiById(skill.apiId)) ? getApiById(skill.apiId) : currentApi();
-  var useModel = (skill && skill.model && skill.model.trim()) ? skill.model.trim() : (useApi.models.text || MODEL_DEFAULTS.text);
+  if(!useApi){ toast("⚠️ 未找到当前接口，请到 设置→API 接口管理 配置"); return; }
+  var useModel = normalizeModel((skill && skill.model && skill.model.trim()) ? skill.model.trim() : (useApi.models.text || MODEL_DEFAULTS.text));
+  if(useModel.indexOf("agnes-2.5")===0){ useModel = "agnes-2.0-flash"; console.warn("[doChat] 2.5-flash 已下架，自动降级到 2.0-flash"); }
+  toast("正在请求：" + useModel);  // 诊断：让用户/我们看到实际用的是什么模型
   var allTxt = c.messages.filter(function(m){return m.type==="text";});
   var summaryMsg = allTxt.filter(function(m){return m.role==="summary";})[0];
   var recent = allTxt.filter(function(m){return m.role!=="summary";}).slice(-12)
@@ -4029,6 +4038,7 @@ function doChat(text, attachments){
       finalizeChat(aiMsg, chatAcc, attachments);
     }).catch(function(err){
       clearTimeout(chatTimer);
+      if(!aiMsg){ toast("⚠️ 创建消息失败，请重试"); chatStreaming=false; setGenState(false); return; }
       if(err && (err.name==="AbortError" || /abort/i.test(err.message||""))){
         var note = abortReason==="timeout" ? "\n\n（请求超时，已自动停止）"
                  : abortReason==="guide" ? "\n\n（已按新指令改写）"

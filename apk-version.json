@@ -1,6 +1,6 @@
 {
   "versionCode": 20260720,
-  "versionName": "0.2.19",
+  "versionName": "0.2.20",
   "apkUrl": "https://tan719405973-afk.github.io/phone-agent-hotupdate/phone-agent-release.apk",
-  "note": "v0.2.19：API 系统理顺（独立稳定区+测试连接诊断+Key缺失明确提示+配置读取兜底）；延续对话卡死修复/下载修复/日志自动生成"
+  "note": "v0.2.20：2.5-flash 强制映射到 2.0-flash（灰度已下架）；聊天入口加模型诊断；防御 stale chatStreaming 与空 aiMsg"
 }
