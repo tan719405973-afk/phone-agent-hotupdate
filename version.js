@@ -1,1 +1,1 @@
-window.__PA_VER__ = {"version": "0.2.10", "note": "v0.2.10\uff1a\u9ed8\u8ba4\u6587\u672c\u6a21\u578b\u5347\u7ea7\u4e3a agnes-2.5-flash\u3002", "url": ""};
+window.__PA_VER__ = {"version": "0.2.11", "note": "v0.2.11\uff1a\u9ed8\u8ba4\u6a21\u578b\u8fc1\u79fb\u6539\u4e3a\u7248\u672c\u6807\u8bb0\u9a71\u52a8\uff0c\u4e0d\u518d\u5199\u6b7b\u6a21\u578b\u540d\uff0c\u968f\u65f6\u53ef\u5207\u4efb\u610f\u6a21\u578b\uff08\u5982 DeepSeek\uff09\u3002", "url": ""};

@@ -2799,13 +2799,17 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.10";
+var APP_VERSION = "0.2.11";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.2.11", date:"2026-07-19", items:[
+    "优化：默认模型迁移改为「版本标记驱动」，不再写死具体模型名——随时可切任意模型（如 DeepSeek）",
+    "修复：用户自定义过的接口（含自建 DeepSeek 等）不再被官方默认升级覆盖；只有「从未改过的内置默认」才跟随官方默认"
+  ]},
   { v:"0.2.10", date:"2026-07-19", items:[
     "修复：老用户升级后仍走旧默认模型（agnes-2.0-flash）的问题——启动自动把默认 API 模型迁移到最新（agnes-2.5-flash）"
   ]},
@@ -2864,8 +2868,11 @@ function currentApiKey(){ return currentApi().key||""; }
 function apiBase(){ return (currentApi().baseUrl||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
 function pollBase(){ return apiBase().replace(/\/v1$/,"")+"/agnesapi"; }
 function currentModel(kind){ var m = (currentApi().models||{})[kind]; if(m && m.trim()) return m.trim(); return MODEL_DEFAULTS[kind]||""; }
-/* 官方推荐的默认模型（用户没填/填空时兜底，避免“模型乱填”导致功能失效） */
+/* 官方推荐的默认模型（用户没填/填空时兜底，避免"模型乱填"导致功能失效） */
 var MODEL_DEFAULTS = { text:"agnes-2.5-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0" };
+/* 官方默认模型集"版本号"：改默认模型时 +1。未自定义的内置默认接口会在启动时自动对齐到最新官方默认。
+   v1 = agnes-2.0-flash 时代（项目早期默认）；v2 = agnes-2.5-flash 时代（当前默认）。 */
+var DEFAULT_MODELS_VER = "2";
 /* 模型名容错：把常见简写/漏写 -flash 的补全成官方正式名；认不出时原样返回 */
 function normalizeModel(name){
   if(!name) return "";
@@ -2887,7 +2894,7 @@ function makeDefaultApi(id){
   return { id:id||"agnes-default", name:"Agnes", icon:"A", baseUrl:"https://apihub.agnes-ai.com/v1", key:"",
            models:{text:"agnes-2.5-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0"},
            modelsList:["agnes-2.0-flash","agnes-2.5-flash","agnes-image-2.0-flash","agnes-image-2.1-flash","agnes-video-v2.0"],
-           routable:true };
+           routable:true, isBuiltinDefault:true, defaultModelsVer:DEFAULT_MODELS_VER };
 }
 function genId(){ return "api_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6); }
 
@@ -3128,6 +3135,9 @@ function loadCfg(){
         if(!a.models.imageEdit) a.models.imageEdit = a.models.image;   /* 旧版只有单图像模型：复用它作为图生图/编辑模型 */
         a.modelsList = [];
         a.routable = true;
+        /* 老单接口用户：若曾填过自定义模型名 → 冻结（不再随官方默认升级）；否则标记为内置默认、走升级 */
+        if(obj.modelText && String(obj.modelText).trim()){ a.isBuiltinDefault = false; }
+        else { a.isBuiltinDefault = true; a.defaultModelsVer = "1"; }
         obj.apis = [a];
         obj.currentApiId = a.id;
         delete obj.apiKey; delete obj.baseUrl; delete obj.modelText; delete obj.modelImage; delete obj.modelVideo;
@@ -3139,15 +3149,21 @@ function loadCfg(){
           if(!a.models.imageEdit) a.models.imageEdit = a.models.image || makeDefaultApi().models.imageEdit;
         });
       }
-      /* 迁移：默认 Agnes API 若仍用旧默认文本模型，对齐到最新官方默认
-         老用户首次启动已把默认 API 的 models.text 固化为当时的 agnes-2.0-flash，
-         仅改 MODEL_DEFAULTS 不会生效；这里在每次加载时把旧默认升级到最新 */
+      /* 迁移：未自定义的内置默认接口，若默认模型集版本落后官方，自动对齐到最新官方默认。
+         判定"内置默认且未自定义"：
+           ① 新格式：isBuiltinDefault===true
+           ② 旧格式（无标记）：id 为内置默认 且 文本模型仍是 agnes-* 官方默认（说明没换过）
+         用户改过（isBuiltinDefault=false）或自建的其他接口（如 DeepSeek）不受影响，随时可切。 */
       if(Array.isArray(obj.apis)){
         obj.apis.forEach(function(a){
-          if(a && (a.id==="agnes-default" || a.name==="Agnes")){
-            if(a.models && a.models.text==="agnes-2.0-flash"){
-              a.models = Object.assign({}, MODEL_DEFAULTS);
-            }
+          if(!a) return;
+          var legacyBuiltin = (a.isBuiltinDefault===undefined && a.defaultModelsVer===undefined
+                               && a.id==="agnes-default" && /^agnes-/.test((a.models&&a.models.text)||""));
+          var isBuiltin = (a.isBuiltinDefault===true) || legacyBuiltin;
+          if(isBuiltin && a.defaultModelsVer!==DEFAULT_MODELS_VER){
+            a.models = Object.assign({}, MODEL_DEFAULTS);
+            a.defaultModelsVer = DEFAULT_MODELS_VER;
+            a.isBuiltinDefault = true;
           }
         });
       }
@@ -4659,9 +4675,9 @@ function saveApi(){
   var routable = document.getElementById("aeRoutable").checked;
   if(API_EDITING_ID){
     var idx = CFG.apis.findIndex(function(x){return x.id===API_EDITING_ID;});
-    if(idx>=0) CFG.apis[idx] = { id:API_EDITING_ID, name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable };
+    if(idx>=0) CFG.apis[idx] = { id:API_EDITING_ID, name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable, isBuiltinDefault:false, defaultModelsVer:DEFAULT_MODELS_VER };
   }else{
-    CFG.apis.push({ id:genId(), name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable });
+    CFG.apis.push({ id:genId(), name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable, isBuiltinDefault:false, defaultModelsVer:DEFAULT_MODELS_VER });
   }
   saveCfg(); closeApiEdit(); renderApiList(); toast("已保存");
 }
