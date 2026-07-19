@@ -2799,13 +2799,16 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.8";
+var APP_VERSION = "0.2.9";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.2.9", date:"2026-07-19", items:[
+    "默认文本模型升级为 agnes-2.5-flash（编码 / 推理更强；生图、图生图、视频模型不变）"
+  ]},
   { v:"0.2.8", date:"2026-07-19", items:[
     "新增「会话上限自动总结」：单会话消息过多时，自动把较早对话总结成摘要并继续聊，不再丢失上下文",
     "新增「版本历史 / 回退」：可回退到最近 5 个历史版本（设置 → 关于 → 版本历史 / 回退），容错更强",
@@ -2859,7 +2862,7 @@ function apiBase(){ return (currentApi().baseUrl||"https://apihub.agnes-ai.com/v
 function pollBase(){ return apiBase().replace(/\/v1$/,"")+"/agnesapi"; }
 function currentModel(kind){ var m = (currentApi().models||{})[kind]; if(m && m.trim()) return m.trim(); return MODEL_DEFAULTS[kind]||""; }
 /* 官方推荐的默认模型（用户没填/填空时兜底，避免“模型乱填”导致功能失效） */
-var MODEL_DEFAULTS = { text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0" };
+var MODEL_DEFAULTS = { text:"agnes-2.5-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0" };
 /* 模型名容错：把常见简写/漏写 -flash 的补全成官方正式名；认不出时原样返回 */
 function normalizeModel(name){
   if(!name) return "";
@@ -2879,7 +2882,7 @@ function normalizeModel(name){
 }
 function makeDefaultApi(id){
   return { id:id||"agnes-default", name:"Agnes", icon:"A", baseUrl:"https://apihub.agnes-ai.com/v1", key:"",
-           models:{text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0"},
+           models:{text:"agnes-2.5-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0"},
            modelsList:["agnes-2.0-flash","agnes-2.5-flash","agnes-image-2.0-flash","agnes-image-2.1-flash","agnes-video-v2.0"],
            routable:true };
 }
