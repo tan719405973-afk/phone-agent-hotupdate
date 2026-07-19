@@ -2846,7 +2846,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.17";
+var APP_VERSION = "0.2.18";
 /* APK 安装包版本号：每次重打包 +1，用于「APK 自动更新」比对（与 android/app/build.gradle 的 versionCode 保持一致） */
 var APK_VERSION_CODE = 20260720;
 /* APK 更新信息地址（apk-version.json 所在目录，含 versionCode / versionName / apkUrl）。为空时用默认发布地址 */
@@ -5263,13 +5263,53 @@ function friendlyErr(err){
 /* ================= F36：分享给亲友（二维码，纯 JS 生成，离线可用） ================= */
 function openShare(){ renderShare(); show('sharePage'); }
 /* ================= F41：更新日志 ================= */
-function openChangelog(){ renderChangelog(); show('changelogPage'); }
+function openChangelog(){
+  var base = updateBaseUrl();
+  if(base){
+    // 打开时拉最新 versions.js，保证日志与发布同步（自动含 v0.2.15/16/17…的 note）
+    loadScript(base+"/versions/versions.js?t="+Date.now(), 12000)
+      .then(function(){ renderChangelog(); })
+      .catch(function(){ renderChangelog(); });
+  } else {
+    renderChangelog();
+  }
+  show('changelogPage');
+}
+/* 版本号点分比较：返回 >0 表示 a 新于 b */
+function cmpVer(a,b){
+  var xa=String(a).split('.').map(Number), xb=String(b).split('.').map(Number);
+  for(var i=0;i<Math.max(xa.length,xb.length);i++){ var d=(xa[i]||0)-(xb[i]||0); if(d) return d; }
+  return 0;
+}
+/* 更新日志：本地 CHANGELOG（旧版兜底）+ 远程发布数据（window.__PA_VERSIONS__，note 更准）合并，按版本降序 */
 function renderChangelog(){
   var box = document.getElementById("changelogBody");
   if(!box) return;
-  box.innerHTML = CHANGELOG.map(function(c){
+  var map = {};
+  (CHANGELOG||[]).forEach(function(c){
+    map[c.v] = { v:c.v, date:c.date||"", items:(c.items||[]).slice() };
+  });
+  var remote = window.__PA_VERSIONS__ || [];
+  remote.forEach(function(r){
+    if(!r || !r.v) return;
+    var note = (r.note||"").replace(/^v[\d.]+[:：]\s*/, "");   // 去掉 "v0.2.18：" 前缀
+    var items = [];
+    note.split(/[；;]/).forEach(function(s){
+      var t = s.replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
+      if(t) items.push(t);
+    });
+    if(!items.length) items.push((r.note||"").trim());
+    map[r.v] = { v:r.v, date:r.date||"", items:items };   // 远程覆盖本地
+  });
+  var list = Object.keys(map).map(function(k){ return map[k]; });
+  list.sort(function(a,b){ return cmpVer(b.v, a.v); });   // 新版本在前
+  if(!list.length){
+    box.innerHTML = '<div style="color:#999;font-size:13px;padding:40px 12px;text-align:center">暂无更新日志</div>';
+    return;
+  }
+  box.innerHTML = list.map(function(c){
     return '<div style="margin-bottom:18px">'+
-      '<div style="font-size:15px;font-weight:600;color:var(--text-1);margin-bottom:6px">v'+esc(c.v)+' <span style="font-size:12px;color:var(--text-3);font-weight:400">'+esc(c.date)+'</span></div>'+
+      '<div style="font-size:15px;font-weight:600;color:var(--text-1);margin-bottom:6px">v'+esc(c.v)+' <span style="font-size:12px;color:var(--text-3);font-weight:400">'+esc(c.date||"")+'</span></div>'+
       '<div style="padding-left:4px">'+
         c.items.map(function(it){ return '<div style="font-size:13px;color:var(--text-2);margin:6px 0;line-height:1.5">• '+esc(it)+'</div>'; }).join('')+
       '</div>'+
