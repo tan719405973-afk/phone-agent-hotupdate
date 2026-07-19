@@ -138,6 +138,7 @@
     padding:5px 11px;font-size:12.5px;color:var(--text-1);white-space:nowrap;cursor:pointer;}
   .skchip.active{background:var(--green);border-color:var(--green);color:#fff;font-weight:600;}
   .skchip.clear{color:var(--text-3);}
+  .skill-tag{display:inline-block;background:var(--green);color:#fff;border-radius:8px;padding:1px 7px;font-size:11px;font-weight:600;margin-bottom:3px;}
   .mini-btn{flex:0 0 auto;margin-left:6px;background:var(--white);border:1px solid var(--line);
     border-radius:14px;padding:4px 12px;font-size:12px;color:var(--text-1);cursor:pointer;}
   .mini-btn:active{background:var(--input);}
@@ -495,8 +496,40 @@
       </select>
       <div style="font-size:13px;color:var(--text-2);margin-bottom:8px">详细描述</div>
       <textarea id="fbText" rows="6" placeholder="说说你的想法或遇到的问题…" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:11px;font-size:15px;box-sizing:border-box;resize:vertical;background:var(--bg);color:var(--text)"></textarea>
-      <button class="btn-primary" style="width:100%;margin-top:16px" onclick="sendFeedback()">复制反馈内容</button>
-      <div style="margin-top:12px;font-size:12px;color:var(--text-3);text-align:center">复制后，去微信 / 备忘录粘贴发给开发者即可</div>
+      <button class="btn-primary" style="width:100%;margin-top:16px" onclick="sendFeedback()">提交并复制到剪贴板</button>
+      <div style="margin-top:12px;font-size:12px;color:var(--text-3);text-align:center">提交后会自动记录在本机，也可直接复制去微信 / 备忘录发给开发者</div>
+
+      <div style="height:1px;background:var(--line);margin:20px 0 12px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:14px;font-weight:600">已记录的反馈（本机）<span id="fbCount" style="color:var(--text-3);font-weight:400"></span></div>
+        <a id="fbClear" style="font-size:12px;color:#e25;display:none" onclick="clearFeedbacks()">清空</a>
+      </div>
+      <div id="fbList"></div>
+      <div id="fbEmpty" style="font-size:12px;color:var(--text-3)">还没有记录。提交后会自动保存在本机，可在这里回看。</div>
+    </div>
+  </div>
+
+  <!-- 反馈推送到微信（配置 Server酱 / PushPlus） -->
+  <div class="dlg-mask" id="fbPushMask">
+    <div class="dlg">
+      <div class="dh">反馈推送到微信</div>
+      <div style="padding:0 20px 4px">
+        <div style="font-size:13px;color:var(--text-2);margin-bottom:6px">服务</div>
+        <select id="fbPushType" onchange="onFbPushType()"
+          style="width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:15px;background:var(--input);color:var(--text);box-sizing:border-box">
+          <option value="none">关闭（仅本机记录）</option>
+          <option value="pushplus">PushPlus 推送加</option>
+          <option value="serverchan">Server酱 Turbo</option>
+        </select>
+        <div style="font-size:13px;color:var(--text-2);margin:12px 0 6px">Token / SendKey</div>
+        <input id="fbPushKey" placeholder="在对应网站获取的 token"
+          style="width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:15px;box-sizing:border-box;background:var(--input);color:var(--text);outline:none">
+        <div id="fbPushHint" style="font-size:12px;color:var(--text-3);margin-top:8px;line-height:1.5"></div>
+      </div>
+      <div class="df">
+        <button class="cancel" onclick="hide('fbPushMask')">取消</button>
+        <button class="ok" onclick="saveFbPush()">保存</button>
+      </div>
     </div>
   </div>
 
@@ -2813,7 +2846,11 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.14";
+var APP_VERSION = "0.2.16";
+/* APK 安装包版本号：每次重打包 +1，用于「APK 自动更新」比对（与 android/app/build.gradle 的 versionCode 保持一致） */
+var APK_VERSION_CODE = 20260720;
+/* APK 更新信息地址（apk-version.json 所在目录，含 versionCode / versionName / apkUrl）。为空时用默认发布地址 */
+var APK_UPDATE_BASE = "https://tan719405973-afk.github.io/phone-agent-hotupdate";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -2964,7 +3001,10 @@ var DEFAULT_CFG = {
   shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
   genParams: { size:"", n:1 },  /* F23 生成参数：尺寸(空=模型默认) / 张数 */
   fontScale: 1,                 /* F31 字体大小：0.85 小 / 1 标准 / 1.15 大 / 1.3 特大 */
-  skills: BUILTIN_SKILLS.map(function(s){ return Object.assign({}, s); })   /* 技能系统：开箱内置 5 个人设/工具（含联网搜索），用户可改/删/自建 */
+  skills: BUILTIN_SKILLS.map(function(s){ return Object.assign({}, s); }),  /* 技能系统：开箱内置 5 个人设/工具（含联网搜索），用户可改/删/自建 */
+  searchEngine: "auto",       /* 联网搜索源：auto=国内+国际双搜 / cn=仅国内必应 / intl=仅国际必应 */
+  feedbacks: [],               /* 意见反馈：提交即自动记录到本机（{ts,type,text,ver}），可在反馈页/设置查看 */
+  feedbackPush: { type:"none", key:"" }  /* 反馈送达：none=仅本机 / pushplus|serverchan=推送到开发者微信 */
 };
 var CFG = null;
 
@@ -2975,6 +3015,7 @@ var quotedMsg = null;
 
 /* ================= C 组：体验闭环（F20/F21/F24/F17/F18） ================= */
 var activeAbort = null;        /* 聊天流式 AbortController（F20 停止生成） */
+var chatStreaming = false;     /* 仅流式聊天进行中为 true；图片/视频生成为独立后台任务，永不置此标志，故生图/生视频绝不会挡住发消息 */
 var abortReason = null;        /* 'stop' | 'timeout' */
 var retryStore = {};           /* 失败消息 → 重试闭包（F24，不入 localStorage） */
 var videoPollCancel = false;   /* 视频轮询取消标记（F24） */
@@ -3005,6 +3046,14 @@ function onGuideInput(){
   el.value = ""; autoGrow(el);
   abortReason = "guide";
   try{ activeAbort.abort(); }catch(e){}
+}
+/* 通用取消：按消息 id 调其 _cancelFn（生图 abort fetch / 生视频置取消标记） */
+function isAbortErr(e){ return !!(e && (e.name==="AbortError" || /abort/i.test(e.message||""))); }
+function cancelGen(id){
+  var msgs = (current() && current().messages) || [];
+  for(var i=0;i<msgs.length;i++){
+    if(msgs[i].id===id && typeof msgs[i]._cancelFn==="function"){ msgs[i]._cancelFn(); return; }
+  }
 }
 function cancelVideoPoll(){
   videoPollCancel = true;
@@ -3098,7 +3147,35 @@ function deleteMsg(id){
 }
 function downloadUrl(url, name){
   if(!url){ toast("无可下载内容"); return; }
-  /* 同源 / data URL / blob URL：直接点 a[download] 即可 */
+  var ext = (name && name.match(/\.(\w+)$/)) ? RegExp.$1 : "png";
+  /* APK 内：安卓 WebView 不支持 a.download，必须用原生桥把文件真落盘，再调起系统查看器存到相册 */
+  if(hasNative() && url.indexOf("data:")!==0 && url.indexOf("blob:")!==0){
+    toast("正在保存…");
+    fetchTimeout(url, {method:"GET", mode:"cors", referrerPolicy:"no-referrer"}, 30000)
+      .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.blob(); })
+      .then(function(b){
+        var fr = new FileReader();
+        fr.onload = function(){
+          var b64 = String(fr.result);
+          var uri = "";
+          try{ uri = NativeBridge.saveMedia(b64, ext); }catch(e){ uri = "err:"+(e&&e.message||e); }
+          if(!uri || uri.indexOf("err:")===0){
+            toast("保存失败："+(uri?uri.slice(4):"未知")+"，已打开预览");
+            window.open(url, "_blank"); return;
+          }
+          toast("已保存到本机，正在打开…");
+          try{ NativeBridge.viewUri(uri, name||("file."+ext)); }catch(e){ /* 无查看器则提示已保存 */ }
+        };
+        fr.onerror = function(){ toast("读取图片失败，已打开预览"); window.open(url, "_blank"); };
+        fr.readAsDataURL(b);
+      })
+      .catch(function(e){
+        toast("获取文件失败："+(e&&e.message||e)+"，已打开预览");
+        window.open(url, "_blank");
+      });
+    return;
+  }
+  /* 浏览器预览：同源 / data / blob 直接 a[download]；跨域先 fetch blob */
   if(url.indexOf("data:")===0 || url.indexOf("blob:")===0 || url.indexOf(location.origin)===0){
     try{
       var a = document.createElement("a");
@@ -3108,7 +3185,6 @@ function downloadUrl(url, name){
     }catch(e){ toast("下载失败：" + friendlyErr(e)); }
     return;
   }
-  /* 跨域： Agnes CDN 有 ACAO:*，先 fetch blob 再下载 */
   toast("正在拉取文件…");
   fetchTimeout(url, {method:"GET", mode:"cors", referrerPolicy:"no-referrer"}, 30000)
     .then(function(r){ return r.blob(); })
@@ -3521,6 +3597,7 @@ function renderRow(m){
     }
     inner = extra + esc(m.text||"");
     if(m.role==="assistant"){
+      if(m.skillTag) inner = '<span class="skill-tag">⚙ '+esc(m.skillTag)+'</span> ' + inner;
       inner += '<div class="media-actions"><a onclick="downloadMsg(\''+m.id+'\')">下载回复</a>'+
                (m._err?'<a onclick="retryMsg(\''+m.id+'\')">重试</a>':'')+'</div>';
     }
@@ -3541,7 +3618,7 @@ function renderRow(m){
   } else if(m.type==="loading"){
     inner = '<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>'+
             (m.text?' <span style="color:var(--text-3);font-size:13px">'+esc(m.text)+'</span>':'')+
-            (m._cancelable?'<div class="gen-actions"><a onclick="cancelVideoPoll()">停止生成</a></div>':'');
+            (m._cancelable?'<div class="gen-actions"><a onclick="cancelGen(\''+m.id+'\')">停止生成</a><span style="color:var(--text-3);font-size:12px;margin-left:8px">· 可继续发消息</span></div>':'');
   }
   row.innerHTML = '<div class="avatar">'+av+'</div><div class="bubble">'+inner+'</div>';
   bindLongPress(row, function(){ onRowLongPress(m); });
@@ -3583,7 +3660,7 @@ function scrollBottom(){ var b=document.getElementById("msgs"); setTimeout(funct
 function autoGrow(el){ el.style.height="auto"; el.style.height=Math.min(el.scrollHeight,100)+"px"; }
 
 function onSend(){
-  if(activeAbort){ var t=document.getElementById("input").value.trim(); if(t){ onGuideInput(); } else { stopGenerate(); } return; }   /* 生成中：有字=引导改道，无字=停止 */
+  if(chatStreaming){ var t=document.getElementById("input").value.trim(); if(t){ onGuideInput(); } else { stopGenerate(); } return; }   /* 仅流式聊天生成中拦截：有字=引导改道，无字=停止（生图/生视频是独立后台任务，不走到这、不挡发消息） */
   var el = document.getElementById("input");
   var text = el.value.trim();
   if(!text && pendingAttachments.length === 0) return;
@@ -3714,39 +3791,66 @@ var WEB_SEARCH_TOOL = {
     parameters:{ type:"object", properties:{ query:{ type:"string", description:"搜索关键词" } }, required:["query"] }
   }
 };
-/* 本地执行 web_search 工具：经公共 CORS 代理（主 allorigins / 备 codetabs）直抓 DuckDuckGo HTML，解析前 N 条，返回 [{id, content}] */
+/* 本地执行 web_search 工具：优先走原生桥 NativeBridge.httpGet 直连 cn.bing.com（绕过 WebView CORS，国内秒开）；
+   无原生桥（浏览器预览）时回退公共代理抓 DuckDuckGo。解析前 N 条，返回 [{id, content}] */
 function execWebSearch(toolCalls){
   var proms = toolCalls.map(function(tc){
     var args = {}; try{ args = JSON.parse((tc.function&&tc.function.arguments)||"{}"); }catch(e){ args={}; }
     var q = args.query || args.q || "";
     if(!q) return Promise.resolve({ id:tc.id, content:"【联网搜索：未提供关键词】" });
-    var target = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(q);
-    var sig = (activeAbort && activeAbort.signal) ? activeAbort.signal : undefined;
-    var urlMain = "https://api.allorigins.win/raw?url=" + encodeURIComponent(target);
-    var urlBak  = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(target);
-    /* 解析 DuckDuckGo HTML：每条结果含标题(a.result__a)、摘要(.result__snippet)、真实地址(uddg 参数) */
-    function parseDDG(htmlText){
+
+    /* 解析 Bing 结果页：每条结果在 <li class="b_algo"> 内，标题在 <h2><a href>，摘要在 <p class="b_lineclamp*"> */
+    function parseBing(htmlText){
       try{
         var doc = new DOMParser().parseFromString(htmlText, "text/html");
-        var nodes = doc.querySelectorAll(".result__body");
+        var nodes = doc.querySelectorAll("li.b_algo");
         var out = [];
         for(var i=0; i<nodes.length && out.length<5; i++){
-          var a = nodes[i].querySelector("a.result__a");
-          var snip = nodes[i].querySelector(".result__snippet");
+          var b = nodes[i];
+          var a = b.querySelector("h2 a") || b.querySelector("a");
           if(!a) continue;
           var title = (a.textContent||"").trim();
           var href = a.getAttribute("href")||"";
-          var realUrl = "";
-          var m = href.match(/[?&]uddg=([^&]+)/);
-          if(m) realUrl = decodeURIComponent(m[1]);
-          else if(/^https?:\/\//.test(href)) realUrl = href;
-          var s = snip ? (snip.textContent||"").trim() : "";
-          out.push("• " + title + "\n  " + s + (realUrl? ("\n  " + realUrl) : ""));
+          var p = b.querySelector("p.b_lineclamp, p.b_paractl, p") || null;
+          var s = p ? (p.textContent||"").trim() : "";
+          if(!title && !s) continue;
+          out.push("• " + title + (s? ("\n  " + s) : "") + (href? ("\n  " + href) : ""));
         }
-        if(!out.length) return "【联网搜索：未解析到结果】";
+        if(!out.length) return "【联网搜索：Bing 未返回结果（可能页面结构变化或被验证拦截）】";
         return out.join("\n\n");
       }catch(e){ return "【联网搜索解析失败："+ (e&&e.message||e) +"】"; }
     }
+
+    /* 原生桥优先：直连必应（国内 cn.bing.com + 国际 cn.bing.com&ensearch=1），无 CORS 限制，国内可达。
+       默认双搜（国内+国际）多给你一个搜索源；可在设置里切换「仅国内 / 仅国际」。 */
+    if(typeof NativeBridge!=="undefined" && NativeBridge && typeof NativeBridge.httpGet==="function"){
+      var mode = (CFG && CFG.searchEngine) || "auto"; // auto | cn | intl
+      function fetchBing(ensearch, tag){
+        var url = "https://cn.bing.com/search?q=" + encodeURIComponent(q) + (ensearch===1 ? "&ensearch=1" : "&ensearch=0");
+        try{
+          var r = NativeBridge.httpGet(url);
+          if(typeof r==="string" && r.indexOf("err:")!==0 && r.length>200){
+            var txt = parseBing(r);
+            if(txt.indexOf("【联网搜索")===0) return null;   // 该源无结果则跳过，不污染
+            return "▌"+tag+"\n"+txt;
+          }
+        }catch(e){}
+        return null;
+      }
+      var blocks = [];
+      if(mode!=="intl"){ var cn = fetchBing(0,"必应·国内"); if(cn) blocks.push(cn); }
+      if(mode!=="cn"){ var gl = fetchBing(1,"必应·国际"); if(gl) blocks.push(gl); }
+      if(blocks.length){
+        return Promise.resolve({ id: tc.id, content: "【联网搜索结果("+q+")】\n\n" + blocks.join("\n\n") });
+      }
+      return Promise.resolve({ id: tc.id, content: "【联网搜索失败：原生桥未返回结果，请稍后重试或检查网络】" });
+    }
+
+    /* 回退（浏览器预览）：公共代理抓 DuckDuckGo */
+    var sig = (activeAbort && activeAbort.signal) ? activeAbort.signal : undefined;
+    var target = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(q);
+    var urlMain = "https://api.allorigins.win/raw?url=" + encodeURIComponent(target);
+    var urlBak  = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(target);
     function tryFetch(u){
       return fetch(u, { signal: sig, redirect:"follow", headers:{ "Accept":"text/html" } }).then(function(r){
         if(!r.ok) throw new Error("HTTP "+r.status);
@@ -3754,7 +3858,19 @@ function execWebSearch(toolCalls){
       });
     }
     return tryFetch(urlMain).catch(function(){ return tryFetch(urlBak); }).then(function(t){
-      return { id: tc.id, content: "【联网搜索结果："+q+"】\n"+parseDDG(t) };
+      return { id: tc.id, content: "【联网搜索结果("+q+")】\n"+
+        (function(){ try{
+          var doc = new DOMParser().parseFromString(t,"text/html");
+          var ns = doc.querySelectorAll(".result__body"); var o=[];
+          for(var i=0;i<ns.length&&o.length<5;i++){
+            var a=ns[i].querySelector("a.result__a"); var sn=ns[i].querySelector(".result__snippet");
+            if(!a) continue; var ti=(a.textContent||"").trim(); var h=a.getAttribute("href")||""; var ru="";
+            var mm=h.match(/[?&]uddg=([^&]+)/); if(mm) ru=decodeURIComponent(mm[1]); else if(/^https?:/.test(h)) ru=h;
+            var ss=sn?(sn.textContent||"").trim():"";
+            o.push("• "+ti+(ss?("\n  "+ss):"")+(ru?("\n  "+ru):""));
+          }
+          return o.length?o.join("\n\n"):"【未解析到结果】";
+        }catch(e){ return "【解析失败】"; } })() };
     }).catch(function(e){
       return { id: tc.id, content: "【联网搜索失败："+ (e&&e.message||e) +"】" };
     });
@@ -3782,6 +3898,9 @@ function doChat(text, attachments){
   var hist = recent;
   if(sysParts.length) hist = [{role:"system", content: sysParts.join("\n\n")}].concat(hist);
   var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
+  // 诊断：把当前生效技能打到气泡 tag 上（非侵入，便于确认技能到底绑没绑上）
+  if(skill && skill.name){ try{ aiMsg.skillTag = skill.name; }catch(e){} }
+  console.log("[doChat] skill=", (skill&&skill.id), "name=", (skill&&skill.name), "useApi=", (useApi&&useApi.name), "useModel=", useModel, "wsOn=", wsOn);
   renderMsgs();
   var rowBubble = function(){ var r=document.querySelector('.row[data-mid="'+aiMsg.id+'"] .bubble'); return r; };
   var b = rowBubble(); if(b) b.innerHTML='<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
@@ -3811,7 +3930,7 @@ function doChat(text, attachments){
     /* F20/F24：可打断 + 失败可重试 + 超时保护 */
     abortReason = null;
     var ac = new AbortController();
-    activeAbort = ac; setGenState(true);
+    activeAbort = ac; setGenState(true); chatStreaming = true;
     var chatAcc = "";
     var chatTimer = null;
     function armTimer(){ clearTimeout(chatTimer); chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 240000); }
@@ -3920,11 +4039,12 @@ function doChat(text, attachments){
         return;   /* 保持停止态，待 doChat 重新接管 */
       }
       setGenState(false);
+      chatStreaming = false;
     });
   }).catch(function(err){
     aiMsg._err = true;
     finalizeChat(aiMsg, "⚠️ 附件图片读取失败："+friendlyErr(err), attachments);
-    activeAbort = null; abortReason = null; setGenState(false);
+    activeAbort = null; abortReason = null; setGenState(false); chatStreaming = false;
   });
 }
 function finalizeChat(aiMsg, txt, atts){
@@ -3960,11 +4080,13 @@ function ratioDiff(rw, rh, tw, th){
   return Math.abs(r1-r2)/Math.min(r1, r2);
 }
 function doImage(prompt, refs, params){
+  var ac = new AbortController();
   if(refs && refs.length){
     var _sz = (params && params.size) || "1024x1024";   /* 没选尺寸时按默认 1:1 比对 */
     var _wh = String(_sz).split("x");
     var tw = parseInt(_wh[0],10), th = parseInt(_wh[1],10);
-    var loading = appendMessage({role:"assistant", type:"loading", text:"正在参考图片绘制…"});
+    var loading = appendMessage({role:"assistant", type:"loading", text:"正在参考图片绘制… 可继续发消息"});
+    loading._cancelable = true; loading._cancelFn = function(){ ac.abort(); };
     renderMsgs();
     Promise.all(refs.map(ensureImageBase64)).then(function(b64Refs){
       var validRefs = b64Refs.filter(function(x){ return x; });
@@ -3975,7 +4097,7 @@ function doImage(prompt, refs, params){
           if(dlt >= 0.5){
             /* 比例差异极大（竖图↔横图等）：直接图生图必拉伸，改走理解重绘 */
             loading.text = "参考图与输出比例差异大，已自动改走「理解重绘」避免拉伸…"; renderMsgs();
-            doImageTwoStage(prompt, validRefs, params, loading);
+            doImageTwoStage(prompt, validRefs, params, loading, ac);
             return;
           }
           if(dlt >= 0.2){
@@ -3983,16 +4105,17 @@ function doImage(prompt, refs, params){
             prompt = prompt + "（注意：参考图比例为 "+d.w+":"+d.h+"，输出比例为 "+tw+":"+th+"，请保持画面主体/人物比例不变、不要拉伸变形，通过扩展或裁切背景来适配目标画幅）";
           }
         }
-        genImageDirect(prompt, validRefs, params, loading);
+        genImageDirect(prompt, validRefs, params, loading, ac);
       });
     }).catch(function(err){
       loading._err = true;
       replaceLoading(loading, "⚠️ 参考图读取失败："+friendlyErr(err));
     });
   } else {
-    var loading2 = appendMessage({role:"assistant", type:"loading", text:"正在画图（默认调用图像模型）…"});
+    var loading2 = appendMessage({role:"assistant", type:"loading", text:"正在画图（默认调用图像模型）… 可继续发消息"});
+    loading2._cancelable = true; loading2._cancelFn = function(){ ac.abort(); };
     renderMsgs();
-    genImageOnly(prompt, loading2, null, params);
+    genImageOnly(prompt, loading2, null, params, ac);
   }
 }
 
@@ -4003,7 +4126,9 @@ function resolveImageEditModel(){
   return m || MODEL_DEFAULTS.imageEdit;
 }
 /* 直接图生图：把参考图作为 image 参数传给 /images/generations */
-function genImageDirect(prompt, refs, params, loading){
+function genImageDirect(prompt, refs, params, loading, ac){
+  ac = ac || new AbortController();
+  loading._cancelable = true; loading._cancelFn = function(){ ac.abort(); };
   params = params || CFG.genParams || {};
   function tryWith(model){
     var ib = { model:model, prompt:prompt, size:(params.size||"1024x1024") };
@@ -4011,7 +4136,8 @@ function genImageDirect(prompt, refs, params, loading){
     return fetchTimeout(apiBase()+"/images/generations",{
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
-      body: JSON.stringify(ib)
+      body: JSON.stringify(ib),
+      signal: ac.signal
     }, 120000).then(function(r){
       if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
       return r.json();
@@ -4025,23 +4151,27 @@ function genImageDirect(prompt, refs, params, loading){
   }
   var m0 = resolveImageEditModel();
   tryWith(m0).catch(function(err){
+    if(isAbortErr(err)){ loading._cancelable=false; replaceLoading(loading, "（已取消生图）"); return; }
     /* 图生图失败兜底：若用户配的模型不是官方 2.0-flash，自动用官方图生图模型再试一次（防“模型乱填”） */
     if(m0 !== MODEL_DEFAULTS.imageEdit){
       loading.text = "图生图模型不可用，自动切换到官方 2.0-flash 重试…"; renderMsgs();
       return tryWith(MODEL_DEFAULTS.imageEdit).catch(function(e2){
+        if(isAbortErr(e2)){ loading._cancelable=false; replaceLoading(loading, "（已取消生图）"); return; }
         loading.text = "直接绘制失败，改用参考图理解+重绘…"; renderMsgs();
-        doImageTwoStage(prompt, refs, params, loading);
+        doImageTwoStage(prompt, refs, params, loading, ac);
       });
     }
     /* 直接绘制失败：回退到两段管线（视觉理解 + 纯文生图） */
     loading.text = "直接绘制失败，改用参考图理解+重绘…";
     renderMsgs();
-    doImageTwoStage(prompt, refs, params, loading);
+    doImageTwoStage(prompt, refs, params, loading, ac);
   });
 }
 
 /* 两段管线：视觉模型读参考图 → 生成融合提示词 → 纯文生图 */
-function doImageTwoStage(prompt, refs, params, loading){
+function doImageTwoStage(prompt, refs, params, loading, ac){
+  ac = ac || new AbortController();
+  loading._cancelable = true; loading._cancelFn = function(){ ac.abort(); };
   var content = [{ type:"text", text:
     "请仔细观察这 "+refs.length+" 张参考图，结合我的要求：「"+prompt+"」，"+
     "生成一段用于文生图模型的详细画面提示词（涵盖主体、风格、色调、构图、光影、细节）。"+
@@ -4050,7 +4180,8 @@ function doImageTwoStage(prompt, refs, params, loading){
   fetchTimeout(apiBase()+"/chat/completions",{
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
-    body: JSON.stringify({ model:currentModel("text"), stream:false, messages:[{role:"user", content:content}] })
+    body: JSON.stringify({ model:currentModel("text"), stream:false, messages:[{role:"user", content:content}] }),
+    signal: ac.signal
   }, 120000).then(function(r){
     if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
     return r.json();
@@ -4060,8 +4191,9 @@ function doImageTwoStage(prompt, refs, params, loading){
     fused = String(fused).trim();
     loading.text = "已读参考图，正在按新提示词绘制…";
     renderMsgs();
-    genImageOnly(fused, loading, prompt, params);   /* caption 仍显示用户原始描述 */
+    genImageOnly(fused, loading, prompt, params, ac);   /* caption 仍显示用户原始描述 */
   }).catch(function(err){
+    if(isAbortErr(err)){ loading._cancelable=false; replaceLoading(loading, "（已取消生图）"); return; }
     loading._err = true;
     attachRetry(loading.id, function(){ doImage(prompt, refs, params); });
     replaceLoading(loading, "⚠️ 参考图理解失败："+friendlyErr(err));
@@ -4069,14 +4201,17 @@ function doImageTwoStage(prompt, refs, params, loading){
 }
 
 /* 纯文生图（无参考图 / 两段管线第二段共用） */
-function genImageOnly(prompt, loading, origPrompt, params){
+function genImageOnly(prompt, loading, origPrompt, params, ac){
+  ac = ac || new AbortController();
+  loading._cancelable = true; loading._cancelFn = function(){ ac.abort(); };
   params = params || CFG.genParams || {};
   var ib = { model:currentModel("image"), prompt:prompt, size:(params.size||"1024x1024") };
   ib.extra_body = { response_format: "url" };   /* 官方要求 response_format 放 extra_body 内（不能放顶层） */
   fetchTimeout(apiBase()+"/images/generations",{
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
-    body: JSON.stringify(ib)
+    body: JSON.stringify(ib),
+    signal: ac.signal
   }, 120000).then(function(r){
     if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
     return r.json();
@@ -4087,6 +4222,7 @@ function genImageOnly(prompt, loading, origPrompt, params){
     removeMsg(loading.id); clearRetry(loading.id);
     landAndAppend("image", url, (origPrompt||prompt), mediaExt(url));
   }).catch(function(err){
+    if(isAbortErr(err)){ loading._cancelable=false; replaceLoading(loading, "（已取消生图）"); return; }
     loading._err = true;
     attachRetry(loading.id, function(){ genImageOnly(prompt, loading, origPrompt); });
     replaceLoading(loading, "⚠️ 画图失败："+friendlyErr(err));
@@ -4096,8 +4232,11 @@ function genImageOnly(prompt, loading, origPrompt, params){
 /* ---- 线③ 生视频（异步轮询 F08） ---- */
 function doVideo(prompt, refs, params){
   videoPollCancel = false;
-  var loading = appendMessage({role:"assistant", type:"loading", text:"正在生成视频（约 1-3 分钟）…"});
-  loading._cancelable = true; renderMsgs();
+  var ac = new AbortController();
+  var loading = appendMessage({role:"assistant", type:"loading", text:"正在生成视频（约 1-3 分钟）… 可继续发消息"});
+  loading._cancelable = true;
+  loading._cancelFn = function(){ videoPollCancel = true; toast("已取消视频生成"); };
+  renderMsgs();
   Promise.all((refs || []).map(ensureImageBase64)).then(function(b64Refs){
     var validRefs = b64Refs.filter(function(x){ return x; });
     if(refs && refs.length && !validRefs.length) validRefs = refs;
@@ -4108,7 +4247,8 @@ function doVideo(prompt, refs, params){
     fetchTimeout(apiBase()+"/videos",{
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: ac.signal
     }, 30000).then(function(r){
       if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
       return r.json();
@@ -4117,6 +4257,7 @@ function doVideo(prompt, refs, params){
       if(!vid) throw new Error("未返回 video_id");
       pollVideo(vid, loading, 0);
     }).catch(function(err){
+      if(isAbortErr(err)){ loading._cancelable=false; replaceLoading(loading, "（已取消视频生成）"); return; }
       loading._err = true;
       attachRetry(loading.id, function(){ doVideo(prompt, refs, params); });
       replaceLoading(loading, "⚠️ 视频生成失败："+friendlyErr(err));
@@ -4455,6 +4596,7 @@ function renderSettings(){
   '</div>'+
   '<div class="group"><div class="gt">技能 / Skills</div>'+
     cellNav("技能中心（人设 / 插件，可自建）", "openSkills()")+
+    cellNav("联网搜索引擎（"+searchEngineLabel()+"）", "cycleSearchEngine()")+
   '</div>'+
   '<div class="group"><div class="gt">账号</div>'+
     cellNav("API 接口管理（当前："+esc(currentApi().name)+"）", "openApiPage()")+
@@ -4470,9 +4612,11 @@ function renderSettings(){
       '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">检查更新地址（电脑 / Pages 上放 index.html + version.json）</div>'+
       '<input type="text" placeholder="http://电脑IP:端口 或 GitHub Pages" value="'+esc(CFG.updateBase || DEFAULT_UPDATE_BASE || "")+'" onchange="CFG.updateBase=this.value.trim();saveCfg();toast(\'已保存更新地址\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+
     '</div>'+
-    cellNav("检查更新", "checkUpdate()")+
+    cellNav("检查更新（网页热更）", "checkUpdate()")+
+    cellNav("检查安装包更新（APK）", "checkApkUpdate()")+
     cellNav("分享给亲友（二维码）", "openShare()")+
-    cellNav("意见反馈", "openFeedback()")+
+    cellNav("意见反馈（已记录 " + ((CFG && CFG.feedbacks || []).length) + "）", "openFeedback()")+
+    cellNav("反馈推送到微信（" + (((CFG&&CFG.feedbackPush)||{}).type==="none"?"未开启":"已开启") + "）", "openFbPush()")+
     cellNav("重新查看引导", "showGuide()")+
     cellNav("版本历史 / 回退", "openVersionHistory()")+
     (hasNative()? cellNav("恢复内置版本（清掉热更）", "resetBuiltinUpdate()") : "")+
@@ -4518,6 +4662,19 @@ function clearBg(){ CFG.bgImage=""; saveCfg(); applyBg(); renderSettings(); toas
 function cellNav(label, onclick){
   return '<div class="cell" onclick="'+onclick+'"><span class="cl">'+label+'</span>'+
     '<span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>';
+}
+/* 联网搜索引擎切换：自动(国内+国际双搜) → 仅国内 → 仅国际 → 循环 */
+function searchEngineLabel(){
+  var m = (CFG && CFG.searchEngine) || "auto";
+  return m==="cn" ? "国内必应" : (m==="intl" ? "国际必应" : "自动(国内+国际)");
+}
+function cycleSearchEngine(){
+  var order = ["auto","cn","intl"];
+  var i = order.indexOf((CFG && CFG.searchEngine) || "auto");
+  CFG.searchEngine = order[(i+1)%order.length];
+  saveCfg();
+  renderSettings();
+  toast("联网搜索引擎：" + searchEngineLabel());
 }
 /* 默认热更新地址（GitHub Pages）。CFG.updateBase 为空时回退到此，确保新装/旧装用户都能直接检查更新 */
 var DEFAULT_UPDATE_BASE = "https://tan719405973-afk.github.io/phone-agent-hotupdate";
@@ -4571,6 +4728,36 @@ function doInstallUpdate(base){
     .catch(function(e){
       toast("更新失败："+(e&&e.message||e)+"（点「检查更新」可重试）");
     });
+}
+/* ============ APK 自动更新（重打包安装包本体，区别于上面的网页热更） ============ */
+/* 拉 apk-version.json：{ versionCode, versionName, apkUrl, note }；本地 APK_VERSION_CODE 落后则提示下载安装 */
+function checkApkUpdate(){
+  if(!hasNative()){ toast("当前为浏览器预览，APK 更新仅限手机 App 内"); return; }
+  toast("正在检查安装包更新…");
+  fetch(APK_UPDATE_BASE + "/apk-version.json?t=" + Date.now(), { cache:"no-store" })
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(function(j){
+      var remoteCode = parseInt(j.versionCode||"0",10);
+      if(remoteCode > APK_VERSION_CODE){
+        showConfirm("发现新安装包 v"+(j.versionName||remoteCode), (j.note||"有新版安装包，点击下载并安装（需允许「安装未知应用」）")+
+          "\n\n当前："+APK_VERSION_CODE+" → 新版："+remoteCode, function(){
+          apkDoInstall(j.apkUrl);
+        });
+      } else {
+        toast("当前安装包已是最新（v"+APK_VERSION_CODE+"）");
+      }
+    })
+    .catch(function(e){ toast("检查安装包更新失败："+(e&&e.message||e)); });
+}
+function apkDoInstall(url){
+  if(!url){ toast("未提供安装包地址"); return; }
+  toast("正在下载并准备安装…");
+  var r = NativeBridge.downloadAndInstallApk(url);
+  if(!r || r.indexOf("err:")===0){
+    toast("下载/安装失败："+(r? r.slice(4):"未知")+"（请确认已允许「安装未知应用」）");
+  } else {
+    toast("已启动安装，请按系统提示完成");
+  }
 }
 /* 启动静默检查：有新版本仅提示，不自动下载（避免误耗流量） */
 function silentCheckUpdate(){
@@ -5072,7 +5259,8 @@ function friendlyErr(err){
   // 其他 4xx
   var s4 = m.match(/HTTP (4\d\d)/);
   if(s4) return "请求被拒绝("+s4[1]+")，请检查接口地址或参数";
-  return m.slice(0,80);
+  // 兜底：把原始错误也带出来，便于定位（不再笼统归为网络错误）
+  return "出错了：" + m.slice(0,160);
 }
 
 /* ================= F36：分享给亲友（二维码，纯 JS 生成，离线可用） ================= */
@@ -5150,19 +5338,127 @@ function guideNext(){
   document.getElementById("guideStep").textContent = (idx+1) + " / " + GUIDE_STEPS.length;
   document.getElementById("guideBody").innerHTML = GUIDE_STEPS[idx].replace(/\n/g, "<br>");
 }
-/* F42：意见反馈 */
+/* F42：意见反馈（自动记录到本机 + 可回看） */
+function fmtTs(d){
+  function p(n){ return (n<10?"0":"")+n; }
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());
+}
+function renderFeedbackList(){
+  var box = document.getElementById("fbList"); if(!box) return;
+  var list = (CFG && CFG.feedbacks) || [];
+  var empty = document.getElementById("fbEmpty");
+  var cnt = document.getElementById("fbClear");
+  if(empty) empty.style.display = list.length ? "none" : "block";
+  if(cnt) cnt.style.display = list.length ? "inline" : "none";
+  var cc = document.getElementById("fbCount");
+  if(cc) cc.textContent = list.length ? "（"+list.length+"）" : "";
+  var rows = list.map(function(f,i){ return {f:f, i:i}; }).reverse();
+  box.innerHTML = rows.map(function(r){
+    var f = r.f;
+    return '<div style="border:1px solid var(--line);border-radius:10px;padding:11px;margin-bottom:10px;background:var(--bg)">'+
+      '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-bottom:5px">'+
+        '<span>'+esc(f.type||"其他")+' · v'+(f.ver||"?")+'</span><span>'+esc(f.ts||"")+'</span></div>'+
+      '<div style="font-size:14px;white-space:pre-wrap;word-break:break-word">'+esc(f.text||"")+'</div>'+
+      '<div style="margin-top:8px;font-size:12px">'+
+        '<a style="color:var(--accent,#07C160);cursor:pointer;margin-right:14px" onclick="copyFeedback('+r.i+')">复制</a>'+
+        '<a style="color:#e25;cursor:pointer" onclick="delFeedback('+r.i+')">删除</a></div>'+
+    '</div>';
+  }).join("");
+}
 function openFeedback(){
   var ta = document.getElementById("fbText"); if(ta) ta.value = "";
-  var sel = document.getElementById("fbType"); if(sel) sel.value = "建议";
+  var sel = document.getElementById("fbType"); if(sel) sel.value = "功能建议";
+  renderFeedbackList();
   show('feedbackPage');
 }
 function sendFeedback(){
-  var t = (document.getElementById("fbType") && document.getElementById("fbType").value) || "建议";
+  var t = (document.getElementById("fbType") && document.getElementById("fbType").value) || "功能建议";
   var c = (document.getElementById("fbText").value || "").trim();
   if(!c){ toast("先写点内容吧"); return; }
+  if(!CFG.feedbacks) CFG.feedbacks = [];
+  CFG.feedbacks.push({ ts: fmtTs(new Date()), type: t, text: c, ver: APP_VERSION });
+  saveCfg();
+  renderFeedbackList();
   var txt = "【phone-agent " + APP_VERSION + " 反馈】\n类型：" + t + "\n内容：\n" + c;
   copyText(txt);
-  toast("已复制反馈内容，去微信 / 备忘录粘贴发给开发者即可");
+  var now = fmtTs(new Date());
+  var payload = { title: "phone-agent 反馈：" + t, content: "类型：" + t + "\n版本：v" + APP_VERSION + "\n时间：" + now + "\n内容：\n" + c };
+  deliverFeedback(payload).then(function(ok){
+    if(ok) toast("已记录本机，并推送到你微信");
+    else if((CFG.feedbackPush||{}).type!=="none") toast("已记录本机；微信推送失败（检查 token / 网络）");
+    else toast("已记录到本机，并复制到剪贴板");
+  });
+}
+/* 反馈送达：若配置了推送服务，POST 到对应平台（原生桥绕过 CORS；无原生桥回退 fetch） */
+function deliverFeedback(payload){
+  var p = CFG.feedbackPush || { type:"none", key:"" };
+  if(p.type==="none" || !p.key) return Promise.resolve(false);
+  var url, body;
+  if(p.type==="pushplus"){
+    url = "https://www.pushplus.plus/send/";
+    body = JSON.stringify({ token: p.key, title: payload.title, content: payload.content, template: "txt" });
+  } else { /* serverchan Turbo */
+    url = "https://sctapi.ftqq.com/SEND";
+    body = JSON.stringify({ sendkey: p.key, title: payload.title, desp: payload.content });
+  }
+  function postOnce(u, b){
+    if(typeof NativeBridge!=="undefined" && NativeBridge && typeof NativeBridge.httpPost==="function"){
+      try{
+        var r = NativeBridge.httpPost(u, b);
+        if(typeof r==="string" && r.indexOf("err:")===0) throw new Error(r.slice(4));
+        return Promise.resolve(r);
+      }catch(e){ return Promise.reject(e); }
+    }
+    return fetch(u, { method:"POST", headers:{"Content-Type":"application/json"}, body:b }).then(function(r){ return r.text(); });
+  }
+  return postOnce(url, body).then(function(){ return true; }).catch(function(){ return false; });
+}
+/* 反馈推送配置弹窗 */
+function openFbPush(){
+  var p = CFG.feedbackPush || { type:"none", key:"" };
+  var sel = document.getElementById("fbPushType"); if(sel) sel.value = p.type || "none";
+  var key = document.getElementById("fbPushKey"); if(key) key.value = p.key || "";
+  onFbPushType();
+  show('fbPushMask');
+}
+function onFbPushType(){
+  var t = (document.getElementById("fbPushType")||{}).value;
+  var h = document.getElementById("fbPushHint"); if(!h) return;
+  if(t==="pushplus") h.textContent = "在 pushplus.plus 登录 →「一对一消息」复制 token 粘到这里。其他用户提交反馈时自动推送到你微信。";
+  else if(t==="serverchan") h.textContent = "在 sct.ftqq.com 登录 → 获取 SendKey（Turbo 版）粘到这里。其他用户提交反馈时自动推送到你微信。";
+  else h.textContent = "关闭时，反馈只记录在本机，不会自动送达。";
+}
+function saveFbPush(){
+  var t = (document.getElementById("fbPushType")||{}).value || "none";
+  var k = ((document.getElementById("fbPushKey")||{}).value || "").trim();
+  if(!CFG.feedbackPush) CFG.feedbackPush = { type:"none", key:"" };
+  CFG.feedbackPush.type = t;
+  CFG.feedbackPush.key = k;
+  saveCfg();
+  hide('fbPushMask');
+  renderSettings();
+  toast(t==="none" ? "已关闭微信推送" : "微信推送已配置（" + (t==="pushplus"?"PushPlus":"Server酱") + "）");
+}
+function copyFeedback(i){
+  var f = CFG.feedbacks && CFG.feedbacks[i];
+  if(!f) return;
+  copyText("【phone-agent "+(f.ver||"")+" 反馈】\n类型："+f.type+"\n时间："+f.ts+"\n内容：\n"+f.text);
+  toast("已复制该条反馈");
+}
+function delFeedback(i){
+  if(!CFG.feedbacks || !CFG.feedbacks[i]) return;
+  CFG.feedbacks.splice(i,1);
+  saveCfg();
+  renderFeedbackList();
+  toast("已删除");
+}
+function clearFeedbacks(){
+  if(!CFG.feedbacks || !CFG.feedbacks.length) return;
+  if(!confirm("确定清空全部反馈记录？")) return;
+  CFG.feedbacks = [];
+  saveCfg();
+  renderFeedbackList();
+  toast("已清空");
 }
 
 (async function init(){
