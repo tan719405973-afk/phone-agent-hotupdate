@@ -2799,13 +2799,16 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.9";
+var APP_VERSION = "0.2.10";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.2.10", date:"2026-07-19", items:[
+    "修复：老用户升级后仍走旧默认模型（agnes-2.0-flash）的问题——启动自动把默认 API 模型迁移到最新（agnes-2.5-flash）"
+  ]},
   { v:"0.2.9", date:"2026-07-19", items:[
     "默认文本模型升级为 agnes-2.5-flash（编码 / 推理更强；生图、图生图、视频模型不变）"
   ]},
@@ -3134,6 +3137,18 @@ function loadCfg(){
         obj.apis.forEach(function(a){
           if(!a.models) a.models = {};
           if(!a.models.imageEdit) a.models.imageEdit = a.models.image || makeDefaultApi().models.imageEdit;
+        });
+      }
+      /* 迁移：默认 Agnes API 若仍用旧默认文本模型，对齐到最新官方默认
+         老用户首次启动已把默认 API 的 models.text 固化为当时的 agnes-2.0-flash，
+         仅改 MODEL_DEFAULTS 不会生效；这里在每次加载时把旧默认升级到最新 */
+      if(Array.isArray(obj.apis)){
+        obj.apis.forEach(function(a){
+          if(a && (a.id==="agnes-default" || a.name==="Agnes")){
+            if(a.models && a.models.text==="agnes-2.0-flash"){
+              a.models = Object.assign({}, MODEL_DEFAULTS);
+            }
+          }
         });
       }
       return obj;
@@ -4858,6 +4873,7 @@ function sendFeedback(){
 
 (async function init(){
   CFG = await loadCfg();   /* F34：异步解密本地配置（含加密 Key） */
+  saveCfg();               /* 持久化 loadCfg 内的默认 API 模型迁移（2.0→2.5 等） */
   ensureInit();
   applyTheme();
   applyBg();
