@@ -2846,7 +2846,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.18";
+var APP_VERSION = "0.2.19";
 /* APK 安装包版本号：每次重打包 +1，用于「APK 自动更新」比对（与 android/app/build.gradle 的 versionCode 保持一致） */
 var APK_VERSION_CODE = 20260720;
 /* APK 更新信息地址（apk-version.json 所在目录，含 versionCode / versionName / apkUrl）。为空时用默认发布地址 */
@@ -2921,6 +2921,9 @@ var CHANGELOG = [
 ];
 
 /* API 地址工具（取自当前选中的接口） */
+/* ========== ⚠️ 稳定区：API 核心调用层（currentApi / currentApiKey / apiBase / apiBaseFor / streamOnce / doChat 的 fetch 构造） ==========
+   这是聊天/生图/生视频三条业务线的统一接口层。约定：后续功能更新（联网搜索 / 反馈 / 技能 / UI 等）
+   【不得修改本区】，以免重演 v0.2.16「execWebSearch 同步原生桥阻塞主线程」破坏对话的回归。如需调整，须单独评估并 bump 小版本。 */
 function currentApi(){
   var apis = CFG && CFG.apis;
   if(!apis || !apis.length) return makeDefaultApi();
@@ -2961,10 +2964,10 @@ var BUILTIN_SKILLS = [
     apiId:"", model:"" }
 ];
 /* 官方推荐的默认模型（用户没填/填空时兜底，避免"模型乱填"导致功能失效） */
-var MODEL_DEFAULTS = { text:"agnes-2.5-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0" };
+var MODEL_DEFAULTS = { text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0" };
 /* 官方默认模型集"版本号"：改默认模型时 +1。未自定义的内置默认接口会在启动时自动对齐到最新官方默认。
-   v1 = agnes-2.0-flash 时代（项目早期默认）；v2 = agnes-2.5-flash 时代（当前默认）。 */
-var DEFAULT_MODELS_VER = "2";
+   v1 = agnes-2.0-flash 时代（项目早期默认）；v2 = agnes-2.5-flash 时代（灰度测试，已下架）；v3 = agnes-2.0-flash 时代（2.5 灰度下架后回退，稳定可用）。 */
+var DEFAULT_MODELS_VER = "3";
 /* 模型名容错：把常见简写/漏写 -flash 的补全成官方正式名；认不出时原样返回 */
 function normalizeModel(name){
   if(!name) return "";
@@ -2984,8 +2987,8 @@ function normalizeModel(name){
 }
 function makeDefaultApi(id){
   return { id:id||"agnes-default", name:"Agnes", icon:"A", baseUrl:"https://apihub.agnes-ai.com/v1", key:"",
-           models:{text:"agnes-2.5-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0"},
-           modelsList:["agnes-2.0-flash","agnes-2.5-flash","agnes-image-2.0-flash","agnes-image-2.1-flash","agnes-video-v2.0"],
+           models:{text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0"},
+           modelsList:["agnes-2.0-flash","agnes-image-2.0-flash","agnes-image-2.1-flash","agnes-video-v2.0"],
            routable:true, isBuiltinDefault:true, defaultModelsVer:DEFAULT_MODELS_VER };
 }
 function genId(){ return "api_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6); }
@@ -3321,7 +3324,13 @@ function loadCfg(){
       /* 迁移：确保技能数组存在（老用户首次启动补内置技能；用户删过的不会复活，因为仅当数组缺失才重置） */
       if(!Array.isArray(obj.skills)) obj.skills = BUILTIN_SKILLS.map(function(s){ return Object.assign({}, s); });
       return obj;
-    }catch(e){ return Object.assign({}, DEFAULT_CFG); }
+    }catch(e){
+      /* 解密/解析失败：不要静默重置丢配置。备份 raw 以便排查，并提示用户重新填写 */
+      console.error("[loadCfg] 失败，已回退默认配置", e);
+      try{ if(raw) localStorage.setItem("pa_cfg_bak", raw); }catch(_){}
+      setTimeout(function(){ try{ toast("⚠️ 配置读取失败，已恢复默认，请重新填写 API Key"); }catch(_){} }, 600);
+      return Object.assign({}, DEFAULT_CFG);
+    }
   })();
 }
 function saveCfg(){
@@ -3700,7 +3709,9 @@ function onSend(){
   var text = el.value.trim();
   if(!text && pendingAttachments.length === 0) return;
   if(!currentApiKey()){
-    toast("当前接口未填 API Key：设置 → API 接口管理 → 编辑接口");
+    /* 不再静默 return：用原生对话框给出不可忽略的提示，并直接引导到接口配置页 */
+    var go = confirm("当前接口未填写 API Key，无法对话。\n\nAgnes 需要你的专属 API Key 才能使用。\n\n点「确定」前往 设置 → API 接口管理 → 编辑接口 填写（填完点「测试连接」验证）。");
+    if(go){ try{ openSettings(); }catch(e){} }
     return;
   }
   /* 收集待发送附件，随文字一并提交（F13/F14） */
@@ -5043,6 +5054,7 @@ function renderApiEdit(){
     '<div class="group"><div class="gt">模型设置（从上游获取，可自定义）</div>'+
       '<div class="cell" style="display:block">'+
         '<button type="button" onclick="fetchUpstreamModels()" style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:11px;font-size:14px;cursor:pointer">从上游获取模型列表</button>'+
+        '<button type="button" onclick="testConnection()" style="width:100%;background:var(--input);color:var(--text);border:none;border-radius:8px;padding:11px;font-size:14px;cursor:pointer;margin-top:8px">测试连接（验证 Key 与网络）</button>'+
         '<button type="button" onclick="resetModelsToRecommended()" style="width:100%;background:var(--input);color:var(--text);border:none;border-radius:8px;padding:9px;font-size:13px;cursor:pointer;margin-top:8px">一键恢复推荐模型</button>'+
         '<div style="font-size:12px;color:#9A9A9A;margin-top:6px;line-height:1.5">不是每家接口都用 Agnes。点上面按钮，用你填的「请求地址 + Key」从上游拉取真实模型；拉不到（部分接口不支持 /models）就直接在下面手填模型名。图生图/编辑必须用 2.0-flash（2.1 仅文生图）。</div>'+
       '</div>'+
@@ -5096,6 +5108,36 @@ function fetchUpstreamModels(){
     var msg = e && e.message ? e.message : "";
     if(msg.indexOf("Failed to fetch")>=0 || msg.indexOf("NetworkError")>=0) msg = "网络/跨域被拦截（确认地址是 https 且可达）";
     toast("获取失败："+msg+"（可手动填模型名）");
+  });
+}
+/* 测试连接：用当前填写的 地址+Key+文本模型 发一个最小请求，把结果清晰反馈给用户（解决"到底是 key 没填还是网络不通"的盲区） */
+function testConnection(){
+  var baseUrl = (document.getElementById("aeBase").value.trim()||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,'');
+  var key = document.getElementById("aeKey").value.trim();
+  var sel = document.getElementById("aeModelText");
+  var cst = document.getElementById("aeModelTextCustom");
+  var model = (sel && sel.value) || (cst && cst.value.trim()) || "agnes-2.0-flash";
+  if(!key){ toast("请先填写 API Key 再测试"); return; }
+  toast("正在测试连接…");
+  fetch(baseUrl+"/chat/completions",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+    body: JSON.stringify({model:model, stream:false, messages:[{role:"user",content:"ping"}]})
+  }).then(function(r){
+    if(!r.ok){
+      if(r.status===401||r.status===403) throw new Error("鉴权失败(401/403)：API Key 无效或已过期");
+      if(r.status===404) throw new Error("地址错误(404)：确认请求地址填到 /v1 前缀");
+      if(r.status===429) throw new Error("请求过于频繁(429)：稍后再试");
+      throw new Error("HTTP "+r.status);
+    }
+    return r.json();
+  }).then(function(j){
+    var c = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    toast("✅ 连接成功！模型返回：" + (c ? String(c).slice(0,20)+"…" : "(空)"));
+  }).catch(function(e){
+    var msg = e && e.message ? e.message : "";
+    if(msg.indexOf("Failed to fetch")>=0 || msg.indexOf("NetworkError")>=0) msg = "网络/CORS 被拦截：确认地址是 https 且可达";
+    toast("❌ 连接失败："+msg);
   });
 }
 function resetModelsToRecommended(){
