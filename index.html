@@ -235,10 +235,6 @@
   .dl{display:inline-block;margin-top:6px;background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:13px;text-decoration:none;}
   .dl-tip{font-size:12px;color:var(--text-3);margin:0 16px 8px;}
 
-  /* 深色模式（主题与外观） */
-  #phone.dark{ --bg:#111111; --white:#1e1e1e; --card:#2a2a2a; --input:#2c2c2c;
-    --text:#ffffff; --text-2:#cccccc; --text-3:#888888; --line:#3a3a3a;
-    --bubble-bg:rgba(30,30,30,0.85); --bubble-user-bg:rgba(47,93,36,0.85); --user-bubble:#2f5d24; }
   select{font-size:14px;max-width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--white);color:var(--text);font-family:inherit;}
   .cell select{margin-left:8px;}
   .api-card{display:flex;align-items:center;gap:12px;background:var(--white);border:1.5px solid var(--line);border-radius:12px;padding:14px;margin:0 16px 10px;cursor:pointer;}
@@ -276,6 +272,8 @@
   .crash-item .ct{font-size:12px;color:var(--text-3);}
   .crash-item .cm{font-size:13px;color:var(--text);margin-top:4px;word-break:break-word;white-space:pre-wrap;}
   .crash-empty{text-align:center;color:var(--text-3);font-size:13px;margin:40px 16px;}
+  .summary-row{justify-content:center;}
+  .summary-note{background:var(--input);color:var(--text-2);font-size:12px;line-height:1.6;padding:8px 12px;border-radius:10px;max-width:88%;text-align:left;}
 
   /* 长按禁止 iOS 文字选择气泡 */
   .bubble{ -webkit-touch-callout:none; }
@@ -394,17 +392,6 @@
     <div class="page-body" id="apiEditBody"></div>
   </div>
 
-  <!-- 崩溃日志页（F18） -->
-  <div class="page" id="crashPage">
-    <div class="page-head">
-      <button class="back" onclick="hide('crashPage')">
-        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-      </button>
-      <div class="pt">崩溃日志</div>
-    </div>
-    <div class="page-body" id="crashBody"></div>
-  </div>
-
   <!-- 我的记忆页（Phase 3 跨会话记忆） -->
   <div class="page" id="memoryPage">
     <div class="page-head">
@@ -443,6 +430,17 @@
       <div class="pt">更新日志</div>
     </div>
     <div class="page-body" id="changelogBody" style="padding:16px"></div>
+  </div>
+
+  <!-- 版本历史 / 回退页（F44） -->
+  <div class="page" id="versionPage">
+    <div class="page-head">
+      <button class="back" onclick="hide('versionPage')">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="pt">版本历史 / 回退</div>
+    </div>
+    <div class="page-body" id="versionBody" style="padding:16px"></div>
   </div>
 
   <!-- 新手引导页（F38） -->
@@ -2801,10 +2799,25 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.6";
+var APP_VERSION = "0.2.8";
+/* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
+var CONV_COMPACT_AT = 60;
+var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.2.8", date:"2026-07-19", items:[
+    "新增「会话上限自动总结」：单会话消息过多时，自动把较早对话总结成摘要并继续聊，不再丢失上下文",
+    "新增「版本历史 / 回退」：可回退到最近 5 个历史版本（设置 → 关于 → 版本历史 / 回退），容错更强",
+    "存储改进：聊天存手机本地；保存失败 / 空间不足时给出提示"
+  ]},
+  { v:"0.2.7", date:"2026-07-19", items:[
+    "调整：文件校验上限从 20MB 提高到 50MB",
+    "设置整理：移除「主题与外观」（固定浅色；深色模式部分界面看不清内容，已弃用）",
+    "设置整理：移除「字体大小」（效果不佳，已弃用）",
+    "「文件保存位置」改为可编辑文本框，默认 Download/phone-agent，可随时修改",
+    "设置整理：移除「崩溃日志」（未实际用上）"
+  ]},
   { v:"0.2.6", date:"2026-07-19", items:[
     "新增「新手引导」：首次打开自动弹出 3 步用法说明（设置 → 关于 → 重新查看引导 可再看）",
     "新增「意见反馈」入口（设置 → 关于 → 意见反馈，一键复制反馈内容）",
@@ -2877,7 +2890,7 @@ var DEFAULT_CFG = {
   currentApiId: "agnes-default",
   apis: [ makeDefaultApi() ],
   theme: "light",
-  saveLocation: "sandbox",
+  saveLocation: "Download/phone-agent",
   bgImage: "",
   updateBase: "https://tan719405973-afk.github.io/phone-agent-hotupdate",   /* F35：热更新地址（GitHub Pages 为默认值，空=不检查） */
   shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
@@ -3207,9 +3220,13 @@ function loadConvs(){
 function saveConvs(){
   try{
     var data = JSON.stringify({version:1, conversations:convs});
-    if(hasNative()){ nSave("conversations", data); }
-    else { localStorage.setItem("pa_convs", data); }
-  }catch(e){}
+    var r = "";
+    if(hasNative()){ r = nSave("conversations", data); }
+    else { try{ localStorage.setItem("pa_convs", data); }catch(e){ r="err"; } }
+    if(r==="err"){
+      if(!saveConvs._t || Date.now()-saveConvs._t>60000){ saveConvs._t=Date.now(); toast("⚠️ 保存失败：手机存储空间可能不足"); }
+    }
+  }catch(e){ toast("⚠️ 保存失败：存储空间可能不足"); }
 }
 
 /* ================= 多对话状态 ================= */
@@ -3388,8 +3405,13 @@ function renderMsgs(){
 }
 function renderRow(m){
   var row = document.createElement("div");
-  row.className = "row " + (m.role==="user"?"user":"ai");
   row.dataset.mid = m.id;
+  if(m.role==="summary"){
+    row.className = "row summary-row";
+    row.innerHTML = '<div class="summary-note">📌 历史对话已自动总结：'+esc(m.text||"")+'</div>';
+    return row;
+  }
+  row.className = "row " + (m.role==="user"?"user":"ai");
   var av = m.role==="user" ? "我" : "AI";
   var inner = "";
   if(m.type==="text"){
@@ -3511,7 +3533,44 @@ function onSend(){
   dispatchRoute(route, text, atts, prompt, qMeta);
 }
 
-function dispatchRoute(route, text, atts, prompt, qMeta){
+/* F43：把一段对话文本总结成中文要点（复用 Agnes 文本模型） */
+function summarizeText(text){
+  return new Promise(function(res){
+    fetchTimeout(apiBase()+"/chat/completions",{
+      method:"POST", headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+      body: JSON.stringify({ model:currentModel("text"), stream:false, messages:[{role:"user", content:"用 3-5 条中文要点总结以下对话的核心信息（用户需求/偏好/结论/待办），每条一行，不要序号、解释或引号：\n\n"+text}] })
+    }, 60000).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
+      var s = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+      res(s ? String(s).trim() : "");
+    }).catch(function(){ res(""); });
+  });
+}
+/* F43：单会话超长时，把较早消息总结为一条摘要消息（置于开头），保留最近若干条，继续聊 */
+async function maybeCompactCurrent(){
+  if(!currentApiKey()) return;
+  var c = current(); if(!c) return;
+  var txt = c.messages.filter(function(m){return m.type==="text";});
+  if(txt.length <= CONV_COMPACT_AT) return;
+  var old = txt.slice(0, txt.length - CONV_KEEP_RECENT);
+  var src = old.map(function(m){
+    if(m.role==="summary") return "（更早摘要）"+m.text;
+    return (m.role==="user"?"用户":"助手")+"："+m.text;
+  }).join("\n");
+  if(src.length < 60) return;
+  toast("对话较长，正在总结历史消息…");
+  try{
+    var sum = await summarizeText(src);
+    if(!sum) return;
+    var oldIds = old.map(function(m){return m.id;});
+    c.messages = c.messages.filter(function(m){ return oldIds.indexOf(m.id) < 0; });
+    c.messages.unshift({ id:uid("msg"), role:"summary", type:"text", text:sum, _summary:true, createdAt:Date.now() });
+    c.updatedAt = Date.now();
+    saveConvs(); renderMsgs(); renderConvList();
+    toast("已总结较早的对话，继续聊～");
+  }catch(e){}
+}
+async function dispatchRoute(route, text, atts, prompt, qMeta){
+  await maybeCompactCurrent();
   var meta = atts.map(function(a){
     var m = { name:a.name, mime:a.mime, kind:a.kind, size:a.size, content:a.content };
     if(a.kind === "image"){ m.url = a.url; m.base64 = a.base64; }
@@ -3554,10 +3613,16 @@ function cleanPrompt(t, intent){
 function doChat(text, attachments){
   attachments = attachments || [];
   var c = current();
-  var hist = c.messages.filter(function(m){return m.type==="text";})
-    .slice(-10).map(function(m){return {role:m.role==="user"?"user":"assistant", content:m.text};});
+  var allTxt = c.messages.filter(function(m){return m.type==="text";});
+  var summaryMsg = allTxt.filter(function(m){return m.role==="summary";})[0];
+  var recent = allTxt.filter(function(m){return m.role!=="summary";}).slice(-12)
+    .map(function(m){return {role:m.role==="user"?"user":"assistant", content:m.text};});
+  var sysParts = [];
+  if(summaryMsg) sysParts.push("【对话更早部分摘要，供参考】\n"+summaryMsg.text);
   var _memCtx = buildMemoryContext(text);
-  if(_memCtx){ hist = [{role:"system", content: MEM_SYS_PROMPT + "\n" + _memCtx}].concat(hist); }
+  if(_memCtx) sysParts.push(MEM_SYS_PROMPT + "\n" + _memCtx);
+  var hist = recent;
+  if(sysParts.length) hist = [{role:"system", content: sysParts.join("\n\n")}].concat(hist);
   var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
   renderMsgs();
   var rowBubble = function(){ var r=document.querySelector('.row[data-mid="'+aiMsg.id+'"] .bubble'); return r; };
@@ -4005,8 +4070,8 @@ document.getElementById("fileInput").addEventListener("change", function(e){
   for(var i = 0; i < files.length; i++){
     (function(f){
       /* F28 文件校验：大小上限 + 类型白名单，超限直接跳过不进附件区 */
-      var MAX = 20 * 1024 * 1024;
-      if(f.size > MAX){ toast("「"+f.name+"」超过 20MB，已跳过"); return; }
+      var MAX = 50 * 1024 * 1024;
+      if(f.size > MAX){ toast("「"+f.name+"」超过 " + (MAX/1048576) + "MB，已跳过"); return; }
       var ext = (f.name.split(".").pop() || "").toLowerCase();
       var ALLOW = ["jpg","jpeg","png","gif","webp","bmp","heic","heif","avif","txt","md","markdown","csv","json","xml","log","yml","yaml","ini","conf","js","ts","jsx","tsx","py","java","c","cpp","h","hpp","cs","go","rb","php","sh","bat","ps1","html","htm","css","scss","sql","tex","srt","vtt","toml","gitignore","env","pdf","doc","docx","xls","xlsx","ppt","pptx","zip","rar","7z","tar","gz","mp3","mp4","wav","mov","avi","mkv","flac","aac","m4a","webm"];
       if(ALLOW.indexOf(ext) < 0){ toast("「"+f.name+"」类型暂不支持，已跳过"); return; }
@@ -4062,8 +4127,6 @@ function onModelPick(key, val){
 }
 function renderSettings(){
   var body = document.getElementById("settingsBody");
-  var themeOpts = [["light","浅色"],["dark","深色"],["system","跟随系统"]];
-  var locOpts = [["sandbox","App 沙盒"],["authorized","用户授权目录"]];
   function sel(val, opts, onch){
     return '<select onchange="'+onch+'">'+opts.map(function(o){
       return '<option value="'+o[0]+'"'+(val===o[0]?' selected':'')+'>'+o[1]+'</option>';
@@ -4076,11 +4139,10 @@ function renderSettings(){
     cellNav("智能制片", "openStudio()")+
     cellNav("作品", "openWorks()")+
     '<div class="gt">外观与存储</div>'+
-    '<div class="cell"><span class="cl">主题与外观</span><span class="cr">'+sel(CFG.theme, themeOpts, "CFG.theme=this.value;saveCfg();applyTheme()")+'</span></div>'+
-    cellScale()+
     cellNav("聊天背景（用图片）", "pickBg()")+
     (CFG.bgImage? cellNav("清除聊天背景", "clearBg()") : "")+
-    '<div class="cell"><span class="cl">文件保存位置</span><span class="cr">'+sel(CFG.saveLocation, locOpts, "CFG.saveLocation=this.value;saveCfg()")+'</span></div>'+
+    '<div class="cell" style="display:block;padding:10px 14px"><div class="cl" style="margin-bottom:6px">文件保存位置（手机本地）</div>'+
+    '<input type="text" value="'+esc(CFG.saveLocation||"Download/phone-agent")+'" onchange="CFG.saveLocation=(this.value.trim()||\'Download/phone-agent\');saveCfg();toast(\'已保存保存位置\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box"></div>'+
   '</div>'+
   '<div class="group"><div class="gt">账号</div>'+
     cellNav("API 接口管理（当前："+esc(currentApi().name)+"）", "openApiPage()")+
@@ -4092,7 +4154,6 @@ function renderSettings(){
     cellNav("清理缓存", "clearCache()")+
     cellNav("导出 / 备份聊天", "exportChats()")+
     cellNav("导入恢复聊天", "importChats()")+
-    cellNav("崩溃日志（"+loadCrashes().length+"）", "openCrash()")+
     '<div class="cell" style="display:block;padding:10px 14px">'+
       '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">检查更新地址（电脑 / Pages 上放 index.html + version.json）</div>'+
       '<input type="text" placeholder="http://电脑IP:端口 或 GitHub Pages" value="'+esc(CFG.updateBase || DEFAULT_UPDATE_BASE || "")+'" onchange="CFG.updateBase=this.value.trim();saveCfg();toast(\'已保存更新地址\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+
@@ -4101,6 +4162,7 @@ function renderSettings(){
     cellNav("分享给亲友（二维码）", "openShare()")+
     cellNav("意见反馈", "openFeedback()")+
     cellNav("重新查看引导", "showGuide()")+
+    cellNav("版本历史 / 回退", "openVersionHistory()")+
     (hasNative()? cellNav("恢复内置版本（清掉热更）", "resetBuiltinUpdate()") : "")+
     cellNav("开源 / 隐私声明", "toast(\'仅亲友试用，数据均存本地\')")+
   '</div>'+
@@ -4128,20 +4190,6 @@ function applyBg(){
   }else{
     m.style.backgroundImage = "";
   }
-}
-/* F31：字体大小缩放——把 --font-scale 设到根元素，body 用 calc 引用，全局字号跟随 */
-function applyFontScale(){
-  var sc = (CFG && CFG.fontScale) ? parseFloat(CFG.fontScale) : 1;
-  if(!sc || sc<=0) sc = 1;
-  document.documentElement.style.setProperty("--font-scale", sc);
-}
-/* 设置页「字体大小」选项 cell */
-function cellScale(){
-  var opts = [["0.85","小"],["1","标准"],["1.15","大"],["1.3","特大"]];
-  var cur = (CFG.fontScale||1).toString();
-  return '<div class="cell"><span class="cl">字体大小</span><span class="cr"><select onchange="CFG.fontScale=parseFloat(this.value);saveCfg();applyFontScale()">'+
-    opts.map(function(o){ return '<option value="'+o[0]+'"'+(cur===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+
-    '</select></span></div>';
 }
 function pickBg(){ document.getElementById("bgFileInput").click(); }
 document.getElementById("bgFileInput").addEventListener("change", function(e){
@@ -4233,6 +4281,45 @@ function resetBuiltinUpdate(){
     toast("已恢复内置版本，正在重启…");
   });
 }
+/* F44：版本历史 / 回退——从更新地址拉取版本列表，可选回退到任一历史版本 */
+function openVersionHistory(){ renderVersionHistory(); show('versionPage'); }
+function renderVersionHistory(){
+  var box = document.getElementById("versionBody");
+  var base = updateBaseUrl();
+  if(!base){ box.innerHTML = '<div class="crash-empty">未设置更新地址，无法获取版本列表</div>'; return; }
+  box.innerHTML = '<div class="crash-empty">正在加载版本列表…</div>';
+  loadScript(base+"/versions/versions.js?t="+Date.now(), 12000).then(function(){
+    var list = window.__PA_VERSIONS__ || [];
+    if(!list.length){ box.innerHTML='<div class="crash-empty">暂无历史版本</div>'; return; }
+    box.innerHTML = list.map(function(it){
+      var isCur = compareVer(it.v, APP_VERSION)===0;
+      var btn = isCur ? '<span style="color:var(--text-3);font-size:13px">当前版本</span>'
+                      : '<b style="color:var(--green);font-size:13px" onclick="rollbackTo(\''+esc(it.v)+'\')">回退到此版本</b>';
+      return '<div class="cell" style="display:block">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center">'+
+          '<span style="font-size:14px;font-weight:500">v'+esc(it.v)+'</span>'+ btn +
+        '</div>'+
+        '<div style="font-size:12px;color:var(--text-3);margin-top:4px">'+esc(it.date||"")+'</div>'+
+        '<div style="font-size:13px;color:var(--text-2);margin-top:4px;line-height:1.5">'+esc(it.note||"")+'</div>'+
+      '</div>';
+    }).join("") +
+    (hasNative()? '<div style="padding:16px"><button style="width:100%;background:#fff;color:#e64340;border:1px solid #e64340;border-radius:8px;padding:11px;font-size:14px;cursor:pointer" onclick="resetBuiltinUpdate()">恢复内置版本（清掉所有热更）</button></div>' : '');
+  }).catch(function(e){ box.innerHTML='<div class="crash-empty">加载失败：'+esc(e&&e.message||e)+'</div>'; });
+}
+function rollbackTo(v){
+  var base = updateBaseUrl(); if(!base) return;
+  showConfirm("回退到 v"+v, "将下载 v"+v+" 并立即应用（聊天与设置保留）。确定吗？", function(){
+    toast("正在下载 v"+v+"…");
+    loadScript(base+"/versions/app."+v+".js?t="+Date.now(), 30000).then(function(){
+      var html = window.__PA_APPHtml__;
+      if(!html || html.length<500) throw new Error("下载内容异常");
+      if(!hasNative()){ toast("请在手机 App 内回退"); return; }
+      var r = NativeBridge.installUpdate(html);
+      if(r && r.indexOf("err:")===0) throw new Error(r.slice(4));
+      toast("已回退到 v"+v+"，正在重启…");
+    }).catch(function(e){ toast("回退失败："+(e&&e.message||e)); });
+  });
+}
 function compareVer(a, b){
   var pa=String(a).split(".").map(Number), pb=String(b).split(".").map(Number);
   for(var i=0;i<3;i++){ var x=pa[i]||0, y=pb[i]||0; if(x>y) return 1; if(x<y) return -1; }
@@ -4248,8 +4335,7 @@ function clearAll(){
 }
 /* F33：清理缓存——清崩溃日志 + 其他临时 localStorage（保留聊天/设置/记忆），可选调原生清媒体缓存 */
 function clearCache(){
-  showConfirm("清理缓存","将清除崩溃日志等临时数据（聊天、设置、记忆均保留）。确定吗？", function(){
-    try{ localStorage.removeItem(CRASH_KEY); }catch(e){}
+  showConfirm("清理缓存","将清除临时数据（聊天、设置、记忆均保留）。确定吗？", function(){
     try{
       var keep = ["pa_cfg","pa_convs","pa_memory"];
       var keys=[]; for(var i=0;i<localStorage.length;i++){ keys.push(localStorage.key(i)); }
@@ -4270,7 +4356,7 @@ function exportChats(){
     a.href = url; a.download = "phone-agent-聊天备份-"+new Date().toISOString().slice(0,10)+".json";
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} }, 1500);
-    toast("聊天已导出为文件");
+    toast("聊天已导出（保存位置："+(CFG.saveLocation||"Download/phone-agent")+"）");
   }catch(e){ toast("导出失败："+((e&&e.message)||e)); }
 }
 function importChats(){
@@ -4677,31 +4763,6 @@ function friendlyErr(err){
   return m.slice(0,80);
 }
 
-/* ================= F18：崩溃日志留痕 ================= */
-var CRASH_KEY = "pa_errors";
-function loadCrashes(){ try{ return JSON.parse(localStorage.getItem(CRASH_KEY)||"[]"); }catch(e){ return []; } }
-function logCrash(msg){
-  var arr = loadCrashes();
-  arr.unshift({ t:new Date().toISOString(), m:String(msg).slice(0,500) });
-  if(arr.length>20) arr = arr.slice(0,20);
-  try{ localStorage.setItem(CRASH_KEY, JSON.stringify(arr)); }catch(e){}
-}
-function installErrorCapture(){
-  if(typeof window==="undefined") return;
-  window.addEventListener("error", function(e){ logCrash((e.message||"error")+(e.filename?(" @ "+e.filename+":"+e.lineno):"")); });
-  window.addEventListener("unhandledrejection", function(e){ var r=e.reason; logCrash("Promise 未处理："+((r&&r.message)||r||"unknown")); });
-}
-function openCrash(){ renderCrash(); show('crashPage'); }
-function renderCrash(){
-  var box = document.getElementById("crashBody"); if(!box) return;
-  var arr = loadCrashes();
-  if(!arr.length){ box.innerHTML = '<div class="crash-empty">暂无崩溃记录 🎉</div>'; return; }
-  box.innerHTML =
-    '<div style="padding:12px 16px"><button style="width:100%;background:var(--input);color:var(--danger);border:none;border-radius:8px;padding:11px;font-size:14px;cursor:pointer" onclick="clearCrash()">清空日志</button></div>'+
-    arr.map(function(c){ return '<div class="crash-item"><div class="ct">'+esc(c.t)+'</div><div class="cm">'+esc(c.m)+'</div></div>'; }).join('');
-}
-function clearCrash(){ try{ localStorage.removeItem(CRASH_KEY); }catch(e){} renderCrash(); toast("已清空崩溃日志"); }
-
 /* ================= F36：分享给亲友（二维码，纯 JS 生成，离线可用） ================= */
 function openShare(){ renderShare(); show('sharePage'); }
 /* ================= F41：更新日志 ================= */
@@ -4793,11 +4854,9 @@ function sendFeedback(){
 }
 
 (async function init(){
-  installErrorCapture();   /* F18：捕获全局崩溃 */
   CFG = await loadCfg();   /* F34：异步解密本地配置（含加密 Key） */
   ensureInit();
   applyTheme();
-  applyFontScale();
   applyBg();
   renderConvList(); renderMsgs(); updateTitle();
   updateOnline();          /* F17：离线状态条 */
