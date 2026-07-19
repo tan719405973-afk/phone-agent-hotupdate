@@ -130,6 +130,17 @@
   .filecard .fn{font-size:14px;color:var(--text-1);word-break:break-all;}
   .filecard .fs{font-size:12px;color:var(--text-3);margin-top:2px;}
 
+  /* 技能条（A：对话页底部人设切换 chips） */
+  .skillbar{flex:0 0 auto;display:none;align-items:center;gap:6px;overflow-x:auto;padding:6px 10px 0;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .skillbar::-webkit-scrollbar{display:none;}
+  .skchip{flex:0 0 auto;background:var(--input);border:1px solid var(--line);border-radius:14px;
+    padding:5px 11px;font-size:12.5px;color:var(--text-1);white-space:nowrap;cursor:pointer;}
+  .skchip.active{background:var(--green);border-color:var(--green);color:#fff;font-weight:600;}
+  .skchip.clear{color:var(--text-3);}
+  .mini-btn{flex:0 0 auto;margin-left:6px;background:var(--white);border:1px solid var(--line);
+    border-radius:14px;padding:4px 12px;font-size:12px;color:var(--text-1);cursor:pointer;}
+  .mini-btn:active{background:var(--input);}
   /* ============ 抽屉 / 遮罩 ============ */
   .mask{position:fixed;inset:0;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;
     transition:opacity .25s;z-index:20;}
@@ -304,6 +315,9 @@
 
   <!-- 待发送附件区（F13/F14） -->
   <div class="attach-zone" id="attachZone" style="display:none"></div>
+
+  <!-- 技能条（A：点一下切换 AI 人设，绑定到当前会话） -->
+  <div class="skillbar" id="skillBar" style="display:none"></div>
 
   <!-- 输入栏 -->
   <div class="inputbar">
@@ -2799,13 +2813,26 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.11";
+var APP_VERSION = "0.2.14";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.2.14", date:"2026-07-19", items:[
+    "联网搜索（web_search）改造：执行端从 Cloudflare Worker 改为公共 CORS 代理（主 allorigins / 备 codetabs）直抓 DuckDuckGo，不再需要你自行部署 Worker",
+    "联网搜索改为「技能中心」内置技能（🌐 联网搜索）：会话绑定该技能即自动联网，删除了原先独立的全局开关与 Worker 地址设置"
+  ]},
+  { v:"0.2.13", date:"2026-07-19", items:[
+    "B 联网搜索（web_search 工具）：App 内工具循环（Agnes tools 协议）+ Cloudflare Worker 代理；开启后 AI 可自动联网查实时信息",
+    "设置 → 联网 / 工具：可开关联网搜索、填写 Worker 地址（需自行免费部署 Cloudflare Worker，见 DEPLOY-WORKER.md）"
+  ]},
+  { v:"0.2.12", date:"2026-07-19", items:[
+    "新增「技能系统（A：人设 / 插件）」：设置 → 技能中心，开箱内置 翻译专家 / 国风文案师 / 分镜脚本师 / 提示词优化师",
+    "技能可自建：图标、名称、系统提示词、专属接口、专属模型（如 DeepSeek）全可自定义；对话页点一下即切换 AI 角色",
+    "会话可绑定技能：该对话全程按人设回答，可随时「取消」恢复通用助手"
+  ]},
   { v:"0.2.11", date:"2026-07-19", items:[
     "优化：默认模型迁移改为「版本标记驱动」，不再写死具体模型名——随时可切任意模型（如 DeepSeek）",
     "修复：用户自定义过的接口（含自建 DeepSeek 等）不再被官方默认升级覆盖；只有「从未改过的内置默认」才跟随官方默认"
@@ -2868,6 +2895,34 @@ function currentApiKey(){ return currentApi().key||""; }
 function apiBase(){ return (currentApi().baseUrl||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
 function pollBase(){ return apiBase().replace(/\/v1$/,"")+"/agnesapi"; }
 function currentModel(kind){ var m = (currentApi().models||{})[kind]; if(m && m.trim()) return m.trim(); return MODEL_DEFAULTS[kind]||""; }
+/* ============ 技能系统（A：人设 / 提示词插件，纯前端、用户可自建） ============ */
+function getApiById(id){ var apis=CFG&&CFG.apis; if(!apis) return null; return apis.find(function(x){return x.id===id;})||null; }
+function apiBaseFor(a){ return ((a&&a.baseUrl)||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
+function getSkill(id){ if(!CFG||!CFG.skills) return null; return CFG.skills.find(function(s){return s.id===id;})||null; }
+function currentSkill(){ var c=current(); return (c&&c.skillId)?getSkill(c.skillId):null; }
+/* 内置技能：开箱即用的专业人设（用户可改、可删、可自建更多） */
+var BUILTIN_SKILLS = [
+  { id:"sk_translator", name:"翻译专家", icon:"🌐", builtin:true, enabled:true,
+    desc:"中英互译、本地化润色、保留术语",
+    system:"你是专业翻译专家，擅长中英互译与本地化润色。翻译准确、信达雅，保留专有名词与术语；如用户只给一句话，默认判断源语言并译为目标语言（默认中英互译），必要时给出不同语气版本。",
+    apiId:"", model:"" },
+  { id:"sk_guofeng", name:"国风文案师", icon:"🏮", builtin:true, enabled:true,
+    desc:"国风 / 古风文案、标题、意境描写",
+    system:"你是国风文案师，擅长古风、国风意境描写与文案创作，语言凝练有画面感，可写诗词、标题、短视频文案、产品国风包装语。用户要求现代风时再切换。",
+    apiId:"", model:"" },
+  { id:"sk_storyboard", name:"分镜脚本师", icon:"🎬", builtin:true, enabled:true,
+    desc:"小说 / 剧本 → 分镜脚本与镜头提示",
+    system:"你是分镜脚本师，能把小说段落、剧情或创意拆成专业分镜：镜头号、景别、画面描述、台词/旁白、运镜、时长，并给出可用于生图/生视频的提示词。输出结构化、可直接执行。",
+    apiId:"", model:"" },
+  { id:"sk_prompt", name:"提示词优化师", icon:"✨", builtin:true, enabled:true,
+    desc:"把想法改写成生图 / 生视频提示词",
+    system:"你是 AI 绘画/视频提示词优化师，擅长把用户的模糊想法改写成高质量、细节丰富、风格明确的生图/视频提示词，并解释改动理由，支持中英文双版。",
+    apiId:"", model:"" },
+  { id:"sk_websearch", name:"联网搜索", icon:"🔍", builtin:true, enabled:true, needsWeb:true,
+    desc:"绑定后 AI 可自动联网查实时 / 最新信息",
+    system:"你是联网搜索助手。当用户的问题涉及实时或最新信息（如新闻、天气、股价、赛事比分、最新资料、近期事件、事实核查），或你无法凭已有知识确定的当前事实时，必须调用 web_search 工具获取最新结果，再基于搜索结果作答。调用时使用简洁准确的中文关键词。回答要引用来源要点，不得编造未检索到的信息；若只是普通闲聊或创意写作，无需搜索则正常回答。",
+    apiId:"", model:"" }
+];
 /* 官方推荐的默认模型（用户没填/填空时兜底，避免"模型乱填"导致功能失效） */
 var MODEL_DEFAULTS = { text:"agnes-2.5-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0" };
 /* 官方默认模型集"版本号"：改默认模型时 +1。未自定义的内置默认接口会在启动时自动对齐到最新官方默认。
@@ -2908,7 +2963,8 @@ var DEFAULT_CFG = {
   updateBase: "https://tan719405973-afk.github.io/phone-agent-hotupdate",   /* F35：热更新地址（GitHub Pages 为默认值，空=不检查） */
   shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
   genParams: { size:"", n:1 },  /* F23 生成参数：尺寸(空=模型默认) / 张数 */
-  fontScale: 1                  /* F31 字体大小：0.85 小 / 1 标准 / 1.15 大 / 1.3 特大 */
+  fontScale: 1,                 /* F31 字体大小：0.85 小 / 1 标准 / 1.15 大 / 1.3 特大 */
+  skills: BUILTIN_SKILLS.map(function(s){ return Object.assign({}, s); })   /* 技能系统：开箱内置 5 个人设/工具（含联网搜索），用户可改/删/自建 */
 };
 var CFG = null;
 
@@ -3167,6 +3223,8 @@ function loadCfg(){
           }
         });
       }
+      /* 迁移：确保技能数组存在（老用户首次启动补内置技能；用户删过的不会复活，因为仅当数组缺失才重置） */
+      if(!Array.isArray(obj.skills)) obj.skills = BUILTIN_SKILLS.map(function(s){ return Object.assign({}, s); });
       return obj;
     }catch(e){ return Object.assign({}, DEFAULT_CFG); }
   })();
@@ -3432,10 +3490,12 @@ function renderMsgs(){
   box.innerHTML = "";
   if(!c || !c.messages.length){
     box.innerHTML = '<div class="empty-tip">你好，我是 AI 创作助手 👋<br>可以聊天、画图、生成视频。<br>试试发「画一只戴帽子的猫」<br><br>（首次使用请先到右上角设置里填入 API Key）</div>';
+    applySkillBar();
     return;
   }
   c.messages.forEach(function(m){ box.appendChild(renderRow(m)); });
   scrollBottom();
+  applySkillBar();   /* 技能系统：切换会话时刷新技能条（反映该会话绑定的技能） */
 }
 function renderRow(m){
   var row = document.createElement("div");
@@ -3643,10 +3703,73 @@ function cleanPrompt(t, intent){
   return t.trim();
 }
 
-/* ---- 线① 文本对话（流式打字机 F22）+ F13/F14 附件处理 ---- */
+/* ============ B 工具插件：联网搜索（web_search） ============ */
+/* Agnes 支持标准 OpenAI 兼容 tools 协议：模型返回"要搜 XXX"→ App 本地执行搜索→结果回传→模型综合。
+   真正的联网由公共 CORS 代理（主 allorigins / 备 codetabs）直抓 DuckDuckGo HTML 完成（手机直连搜索网站会被 CORS 拦）。 */
+var WEB_SEARCH_TOOL = {
+  type:"function",
+  function:{
+    name:"web_search",
+    description:"联网搜索实时/最新信息（新闻、天气、股价、最新资料、事实核查等）。当用户问题需要实时或未知信息时调用。",
+    parameters:{ type:"object", properties:{ query:{ type:"string", description:"搜索关键词" } }, required:["query"] }
+  }
+};
+/* 本地执行 web_search 工具：经公共 CORS 代理（主 allorigins / 备 codetabs）直抓 DuckDuckGo HTML，解析前 N 条，返回 [{id, content}] */
+function execWebSearch(toolCalls){
+  var proms = toolCalls.map(function(tc){
+    var args = {}; try{ args = JSON.parse((tc.function&&tc.function.arguments)||"{}"); }catch(e){ args={}; }
+    var q = args.query || args.q || "";
+    if(!q) return Promise.resolve({ id:tc.id, content:"【联网搜索：未提供关键词】" });
+    var target = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(q);
+    var sig = (activeAbort && activeAbort.signal) ? activeAbort.signal : undefined;
+    var urlMain = "https://api.allorigins.win/raw?url=" + encodeURIComponent(target);
+    var urlBak  = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(target);
+    /* 解析 DuckDuckGo HTML：每条结果含标题(a.result__a)、摘要(.result__snippet)、真实地址(uddg 参数) */
+    function parseDDG(htmlText){
+      try{
+        var doc = new DOMParser().parseFromString(htmlText, "text/html");
+        var nodes = doc.querySelectorAll(".result__body");
+        var out = [];
+        for(var i=0; i<nodes.length && out.length<5; i++){
+          var a = nodes[i].querySelector("a.result__a");
+          var snip = nodes[i].querySelector(".result__snippet");
+          if(!a) continue;
+          var title = (a.textContent||"").trim();
+          var href = a.getAttribute("href")||"";
+          var realUrl = "";
+          var m = href.match(/[?&]uddg=([^&]+)/);
+          if(m) realUrl = decodeURIComponent(m[1]);
+          else if(/^https?:\/\//.test(href)) realUrl = href;
+          var s = snip ? (snip.textContent||"").trim() : "";
+          out.push("• " + title + "\n  " + s + (realUrl? ("\n  " + realUrl) : ""));
+        }
+        if(!out.length) return "【联网搜索：未解析到结果】";
+        return out.join("\n\n");
+      }catch(e){ return "【联网搜索解析失败："+ (e&&e.message||e) +"】"; }
+    }
+    function tryFetch(u){
+      return fetch(u, { signal: sig, redirect:"follow", headers:{ "Accept":"text/html" } }).then(function(r){
+        if(!r.ok) throw new Error("HTTP "+r.status);
+        return r.text();
+      });
+    }
+    return tryFetch(urlMain).catch(function(){ return tryFetch(urlBak); }).then(function(t){
+      return { id: tc.id, content: "【联网搜索结果："+q+"】\n"+parseDDG(t) };
+    }).catch(function(e){
+      return { id: tc.id, content: "【联网搜索失败："+ (e&&e.message||e) +"】" };
+    });
+  });
+  return Promise.all(proms);
+}
+
+/* ---- 线① 文本对话（流式打字机 F22）+ F13/F14 附件处理 + B 工具循环 ---- */
 function doChat(text, attachments){
   attachments = attachments || [];
   var c = current();
+  /* 技能系统（A）：当前会话若绑定技能，则临时选用该技能的接口/模型，并注入人设提示词 */
+  var skill = (c && c.skillId) ? getSkill(c.skillId) : null;
+  var useApi = (skill && skill.apiId && getApiById(skill.apiId)) ? getApiById(skill.apiId) : currentApi();
+  var useModel = (skill && skill.model && skill.model.trim()) ? skill.model.trim() : (useApi.models.text || MODEL_DEFAULTS.text);
   var allTxt = c.messages.filter(function(m){return m.type==="text";});
   var summaryMsg = allTxt.filter(function(m){return m.role==="summary";})[0];
   var recent = allTxt.filter(function(m){return m.role!=="summary";}).slice(-12)
@@ -3655,6 +3778,7 @@ function doChat(text, attachments){
   if(summaryMsg) sysParts.push("【对话更早部分摘要，供参考】\n"+summaryMsg.text);
   var _memCtx = buildMemoryContext(text);
   if(_memCtx) sysParts.push(MEM_SYS_PROMPT + "\n" + _memCtx);
+  if(skill && skill.system && skill.system.trim()) sysParts.push("【当前技能："+skill.name+"】\n"+skill.system);
   var hist = recent;
   if(sysParts.length) hist = [{role:"system", content: sysParts.join("\n\n")}].concat(hist);
   var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
@@ -3689,36 +3813,93 @@ function doChat(text, attachments){
     var ac = new AbortController();
     activeAbort = ac; setGenState(true);
     var chatAcc = "";
-    var chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 240000);
+    var chatTimer = null;
+    function armTimer(){ clearTimeout(chatTimer); chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 240000); }
 
-    fetch(apiBase()+"/chat/completions",{
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
-      signal: ac.signal,
-      body: JSON.stringify({ model:currentModel("text"), stream:true, messages: hist.concat([{role:"user", content:userContent}]) })
-    }).then(function(resp){
-      if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,120)); });
-      var reader = resp.body.getReader(); var dec=new TextDecoder(); var buf="";
-      function pump(){
-        return reader.read().then(function(r){
-          if(r.done){ finalizeChat(aiMsg,chatAcc,attachments); return; }
-          buf += dec.decode(r.value,{stream:true});
-          var lines = buf.split("\n"); buf = lines.pop();
-          lines.forEach(function(line){
-            line=line.trim();
-            if(line.indexOf("data:")===0){
-              var d=line.slice(5).trim();
-              if(d==="[DONE]") return;
-              try{ var j=JSON.parse(d); var delta=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
-                if(delta){ chatAcc+=delta; var bb=rowBubble(); if(bb) bb.textContent=chatAcc.replace(/^\s+/,""); scrollBottom(); } }catch(e){}
-            }
+    /* 联网搜索（B）：当前会话绑定的技能带 needsWeb 时，给模型挂 web_search 工具（取代原 CFG.webSearch 全局开关） */
+    var wsOn = !!(skill && skill.needsWeb);
+    var TOOLS = wsOn ? [ WEB_SEARCH_TOOL ] : null;
+
+    var chatMessages = hist.concat([{role:"user", content:userContent}]);
+
+    /* 单次流式请求：text 累加到 chatAcc（副作用），返回 {toolCalls, finishReason} */
+    function streamOnce(messages){
+      armTimer();
+      var body = { model:useModel, stream:true, messages: messages };
+      if(TOOLS){ body.tools = TOOLS; body.tool_choice = "auto"; }
+      return fetch(apiBaseFor(useApi)+"/chat/completions",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+(useApi.key||"") },
+        signal: ac.signal,
+        body: JSON.stringify(body)
+      }).then(function(resp){
+        if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,120)); });
+        var reader = resp.body.getReader(); var dec=new TextDecoder(); var buf="";
+        var toolAcc = {};   /* index -> {id,type,function:{name,arguments}} */
+        var order = [];     /* 保持 tool_calls 顺序 */
+        var finishReason = null;
+        function pump(){
+          return reader.read().then(function(r){
+            if(r.done){ return; }
+            buf += dec.decode(r.value,{stream:true});
+            var lines = buf.split("\n"); buf = lines.pop();
+            lines.forEach(function(line){
+              line=line.trim();
+              if(line.indexOf("data:")===0){
+                var d=line.slice(5).trim();
+                if(d==="[DONE]") return;
+                try{
+                  var j=JSON.parse(d);
+                  var ch=j.choices&&j.choices[0];
+                  if(ch && ch.finish_reason) finishReason = ch.finish_reason;
+                  var delta = ch && ch.delta;
+                  if(delta){
+                    if(delta.content){ chatAcc+=delta.content; var bb=rowBubble(); if(bb) bb.textContent=chatAcc.replace(/^\s+/,""); scrollBottom(); }
+                    if(delta.tool_calls){
+                      delta.tool_calls.forEach(function(tc){
+                        var idx = (tc.index!=null)?tc.index:0;
+                        if(!toolAcc[idx]){ toolAcc[idx]={id:"",type:"function",function:{name:"",arguments:""}}; order.push(idx); }
+                        if(tc.id) toolAcc[idx].id = tc.id;
+                        if(tc.type) toolAcc[idx].type = tc.type;
+                        if(tc.function){
+                          if(tc.function.name) toolAcc[idx].function.name += tc.function.name;
+                          if(tc.function.arguments) toolAcc[idx].function.arguments += tc.function.arguments;
+                        }
+                      });
+                    }
+                  }
+                }catch(e){}
+              }
+            });
+            return pump();
           });
-          return pump();
-        });
-      }
-      return pump();
-    }).then(function(){
+        }
+        return pump().then(function(){ return { toolCalls: order.map(function(i){return toolAcc[i];}), finishReason: finishReason }; });
+      });
+    }
+
+    /* 工具执行循环：模型要调工具→本地执行→结果回传→继续对话，直到给出最终回答 */
+    function runLoop(messages){
+      return streamOnce(messages).then(function(res){
+        if(res.toolCalls && res.toolCalls.length && res.finishReason==="tool_calls"){
+          var bb=rowBubble();
+          if(bb) bb.textContent = (chatAcc? chatAcc+"\n\n" : "")+"🔍 正在联网搜索…";
+          scrollBottom();
+          return execWebSearch(res.toolCalls).then(function(results){
+            var asstMsg = { role:"assistant", content: chatAcc || null };
+            if(res.toolCalls.length) asstMsg.tool_calls = res.toolCalls;
+            messages.push(asstMsg);
+            results.forEach(function(r){ messages.push({ role:"tool", tool_call_id:r.id, content:r.content }); });
+            return runLoop(messages);
+          });
+        }
+        return res;
+      });
+    }
+
+    runLoop(chatMessages).then(function(){
       clearTimeout(chatTimer); clearRetry(aiMsg.id);
+      finalizeChat(aiMsg, chatAcc, attachments);
     }).catch(function(err){
       clearTimeout(chatTimer);
       if(err && (err.name==="AbortError" || /abort/i.test(err.message||""))){
@@ -4159,6 +4340,100 @@ function onModelPick(key, val){
   var inp = document.getElementById("custom_"+key);
   if(inp){ inp.style.display="none"; inp.value=""; }
 }
+/* ============ 技能中心：列表 / 新建 / 编辑 / 删除 ============ */
+var SKILL_EDITING = null;
+function openSkills(){
+  var body = document.getElementById("settingsBody");
+  var rows = (CFG.skills||[]).map(function(s){
+    var on = s.enabled!==false;
+    return '<div class="cell" style="display:block;padding:10px 14px">'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+        '<span style="font-size:22px;flex:0 0 auto">'+esc(s.icon||"🔧")+'</span>'+
+        '<div style="flex:1 1 auto;min-width:0">'+
+          '<div style="font-size:14px;font-weight:600">'+esc(s.name)+'</div>'+
+          '<div style="font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(s.desc||"")+'</div>'+
+        '</div>'+
+        '<button class="mini-btn" onclick="toggleSkill(\''+s.id+'\')">'+ (on?"启用":"停用") +'</button>'+
+        '<button class="mini-btn" onclick="openSkillEdit(\''+s.id+'\')">编辑</button>'+
+      '</div></div>';
+  }).join("");
+  body.innerHTML =
+    '<div class="cell" onclick="renderSettings()"><span class="cl">‹ 返回设置</span></div>'+
+    '<div class="group"><div class="gt">技能 / Skills</div>'+ (rows||'<div class="cell"><span class="cl">暂无技能</span></div>') +'</div>'+
+    '<div class="cell" onclick="openSkillEdit(\'\')"><span class="cl" style="color:var(--green)">＋ 新增技能（自建人设 / 插件）</span></div>'+
+    '<div style="font-size:12px;color:var(--text-3);padding:10px 14px;line-height:1.6">技能 = 一份专业人设 / 提示词，点一下即切换 AI 角色。可自建、可给某技能指定专属接口与模型（如 DeepSeek）。</div>';
+  applyTheme();
+}
+function toggleSkill(id){
+  var s=getSkill(id); if(!s) return;
+  s.enabled = (s.enabled===false); saveCfg(); openSkills();
+}
+function openSkillEdit(id){
+  var s = id ? getSkill(id) : null;
+  var isNew = !s;
+  if(isNew){ s = { id:"sk_"+Date.now().toString(36), name:"", icon:"🔧", desc:"", system:"", apiId:"", model:"", enabled:true, builtin:false }; }
+  SKILL_EDITING = s;
+  var apiOpts = '<option value="">（用当前默认接口）</option>' + (CFG.apis||[]).map(function(a){ return '<option value="'+esc(a.id)+'"'+(s.apiId===a.id?' selected':'')+'>'+esc(a.name)+'</option>'; }).join("");
+  var body = document.getElementById("settingsBody");
+  body.innerHTML =
+    '<div class="cell" onclick="openSkills()"><span class="cl">‹ 返回技能</span></div>'+
+    '<div class="group"><div class="gt">'+(isNew?"新增技能":"编辑技能")+'</div>'+
+      '<div class="cell" style="display:block;padding:10px 14px"><div style="font-size:13px;margin-bottom:6px">图标（emoji）</div>'+
+        '<input id="skIcon" value="'+esc(s.icon||"🔧")+'" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:14px;box-sizing:border-box"></div>'+
+      '<div class="cell" style="display:block;padding:10px 14px"><div style="font-size:13px;margin-bottom:6px">名称</div>'+
+        '<input id="skName" value="'+esc(s.name)+'" placeholder="如：翻译专家" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:14px;box-sizing:border-box"></div>'+
+      '<div class="cell" style="display:block;padding:10px 14px"><div style="font-size:13px;margin-bottom:6px">一句话描述（列表显示）</div>'+
+        '<input id="skDesc" value="'+esc(s.desc||"")+'" placeholder="简介" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box"></div>'+
+      '<div class="cell" style="display:block;padding:10px 14px"><div style="font-size:13px;margin-bottom:6px">系统提示词（人设 / 规则）</div>'+
+        '<textarea id="skSystem" rows="5" placeholder="例如：你是专业翻译专家，擅长中英互译..." style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+esc(s.system||"")+'</textarea></div>'+
+      '<div class="cell" style="display:block;padding:10px 14px"><div style="font-size:13px;margin-bottom:6px">专属接口（可选）</div>'+
+        '<select id="skApi" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+apiOpts+'</select></div>'+
+      '<div class="cell" style="display:block;padding:10px 14px"><div style="font-size:13px;margin-bottom:6px">专属模型（可选，留空用接口默认）</div>'+
+        '<input id="skModel" value="'+esc(s.model||"")+'" placeholder="如 deepseek-chat" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box"></div>'+
+    '</div>'+
+    '<div class="cell" onclick="saveSkill('+isNew+')"><span class="cl" style="color:var(--green)">保存</span></div>'+
+    (isNew?'':'<div class="cell danger" onclick="delSkill(\''+s.id+'\')"><span class="cl">删除此技能</span></div>')+
+  '';
+  applyTheme();
+}
+function saveSkill(isNew){
+  var s = SKILL_EDITING; if(!s) return;
+  s.icon = (document.getElementById("skIcon").value||"🔧").trim();
+  s.name = (document.getElementById("skName").value||"").trim() || "未命名技能";
+  s.desc = (document.getElementById("skDesc").value||"").trim();
+  s.system = (document.getElementById("skSystem").value||"").trim();
+  s.apiId = (document.getElementById("skApi").value||"");
+  s.model = (document.getElementById("skModel").value||"").trim();
+  if(isNew){ CFG.skills.push(s); }
+  saveCfg(); openSkills(); toast("已保存技能");
+}
+function delSkill(id){
+  if(!confirm("确定删除此技能？")) return;
+  CFG.skills = (CFG.skills||[]).filter(function(x){return x.id!==id;});
+  (CFG.convs||[]).forEach(function(cv){ if(cv.skillId===id) cv.skillId=null; });
+  saveCfg(); openSkills(); toast("已删除");
+}
+/* 对话页技能条：点 chip 切换当前会话人设，再点当前或「取消」解绑 */
+function applySkillBar(){
+  var el = document.getElementById("skillBar"); if(!el) return;
+  var skills = (CFG.skills||[]).filter(function(s){return s.enabled!==false;});
+  if(!skills.length){ el.style.display="none"; el.innerHTML=""; return; }
+  var cur = currentSkill();
+  var chips = skills.map(function(s){
+    var act = (cur && cur.id===s.id) ? " active":"";
+    return '<span class="skchip'+act+'" onclick="selectSkill(\''+s.id+'\')">'+esc(s.icon||"🔧")+' '+esc(s.name)+'</span>';
+  }).join("");
+  el.innerHTML = chips + (cur? '<span class="skchip clear" onclick="selectSkill(\'\')">✕ 取消</span>':'');
+  el.style.display="flex";
+}
+function selectSkill(id){
+  var c=current(); if(!c) return;
+  c.skillId = id || null;
+  saveCfg(); applySkillBar();
+  var sk = id?getSkill(id):null;
+  toast(sk? ("已切换技能："+sk.name) : "已取消技能，恢复通用助手");
+}
+/* 联网搜索已改为技能中心内置技能（sk_websearch，会话绑定即联网），不再有独立设置页 */
 function renderSettings(){
   var body = document.getElementById("settingsBody");
   function sel(val, opts, onch){
@@ -4177,6 +4452,9 @@ function renderSettings(){
     (CFG.bgImage? cellNav("清除聊天背景", "clearBg()") : "")+
     '<div class="cell" style="display:block;padding:10px 14px"><div class="cl" style="margin-bottom:6px">文件保存位置（手机本地）</div>'+
     '<input type="text" value="'+esc(CFG.saveLocation||"Download/phone-agent")+'" onchange="CFG.saveLocation=(this.value.trim()||\'Download/phone-agent\');saveCfg();toast(\'已保存保存位置\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box"></div>'+
+  '</div>'+
+  '<div class="group"><div class="gt">技能 / Skills</div>'+
+    cellNav("技能中心（人设 / 插件，可自建）", "openSkills()")+
   '</div>'+
   '<div class="group"><div class="gt">账号</div>'+
     cellNav("API 接口管理（当前："+esc(currentApi().name)+"）", "openApiPage()")+

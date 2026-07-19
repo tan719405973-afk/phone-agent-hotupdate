@@ -1,5 +1,5 @@
 {
-  "version": "0.2.11",
-  "note": "v0.2.11：默认模型迁移改为版本标记驱动，不再写死模型名，随时可切任意模型（如 DeepSeek）。",
+  "version": "0.2.14",
+  "note": "v0.2.14：联网搜索改公共 CORS 代理（主 allorigins / 备 codetabs）直抓 DuckDuckGo，并改为技能中心内置技能，移除 Cloudflare Worker 依赖。",
   "url": ""
 }
