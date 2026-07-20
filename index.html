@@ -275,8 +275,23 @@
   .summary-row{justify-content:center;}
   .summary-note{background:var(--input);color:var(--text-2);font-size:12px;line-height:1.6;padding:8px 12px;border-radius:10px;max-width:88%;text-align:left;}
 
-  /* 长按禁止 iOS 文字选择气泡 */
-  .bubble{ -webkit-touch-callout:none; }
+  /* 长按禁止 iOS 文字选择气泡，但允许选中文字自由复制 */
+  .bubble{ -webkit-touch-callout:none; -webkit-user-select:text; user-select:text; }
+  /* 代码块（F42）：AI 回复里的代码/提示词带复制按钮 */
+  .codeblock{ position:relative; background:#f6f8fa; border:1px solid var(--line); border-radius:8px; margin:6px 0; overflow:hidden; }
+  .codebar{ display:flex; justify-content:space-between; align-items:center; padding:4px 8px; background:#eef1f4; border-bottom:1px solid var(--line); }
+  .codelang{ font-size:11px; color:var(--text-3); }
+  .copybtn{ font-size:12px; color:var(--accent); background:none; border:none; padding:2px 6px; cursor:pointer; }
+  .codeblock pre{ margin:0; padding:10px; overflow-x:auto; }
+  .codeblock code{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; white-space:pre; color:#24292e; line-height:1.5; }
+  .rt{ white-space:pre-wrap; word-break:break-word; }
+  /* 预览大图/视频（F43） */
+  .preview-mask{ position:fixed; inset:0; background:rgba(0,0,0,.92); display:none; align-items:center; justify-content:center; z-index:999; }
+  .preview-mask.show{ display:flex; }
+  .preview-box{ max-width:96vw; max-height:92vh; display:flex; flex-direction:column; align-items:center; }
+  .preview-box img{ max-width:96vw; max-height:80vh; object-fit:contain; border-radius:6px; }
+  .preview-actions{ margin-top:12px; }
+  .preview-actions a{ color:#fff; background:rgba(255,255,255,.16); padding:8px 18px; border-radius:20px; font-size:14px; margin:0 6px; display:inline-block; }
 </style>
 </head>
 <body>
@@ -489,6 +504,10 @@
   <!-- 长按操作菜单（底部上滑，F21） -->
   <div class="mask" id="asMask" onclick="closeActionSheet()"></div>
   <div class="actionsheet" id="actionSheet"></div>
+  <!-- 预览大图/视频（F43） -->
+  <div class="preview-mask" id="previewMask" onclick="closePreview()">
+    <div class="preview-box" id="previewBox"></div>
+  </div>
 
 </div>
 
@@ -2799,13 +2818,19 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.9";
+var APP_VERSION = "0.2.10";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.2.10", date:"2026-07-21", items:[
+    "复制更顺手：消息文字可自由选中；长按菜单在已选中文字时显示「复制选中」，否则「复制文字」",
+    "图片 / 附件图 / 作品图点击放大查看（全屏预览，可保存）；视频新增「全屏」按钮",
+    "AI 回复里的代码 / 提示词带「复制」按钮，一键复制整段代码或提示词",
+    "多供应商：API 接口管理新增「智谱 BigModel」一键添加（免费档备份，Agnes 不可用时可切换）；支持 BigModel 文件解析（PDF/Word/图片等上传后自动解析正文并入对话，做知识库/提示词准备）"
+  ]},
   { v:"0.2.9", date:"2026-07-21", items:[
     "修复「保存到本地」失效：图片/视频保存、聊天备份导出、文本下载，统一走原生桥落地，不再依赖浏览器下载（之前在 App 内点下载无反应）",
     "本次为热更推送（无需重装 APK）：版本号顺推 0.2.9 只为跨过热更版本门槛，将上面的下载修复送达已装用户"
@@ -2885,7 +2910,70 @@ function makeDefaultApi(id){
   return { id:id||"agnes-default", name:"Agnes", icon:"A", baseUrl:"https://apihub.agnes-ai.com/v1", key:"",
            models:{text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0"},
            modelsList:["agnes-2.0-flash","agnes-2.5-flash","agnes-image-2.0-flash","agnes-image-2.1-flash","agnes-video-v2.0"],
-           routable:true };
+           routable:true, parseFiles:false };
+}
+/* 图像/视频生成始终走「可路由」的供应商（默认 Agnes），避免切到只做对话的 BigModel 时生图崩 */
+function mediaApi(){
+  var list = (CFG && CFG.apis) || [];
+  var r = list.filter(function(a){return a.routable;})[0];
+  return r || currentApi();
+}
+function mediaApiBase(){ return (mediaApi().baseUrl||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
+function mediaApiKey(){ return mediaApi().key||""; }
+/* 找支持文件解析的供应商（BigModel 等，需已填 key） */
+function parseProvider(){
+  var list = (CFG && CFG.apis) || [];
+  return list.filter(function(a){return a.parseFiles && a.key;})[0] || null;
+}
+/* BigModel 文件解析（lite 异步）：上传 → 轮询结果 → 返回正文文本 */
+function parseFileWithProvider(file, provider){
+  var base = (provider.baseUrl||"").replace(/\/+$/,"");
+  var fd = new FormData();
+  fd.append("file", file);
+  fd.append("tool_type", "lite");
+  return fetch(base+"/files/parser/create", { method:"POST", headers:{ "Authorization":"Bearer "+provider.key }, body: fd })
+    .then(function(r){ if(!r.ok) throw new Error("解析上传 HTTP "+r.status); return r.json(); })
+    .then(function(j){
+      var tid = (j&&j.task_id) || (j&&j.data&&j.data.task_id) || "";
+      if(!tid) throw new Error("未返回解析任务 ID");
+      return pollParse(provider, tid);
+    });
+}
+function pollParse(provider, tid){
+  var base = (provider.baseUrl||"").replace(/\/+$/,"");
+  var url = base+"/files/parser/result/"+tid+"/text";
+  function attempt(n){
+    if(n>25) return Promise.reject(new Error("解析超时（请稍后重试）"));
+    return fetch(url, { headers:{ "Authorization":"Bearer "+provider.key } }).then(function(r){ return r.text(); }).then(function(t){
+      var txt = extractParseText(t);
+      if(txt) return txt;
+      return new Promise(function(res){ setTimeout(function(){ res(attempt(n+1)); }, 1500); });
+    });
+  }
+  return attempt(0);
+}
+function extractParseText(t){
+  if(!t || !String(t).trim()) return "";
+  try{
+    var j = JSON.parse(t);
+    if(typeof j === "string") return j;
+    if(j && typeof j === "object"){
+      if(j.text) return j.text;
+      if(j.data && j.data.text) return j.data.text;
+      if(j.result && j.result.text) return j.result.text;
+      if(j.choices && j.choices[0] && j.choices[0].text) return j.choices[0].text;
+      if(j.task_status && /PROCESS|WAIT|RUN/i.test(j.task_status)) return ""; /* 仍在处理，继续轮询 */
+    }
+  }catch(e){ /* 纯文本结果 */ }
+  return String(t).trim();
+}
+/* 单个二进制附件：已解析过 / 无供应商 / 无文件对象 → 返回空串 */
+function parseBinAtt(att){
+  if(att.content) return Promise.resolve(att.content);
+  if(!att.fileRef) return Promise.resolve("");
+  var p = parseProvider();
+  if(!p) return Promise.resolve("");
+  return parseFileWithProvider(att.fileRef, p).catch(function(e){ console.warn("文件解析失败:", e); return ""; });
 }
 function genId(){ return "api_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6); }
 
@@ -2986,7 +3074,12 @@ function bindLongPress(el, cb){
 function onRowLongPress(m){
   var items = [];
   if(m.type === "text"){
-    items.push({label:"复制文字", onclick:function(){ copyText(m.text||""); }});
+    var sel = (window.getSelection && window.getSelection().toString) ? window.getSelection().toString() : "";
+    if(sel && sel.trim()){
+      items.push({label:"复制选中", onclick:function(){ copyText(sel); }});
+    } else {
+      items.push({label:"复制文字", onclick:function(){ copyText(m.text||""); }});
+    }
     if(m.role === "user") items.push({label:"重发", onclick:function(){ resendUser(m); }});
     if(m.role === "assistant") items.push({label:"保存为文件", onclick:function(){ downloadMsg(m.id); }});
   } else if(m.type === "image"){
@@ -3428,18 +3521,18 @@ function renderRow(m){
     if(m.attachments && m.attachments.length){
       extra += m.attachments.map(function(a){
         if(a.kind === "image" && (a.url || a.base64)){
-          return '<img src="'+esc(a.url || a.base64)+'" class="att-img" onerror="this.style.opacity=.3" alt="图片">';
+          return '<img src="'+esc(a.url || a.base64)+'" class="att-img" onerror="this.style.opacity=.3" alt="图片" onclick="openPreview(\''+esc(a.url || a.base64)+'\',\'image\')" style="cursor:pointer">';
         }
         return '<span class="atchip-static">📎 '+esc(a.name)+'</span>';
       }).join("") + "<br>";
     }
-    inner = extra + esc(m.text||"");
+    inner = extra + renderRichText(m.text||"");
     if(m.role==="assistant"){
       inner += '<div class="media-actions"><a onclick="downloadMsg(\''+m.id+'\')">下载回复</a>'+
                (m._err?'<a onclick="retryMsg(\''+m.id+'\')">重试</a>':'')+'</div>';
     }
   } else if(m.type==="image"){
-    inner = '<img src="'+esc(m.media.url)+'" alt="图片" onerror="this.style.opacity=.3">'+
+    inner = '<img src="'+esc(m.media.url)+'" alt="图片" onerror="this.style.opacity=.3" onclick="openPreview(\''+esc(m.media.url)+'\',\'image\')" style="cursor:pointer">'+
             (m.media.caption?'<div class="cap">'+esc(m.media.caption)+'</div>':'')+
             mediaActions(m.media.url,"图片")+
             '</div>';
@@ -3463,7 +3556,9 @@ function renderRow(m){
 }
 function mediaActions(url,label){
   var fname = label === "视频" ? "video.mp4" : "image.png";
+  var extra = label === "视频" ? '<a onclick="openPreview(\''+esc(url)+'\',\'video\')">全屏</a>' : '';
   return '<div class="media-actions">'+
+    extra +
     '<a onclick="downloadUrl(\''+esc(url)+'\',\''+fname+'\')">下载</a>'+
     '<a onclick="copyText(\''+esc(url)+'\')">复制链接</a>'+
     '</div>';
@@ -3648,7 +3743,11 @@ function doChat(text, attachments){
   var imgAtts  = attachments.filter(function(a){return a.kind==="image";});
   var binAtts  = attachments.filter(function(a){return a.kind==="binary";});
 
-  Promise.all(imgAtts.map(ensureImageBase64)).then(function(imgB64s){
+  var binParses = binAtts.map(parseBinAtt);
+  if(binAtts.length && parseProvider()) toast("正在解析 "+binAtts.length+" 个文件…");
+  Promise.all(imgAtts.map(ensureImageBase64).concat(binParses)).then(function(results){
+    var imgB64s = results.slice(0, imgAtts.length);
+    var parsedBin = results.slice(imgAtts.length);
     var userContent;
     if(attachments.length){
       var parts = [{ type:"text", text: text || "（请处理我上传的附件）" }];
@@ -3658,9 +3757,14 @@ function doChat(text, attachments){
       imgB64s.forEach(function(b64){
         if(b64) parts.push({ type:"image_url", image_url:{ url:b64 } });
       });
-      if(binAtts.length){
-        parts.push({ type:"text", text:"\n（注："+binAtts.map(function(a){return a.name;}).join("、")+" 的内容无法在浏览器内读取，如需处理请把文字内容粘贴发我）" });
-      }
+      binAtts.forEach(function(a, i){
+        var txt = parsedBin[i];
+        if(txt && txt.trim()){
+          parts.push({ type:"text", text:"\n\n【用户上传的文件（已解析）："+a.name+"】\n```\n"+txt.slice(0,40000)+"\n```" });
+        } else {
+          parts.push({ type:"text", text:"\n（注："+a.name+" 的内容无法读取，如需处理请把文字内容粘贴发我；在「API 接口管理」添加并开启「文件解析」的智谱 BigModel 接口后可自动解析 PDF/Word/图片等）" });
+        }
+      });
       userContent = parts;
     } else {
       userContent = text || "（请继续）";
@@ -3809,9 +3913,9 @@ function genImageDirect(prompt, refs, params, loading){
   function tryWith(model){
     var ib = { model:model, prompt:prompt, size:(params.size||"1024x1024") };
     ib.extra_body = { image: refs, response_format: "url" };   /* 图生图：image 必须放 extra_body 内（数组），不能放顶层 */
-    return fetchTimeout(apiBase()+"/images/generations",{
+    return fetchTimeout(mediaApiBase()+"/images/generations",{
       method:"POST",
-      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+mediaApiKey() },
       body: JSON.stringify(ib)
     }, 120000).then(function(r){
       if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
@@ -3874,9 +3978,9 @@ function genImageOnly(prompt, loading, origPrompt, params){
   params = params || CFG.genParams || {};
   var ib = { model:currentModel("image"), prompt:prompt, size:(params.size||"1024x1024") };
   ib.extra_body = { response_format: "url" };   /* 官方要求 response_format 放 extra_body 内（不能放顶层） */
-  fetchTimeout(apiBase()+"/images/generations",{
+  fetchTimeout(mediaApiBase()+"/images/generations",{
     method:"POST",
-    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+mediaApiKey() },
     body: JSON.stringify(ib)
   }, 120000).then(function(r){
     if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
@@ -3906,9 +4010,9 @@ function doVideo(prompt, refs, params){
     if(validRefs && validRefs.length) body.image = validRefs.length === 1 ? validRefs[0] : validRefs;   /* 图生视频：单图传字符串，多图传数组 */
     if(params && params.size && !(validRefs && validRefs.length)){ var _wh=String(params.size).split("x"); if(_wh.length===2){ if(parseInt(_wh[0],10)) body.width=parseInt(_wh[0],10); if(parseInt(_wh[1],10)) body.height=parseInt(_wh[1],10); } }   /* 视频用 width/height；图生视频不传宽高 */
     if(params && params.durationFrames){ body.num_frames = Number(params.durationFrames); body.frame_rate = 24; }   /* 时长：帧数(8n+1)÷帧率=秒 */
-    fetchTimeout(apiBase()+"/videos",{
+    fetchTimeout(mediaApiBase()+"/videos",{
       method:"POST",
-      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+mediaApiKey() },
       body: JSON.stringify(body)
     }, 30000).then(function(r){
       if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
@@ -4015,9 +4119,9 @@ function studioGenShots(arr, idx, loading, params, theme, style){
   loading.text = "② 逐镜出图（"+(idx+1)+"/"+arr.length+"）："+(shot.shot || ("第"+(idx+1)+"镜"));
   renderMsgs();
   var prompt = shot.prompt || shot.shot || theme;
-  fetchTimeout(apiBase()+"/images/generations",{
+  fetchTimeout(mediaApiBase()+"/images/generations",{
     method:"POST",
-    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+mediaApiKey() },
     body: JSON.stringify({ model:currentModel("image"), prompt:prompt, size:(params.size||"1024x1024"), extra_body:{ response_format:"url" } })
   }, 120000).then(function(r){
     if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
@@ -4109,7 +4213,7 @@ document.getElementById("fileInput").addEventListener("change", function(e){
         };
         rd2.readAsDataURL(f);
       } else {
-        pendingAttachments.push({ id: uid(), name: f.name, mime: f.type || "未知", kind: "binary", size: f.size });
+        pendingAttachments.push({ id: uid(), name: f.name, mime: f.type || "未知", kind: "binary", size: f.size, fileRef: f });
         renderAttachZone();
       }
     })(files[i]);
@@ -4539,12 +4643,16 @@ function renderApiList(){
     '</div>'+
     '<div style="padding:16px">'+
       '<button style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:13px;font-size:16px;cursor:pointer" onclick="addApi()">+ 新增 API 接口</button>'+
+      '<button style="width:100%;background:var(--input);color:var(--text);border:none;border-radius:8px;padding:11px;font-size:14px;cursor:pointer;margin-top:10px" onclick="addBigModelApi()">+ 添加智谱 BigModel（免费档备份）</button>'+
+      '<div style="font-size:12px;color:#9A9A9A;margin-top:8px;line-height:1.5">BigModel 作 Agnes 的备份：对话走免费模型 glm-4-flash；并支持「文件解析」（上传 PDF/Word/图片自动解析正文）。Agnes 不可用时，在「当前使用」里点它切换即可。</div>'+
     '</div>';
 }
 function switchApi(id){
   CFG.currentApiId = id; saveCfg(); renderApiList(); toast("已切换到："+currentApi().name);
 }
-function addApi(){ API_EDITING_ID = null; renderApiEdit(); show('apiEditPage'); }
+function addApi(){ API_EDITING_ID = null; API_EDIT_PRESET = null; renderApiEdit(); show('apiEditPage'); }
+var API_EDIT_PRESET = null;
+function addBigModelApi(){ API_EDITING_ID = null; API_EDIT_PRESET = "bigmodel"; renderApiEdit(); show('apiEditPage'); }
 function editApi(id){ API_EDITING_ID = id; renderApiEdit(); show('apiEditPage'); }
 function deleteApi(id){
   showConfirm("删除接口", "确定删除这个 API 接口吗？", function(){
@@ -4554,8 +4662,16 @@ function deleteApi(id){
   });
 }
 var API_EDIT_FETCHED = [];
+function bigmodelDefault(){
+  return { id:genId(), name:"智谱 BigModel", icon:"B", baseUrl:"https://open.bigmodel.cn/api/paas/v4", key:"",
+           models:{text:"glm-4-flash", image:"", imageEdit:"", video:""},
+           modelsList:["glm-4-flash","glm-4-plus","glm-4-long","cogview-3-flash","cogview-3-plus"],
+           routable:false, parseFiles:true };
+}
 function renderApiEdit(){
-  var a = API_EDITING_ID ? (CFG.apis.find(function(x){return x.id===API_EDITING_ID;}) || makeDefaultApi()) : makeDefaultApi(genId());
+  var a;
+  if(API_EDIT_PRESET === "bigmodel"){ a = bigmodelDefault(); API_EDIT_PRESET = null; }
+  else { a = API_EDITING_ID ? (CFG.apis.find(function(x){return x.id===API_EDITING_ID;}) || makeDefaultApi()) : makeDefaultApi(genId()); }
   API_EDIT_FETCHED = (a.modelsList && a.modelsList.length) ? a.modelsList.slice() : (API_EDIT_FETCHED || []);
   var body = document.getElementById("apiEditBody"); if(!body) return;
   function modelOpts(kind, val){ return modelOptsFromList(API_EDIT_FETCHED, val); }
@@ -4581,6 +4697,7 @@ function renderApiEdit(){
     '</div>'+
     '<div class="group"><div class="gt">路由能力</div>'+
       '<div class="cell"><span class="cl">三线都走该接口</span><span class="cr"><input type="checkbox" id="aeRoutable" '+(a.routable?'checked':'')+'></span></div>'+
+      '<div class="cell"><span class="cl">支持文件解析（BigModel）</span><span class="cr"><input type="checkbox" id="aeParseFiles" '+(a.parseFiles?'checked':'')+'></span></div>'+
     '</div>'+
     '<div style="padding:16px">'+
       '<button style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:13px;font-size:16px;cursor:pointer;margin-bottom:10px" onclick="saveApi()">保存</button>'+
@@ -4663,11 +4780,12 @@ function saveApi(){
     video: getModel("aeModelVideo","aeModelVideoCustom")
   };
   var routable = document.getElementById("aeRoutable").checked;
+  var parseFiles = document.getElementById("aeParseFiles").checked;
   if(API_EDITING_ID){
     var idx = CFG.apis.findIndex(function(x){return x.id===API_EDITING_ID;});
-    if(idx>=0) CFG.apis[idx] = { id:API_EDITING_ID, name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable };
+    if(idx>=0) CFG.apis[idx] = { id:API_EDITING_ID, name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable, parseFiles:parseFiles };
   }else{
-    CFG.apis.push({ id:genId(), name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable });
+    CFG.apis.push({ id:genId(), name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable, parseFiles:parseFiles });
   }
   saveCfg(); closeApiEdit(); renderApiList(); toast("已保存");
 }
@@ -4692,7 +4810,7 @@ function renderWorks(){
     return '<div class="works-sec"><h4>'+title+'（'+items.length+' 项）</h4><div class="dl-tip">点「下载」可存到本地</div>'+html+'</div>';
   }
   var imgHtml = '<div class="works-grid">'+imgs.map(function(m){
-    return '<div class="works-item"><a href="'+esc(m.media.url)+'" target="_blank"><img src="'+esc(m.media.url)+'" onerror="this.style.opacity=.3"></a>'+dl(m.media.url,(m.media.caption||"image")+".png")+'</div>';
+    return '<div class="works-item"><img src="'+esc(m.media.url)+'" onerror="this.style.opacity=.3" onclick="openPreview(\''+esc(m.media.url)+'\',\'image\')" style="cursor:pointer">'+dl(m.media.url,(m.media.caption||"image")+".png")+'</div>';
   }).join('')+'</div>';
   var vidHtml = vids.map(function(m){
     return '<div class="works-vid"><video src="'+esc(m.media.url)+'" controls playsinline></video>'+
@@ -4737,6 +4855,7 @@ function fallbackCopy(t){
   try{ document.execCommand("copy"); toast("已复制"); }catch(e){ toast("复制失败，请长按手动复制"); }
   document.body.removeChild(ta);
 }
+/* F44：多供应商文档解析（BigModel lite 异步）——见 parseFileWithProvider / doChat 中的 binAtts 处理 */
 function showPrompt(title, val, cb){
   var box=document.getElementById("dlgBox");
   box.innerHTML='<div class="dh">'+esc(title)+'</div>'+
@@ -4759,6 +4878,45 @@ function closeDlg(){ document.getElementById("dlgMask").classList.remove("show")
 
 /* ================= 工具 ================= */
 function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+/* F42：文本富渲染——```代码块``` 带复制按钮，其余文本保留换行 */
+var _codeSeq = 0;
+window._codes = {};
+function renderRichText(text){
+  if(text == null) text = "";
+  text = String(text);
+  var parts = text.split("```");
+  var html = "";
+  for(var i=0;i<parts.length;i++){
+    if(i % 2 === 1){
+      var code = parts[i].trim();
+      var cid = "cb" + (++_codeSeq);
+      window._codes[cid] = code;
+      html += '<div class="codeblock"><div class="codebar"><span class="codelang">代码</span>'+
+              '<button class="copybtn" onclick="copyText(window._codes[\''+cid+'])">复制</button></div>'+
+              '<pre><code>'+esc(code)+'</code></pre></div>';
+    } else {
+      var t = parts[i];
+      if(t) html += '<span class="rt">'+esc(t)+'</span>';
+    }
+  }
+  return html;
+}
+/* F43：预览大图/视频 */
+function openPreview(url, type){
+  var box = document.getElementById("previewBox");
+  if(type === "video"){
+    box.innerHTML = '<video src="'+esc(url)+'" controls autoplay playsinline style="max-width:96vw;max-height:80vh"></video>'+
+      '<div class="preview-actions"><a onclick="downloadUrl(\''+esc(url)+'\',\'video.mp4\')">保存视频</a></div>';
+  } else {
+    box.innerHTML = '<img src="'+esc(url)+'" style="max-width:96vw;max-height:80vh;object-fit:contain;border-radius:6px" alt="预览">'+
+      '<div class="preview-actions"><a onclick="downloadUrl(\''+esc(url)+'\',\'image.png\')">保存图片</a></div>';
+  }
+  document.getElementById("previewMask").classList.add("show");
+}
+function closePreview(){
+  document.getElementById("previewMask").classList.remove("show");
+  document.getElementById("previewBox").innerHTML = "";
+}
 function friendlyErr(err){
   var m = (err && err.message) || String(err);
   // 超时（F17：与「网络不通」区分开）
