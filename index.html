@@ -2799,7 +2799,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.9";
+var APP_VERSION = "0.2.8";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -3027,76 +3027,38 @@ function deleteMsg(id){
   c.messages = c.messages.filter(function(x){ return x.id !== id; });
   saveConvs(); renderMsgs(); renderConvList(); updateTitle();
 }
-/* 从文件名/扩展名推断保存扩展名 */
-function extFromName(name, fallback){
-  if(name && name.indexOf(".")>=0){
-    var p = name.split(".").pop();
-    if(p && p.length>=1 && p.length<=5) return p.toLowerCase();
-  }
-  return fallback || "dat";
-}
-/* 把 dataURL 经原生桥保存到本地（APK）；无原生桥时回退浏览器 a.download */
-function dataUrlToSave(dataUrl, name){
+function downloadUrl(url, name){
+  if(!url){ toast("无可下载内容"); return; }
+  /* APK 内：fetch → base64 dataURL → 原生桥保存到本地（WebView 不支持 a[download]） */
   if(hasNative()){
-    var lower = (name||"").toLowerCase();
-    var ext = extFromName(name, dataUrl.indexOf("image/")>=0 ? "jpg" : (dataUrl.indexOf("video/")>=0 ? "mp4" : "dat"));
-    try{
-      var uri = NativeBridge.saveMedia(dataUrl, ext);
-      if(uri && uri.indexOf("err:")!==0){ toast("已保存到本地"); return; }
-    }catch(e){}
+    toast("正在拉取文件…");
+    fetchTimeout(url, {method:"GET", mode:"cors", referrerPolicy:"no-referrer"}, 30000)
+      .then(function(r){ return r.blob(); })
+      .then(function(b){
+        var rd = new FileReader();
+        rd.onload = function(){
+          try{
+            var ext = (name && name.indexOf(".")>0) ? name.split(".").pop().replace(/[^a-z0-9]/gi,"") : "bin";
+            var uri = NativeBridge.saveMedia(String(rd.result), ext);
+            if(uri && uri.indexOf("err:")!==0){ toast("已保存到本地"); }
+            else { _fallbackDownload(url, name); }
+          }catch(e){ _fallbackDownload(url, name); }
+        };
+        rd.onerror = function(){ _fallbackDownload(url, name); };
+        rd.readAsDataURL(b);
+      })
+      .catch(function(e){ _fallbackDownload(url, name); });
+    return;
   }
-  /* 浏览器回退 */
+  _fallbackDownload(url, name);
+}
+function _fallbackDownload(url, name){
   try{
     var a = document.createElement("a");
-    a.href = dataUrl; a.download = name || "download";
+    a.href = url; a.download = name || "download";
     document.body.appendChild(a); a.click(); a.remove();
     toast("已开始下载");
   }catch(e){ toast("下载失败：" + friendlyErr(e)); }
-}
-function blobToDataUrl(blob){
-  return new Promise(function(res, rej){
-    var fr = new FileReader();
-    fr.onload = function(){ res(fr.result); };
-    fr.onerror = function(){ rej(fr.error || new Error("read fail")); };
-    fr.readAsDataURL(blob);
-  });
-}
-function downloadUrl(url, name){
-  if(!url){ toast("无可下载内容"); return; }
-  /* data: 直接经原生桥保存（最稳，APK 内可用） */
-  if(url.indexOf("data:")===0){
-    dataUrlToSave(url, name);
-    return;
-  }
-  /* 浏览器内 blob：直接 a.download（仅非 APK 场景） */
-  if(url.indexOf("blob:")===0 && !hasNative()){
-    try{
-      var ba = document.createElement("a");
-      ba.href = url; ba.download = name || "download";
-      document.body.appendChild(ba); ba.click(); ba.remove();
-      toast("已开始下载");
-    }catch(e){ toast("下载失败：" + friendlyErr(e)); }
-    return;
-  }
-  /* 跨域/远程：Agnes CDN 有 ACAO:*，fetch blob → dataURL → 原生保存 */
-  toast("正在拉取文件…");
-  fetchTimeout(url, {method:"GET", mode:"cors", referrerPolicy:"no-referrer"}, 30000)
-    .then(function(r){ return r.blob(); })
-    .then(function(b){
-      if(hasNative()){
-        return blobToDataUrl(b).then(function(d){ dataUrlToSave(d, name); });
-      }
-      var blobUrl = URL.createObjectURL(b);
-      var a = document.createElement("a");
-      a.href = blobUrl; a.download = name || "download";
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 5000);
-      toast("已开始下载");
-    })
-    .catch(function(e){
-      toast("下载失败，已打开预览，请长按保存");
-      window.open(url, "_blank");
-    });
 }
 /* F17：带超时的 fetch（超时即抛错，便于区分「超时」与「网络不通」） */
 function fetchTimeout(url, opts, ms){
@@ -3516,16 +3478,16 @@ function downloadMsg(id){
   downloadText(name, txt);
 }
 function downloadText(name, text){
-  var blob = new Blob([String(text)], {type:"text/plain;charset=utf-8"});
-  if(hasNative()){
-    /* APK 内：转 dataURL 经原生桥保存 */
-    var reader = new FileReader();
-    reader.onload = function(){ dataUrlToSave(reader.result, name || "note.txt"); };
-    reader.onerror = function(){ toast("下载失败"); };
-    reader.readAsDataURL(blob);
-    return;
-  }
   try{
+    var text = String(text);
+    var ext = (name && name.indexOf(".")>0) ? name.split(".").pop().replace(/[^a-z0-9]/gi,"") : "txt";
+    /* APK 内：直接把文本写成 dataURL 走原生桥落地 */
+    if(hasNative()){
+      var dataUrl = "data:text/plain;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(text)));
+      var uri = NativeBridge.saveMedia(dataUrl, ext);
+      if(uri && uri.indexOf("err:")!==0){ toast("已保存到本地"); return; }
+    }
+    var blob = new Blob([text], {type:"text/plain;charset=utf-8"});
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = name;
@@ -4400,16 +4362,15 @@ function clearCache(){
 function exportChats(){
   try{
     var data = { app:"phone-agent", version:APP_VERSION, exportedAt:new Date().toISOString(), conversations:convs||[] };
+    var text = JSON.stringify(data, null, 2);
     var name = "phone-agent-聊天备份-"+new Date().toISOString().slice(0,10)+".json";
+    /* APK 内：JSON 本地生成，直接写 dataURL 走原生桥落地 */
     if(hasNative()){
-      /* APK 内：转 dataURL 经原生桥保存，避免 a.download 在 WebView 失效 */
-      var reader = new FileReader();
-      reader.onload = function(){ dataUrlToSave(reader.result, name); };
-      reader.onerror = function(){ toast("导出失败"); };
-      reader.readAsDataURL(new Blob([JSON.stringify(data, null, 2)], { type:"application/json" }));
-      return;
+      var dataUrl = "data:application/json;base64," + btoa(unescape(encodeURIComponent(text)));
+      var uri = NativeBridge.saveMedia(dataUrl, "json");
+      if(uri && uri.indexOf("err:")!==0){ toast("聊天已导出（保存位置："+(CFG.saveLocation||"Download/phone-agent")+"）"); return; }
     }
-    var blob = new Blob([JSON.stringify(data, null, 2)], { type:"application/json" });
+    var blob = new Blob([text], { type:"application/json" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
     a.href = url; a.download = name;

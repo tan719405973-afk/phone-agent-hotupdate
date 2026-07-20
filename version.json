@@ -1,5 +1,5 @@
 {
-  "version": "0.2.9",
-  "note": "v0.2.9：基于无错误基线 0.2.8 + 修复 APK 内聊天保存/下载失效（downloadUrl/downloadText/聊天备份改走原生桥 saveMedia，浏览器回退 a.download）；默认模型 agnes-2.0-flash；无技能系统（保持纯净稳定）",
+  "version": "0.2.8",
+  "note": "v0.2.8：会话上限自动总结 + 版本历史回退 + 存储提示。",
   "url": ""
 }
