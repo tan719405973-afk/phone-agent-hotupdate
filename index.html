@@ -2818,7 +2818,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.10";
+var APP_VERSION = "0.2.11";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -3126,7 +3126,16 @@ function deleteMsg(id){
 }
 function downloadUrl(url, name){
   if(!url){ toast("无可下载内容"); return; }
-  /* APK 内：fetch → base64 dataURL → 原生桥保存到本地（WebView 不支持 a[download]） */
+  /* F43：优先使用原生下载（绕过 WebView CORS 限制） */
+  if(typeof NativeBridge!=="undefined" && NativeBridge && typeof NativeBridge.downloadMedia==="function"){
+    toast("正在下载…");
+    var ext = (name && name.indexOf(".")>0) ? name.split(".").pop().replace(/[^a-z0-9]/gi,"") : "bin";
+    var r = NativeBridge.downloadMedia(url, ext);
+    if(r.indexOf("ok:")===0){ toast("已保存，请从系统查看器另存到相册"); return; }
+    toast("下载失败：" + (r.indexOf("err:")===0 ? r.slice(4) : r));
+    return;
+  }
+  /* 旧版 APK 回退：fetch → base64 dataURL → 原生桥保存到本地 */
   if(hasNative()){
     toast("正在拉取文件…");
     fetchTimeout(url, {method:"GET", mode:"cors", referrerPolicy:"no-referrer"}, 30000)
@@ -3705,17 +3714,24 @@ async function dispatchRoute(route, text, atts, prompt, qMeta){
 
 /* 极简意图路由（前端粗判，真正规划由线①做；这里先给可见的三线分流） */
 function routeIntent(t){
-  var s = t.toLowerCase();
-  if(/(生图|生成图片|生成图像|作图|画|绘制|做张图|做个图|来张图|来一张图|来一幅|我要一张|我要一个|给我画|帮我画|海报|logo|插画|图片)/.test(t)) return "image";
-  if(/(生视频|生成视频|做视频|制作视频|做段视频|做个视频|短片|动画|视频片段|生成一段|生成短片|来个视频|做个短片|变视频|转视频|转成视频|视频一下|动起来|动图|mv|宣传片)/.test(t)) return "video";
+  var s = t;
+  /* 反向保护：用户在讨论/询问/抱怨图片或视频，不是请求生成 */
+  var negImg = /(没有|无|不是|别|不要|拒|怎么|为什么|为何|哪里|在哪|看不到|下载|保存|点开|打开|失败|错误|出错|429).{0,5}(图片|图像|图|海报|logo|插画)/i;
+  var negImg2 = /(图片|图像|图|海报|logo|插画).{0,5}(没有|无|不是|别|不要|拒|怎么|为什么|为何|哪里|在哪|看不到|下载|保存|点开|打开|失败|错误|出错|429)/i;
+  var negVid = /(没有|无|不是|别|不要|拒|怎么|为什么|为何|哪里|在哪|看不到|下载|保存|点开|打开|失败|错误|出错|429).{0,5}(视频|短片|动画|动图|宣传片|mv)/i;
+  var negVid2 = /(视频|短片|动画|动图|宣传片|mv).{0,5}(没有|无|不是|别|不要|拒|怎么|为什么|为何|哪里|在哪|看不到|下载|保存|点开|打开|失败|错误|出错|429)/i;
+  if(negImg.test(s) || negImg2.test(s) || negVid.test(s) || negVid2.test(s)) return "chat";
+  /* 正向：明确请求生成图片/视频（必须带动作意图，单独名词如"图片"不触发） */
+  if(/^(生图|生成图片|生成图像|作图|画图|画一张|画一个|画幅|画位|画作|绘制|做张图|做个图|来张图|来一张图|来一幅|我要一张图|我要一幅|给我画|帮我画|帮我生成|给我生成|画个|画一|做海报|做logo|做插画|来张海报|来张插画|生成海报|生成插画|生成logo|画海报|画logo|画插画|出图|来图|我要图|给我张图|发张图|做张海报|设计海报|设计logo|设计插画|给我来张|给我来个|我要一个|来一|帮我做张|帮我做个|给我做张|给我做个|做一张|做一个|生成一张|生成一个|来一|整一张|整一个|p一张|p个|搞一张|搞一个|弄一张|弄一个|画一|搞图|整图|出一张)/i.test(s)) return "image";
+  if(/^(生视频|生成视频|做视频|制作视频|做段视频|做个视频|来段视频|来段短片|来段动画|短片|动画|视频片段|生成一段|生成短片|来个视频|做个短片|变视频|转视频|转成视频|视频一下|动起来|动图|做宣传片|做mv|做动画|做短片|生成mv|生成宣传片|生成动画|给我视频|给我短片|给我动画|给我宣传片|给我mv|我要视频|我要短片|我要动画|我要宣传片|我要mv|做段视频|做段短片|做段动画|给我做段|帮我做段|生成段|来段|变段|转段|给我来个视频|给我来段视频|我要一个视频|做一个视频|生成一个视频|做一个短片|生成一个短片|整一段|整一个视频|搞一段|搞一个视频|弄一段|弄一个视频)/i.test(s)) return "video";
   return "chat";
 }
 function cleanPrompt(t, intent){
   t = t.replace(/^(调用|帮我|给我|请|你)(帮我|给我|)?[，,、]?\s*/, "");
   if(intent === "image"){
-    t = t.replace(/^(生图|生成图片|生成图像|画图|画一张|画一个|画幅|画位|画作|绘制|作图|做张图|做个图|来张图|来一张图|来一幅|我要一张|我要一个|我要画|给我画|帮我画|画)\s*[，,、]?\s*/, "");
+    t = t.replace(/^(生图|生成图片|生成图像|画图|画一张|画一个|画幅|画位|画作|绘制|作图|做张图|做个图|来张图|来一张图|来一幅|我要一张图|我要一幅|我要画|给我画|帮我画|帮我生成|给我生成|画个|画一|做海报|做logo|做插画|来张海报|来张插画|生成海报|生成插画|生成logo|画海报|画logo|画插画|出图|来图|我要图|给我张图|发张图|做张海报|设计海报|设计logo|设计插画|给我来张|给我来个|我要一个|来一|帮我做张|帮我做个|给我做张|给我做个|做一张|做一个|生成一张|生成一个|来一|整一张|整一个|p一张|p个|搞一张|搞一个|弄一张|弄一个|画一|搞图|整图|出一张)\s*[，,、]?\s*/i, "");
   } else if(intent === "video"){
-    t = t.replace(/^(生视频|生成视频|生成短片|做视频|制作视频|做段视频|做个视频|做短片|来个视频|生成一段|做个短片|变视频|转视频|转成视频|视频一下|动起来|动图|mv|宣传片)\s*[，,、]?\s*/, "");
+    t = t.replace(/^(生视频|生成视频|生成短片|做视频|制作视频|做段视频|做个视频|来段视频|来段短片|来段动画|短片|动画|视频片段|生成一段|生成短片|来个视频|做个短片|变视频|转视频|转成视频|视频一下|动起来|动图|做宣传片|做mv|做动画|做短片|生成mv|生成宣传片|生成动画|给我视频|给我短片|给我动画|给我宣传片|给我mv|我要视频|我要短片|我要动画|我要宣传片|我要mv|做段视频|做段短片|做段动画|给我做段|帮我做段|生成段|来段|变段|转段|给我来个视频|给我来段视频|我要一个视频|做一个视频|生成一个视频|做一个短片|生成一个短片|整一段|整一个视频|搞一段|搞一个视频|弄一段|弄一个视频)\s*[，,、]?\s*/i, "");
   }
   return t.trim();
 }
@@ -4840,6 +4856,10 @@ function toast(msg){
   clearTimeout(_toastT); _toastT=setTimeout(function(){t.classList.remove("show");},2200);
 }
 function copyText(t){
+  if(typeof NativeBridge!=="undefined" && NativeBridge && typeof NativeBridge.copyText==="function"){
+    var r = NativeBridge.copyText(String(t));
+    if(r==="ok"){ toast("已复制"); return; }
+  }
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(t).then(function(){ toast("已复制"); })
       .catch(function(){ fallbackCopy(t); });
@@ -4929,7 +4949,7 @@ function friendlyErr(err){
   // 鉴权失败
   if(/401|403|Unauthorized|Forbidden/i.test(m)) return "API Key 无效或无权访问，请到设置检查接口 Key";
   // 频率限制
-  if(/429|Too Many|rate/i.test(m)) return "请求太频繁(429)，请稍后再试";
+  if(/429|Too Many|rate/i.test(m)) return "请求太频繁（429），当前供应商可能触发免费档限流，请稍后重试或到「设置 → API 接口」切换其他接口";
   // 服务端 5xx 细分
   var sm = m.match(/HTTP (5\d\d)/);
   if(sm){
