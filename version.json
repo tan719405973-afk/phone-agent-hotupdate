@@ -1,5 +1,5 @@
 {
-  "version": "0.2.8",
-  "note": "v0.2.8：会话上限自动总结 + 版本历史回退 + 存储提示。",
+  "version": "0.2.9",
+  "note": "v0.2.9：下载修复（APK内保存/下载走原生桥 saveMedia，WebView 不再依赖 a.download）",
   "url": ""
 }
