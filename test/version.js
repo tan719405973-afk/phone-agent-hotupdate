@@ -1,1 +1,1 @@
-window.__PA_VER__ = {"version": "0.2.8", "note": "v0.2.8\uff1a\u4f1a\u8bdd\u4e0a\u9650\u81ea\u52a8\u603b\u7ed3 + \u7248\u672c\u5386\u53f2\u56de\u9000 + \u5b58\u50a8\u63d0\u793a\u3002", "url": ""};
+window.__PA_VER__ = {"version": "0.3.0", "note": "v0.3.0 \u6d4b\u8bd5\uff1aagnes \u98ce\u683c\u6362\u80a4 + \u4e0b\u8f7d\u9274\u6743\u4fee\u590d(\u89c6\u9891\u8f6e\u8be2 metadata.url) + studio \u5206\u955c\u843d\u672c\u5730 + ABCD UI \u5927\u6539\u4e0e 5 \u5904\u7ed3\u6784\u5bf9\u9f50", "url": ""};
