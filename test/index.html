@@ -2893,7 +2893,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.3.0";
+var APP_VERSION = "0.3.1";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -3244,13 +3244,52 @@ function _fallbackDownload(url, name){
   }catch(e){ toast("下载失败：" + friendlyErr(e)); }
 }
 /* F17：带超时的 fetch（超时即抛错，便于区分「超时」与「网络不通」） */
-function fetchTimeout(url, opts, ms){
+var __nativeHttpCb = {};
+var __nativeHttpId = 0;
+function nativeFetch(url, opts){
+  opts = opts || {};
   return new Promise(function(resolve, reject){
-    var done = false;
-    var t = setTimeout(function(){ done = true; reject(new Error("请求超时（等待超过 "+(ms/1000)+" 秒），可能是网络慢或服务繁忙")); }, ms);
-    fetch(url, opts).then(function(r){ if(!done){ clearTimeout(t); resolve(r); } })
-      .catch(function(e){ if(!done){ clearTimeout(t); reject(e); } });
+    if(!hasNative() || !window.NativeBridge || !window.NativeBridge.httpRequestAsync || !/^https?:\/\//i.test(url)){
+      fetch(url, opts).then(resolve).catch(reject);
+      return;
+    }
+    var id = "__nh"+(++__nativeHttpId);
+    var ms = opts.timeout || ((opts.method && opts.method.toUpperCase() !== "GET") ? 120000 : 30000);
+    var t = setTimeout(function(){
+      delete __nativeHttpCb[id];
+      reject(new Error("请求超时（等待超过 "+(ms/1000)+" 秒），可能是网络慢或服务繁忙"));
+    }, ms);
+    __nativeHttpCb[id] = function(res){
+      clearTimeout(t);
+      delete __nativeHttpCb[id];
+      var resp = {
+        ok: res.status >= 200 && res.status < 300,
+        status: res.status,
+        text: function(){ return Promise.resolve(res.body || ""); },
+        json: function(){ return new Promise(function(_res,_rej){ try{ _res(JSON.parse(res.body || "{}")); }catch(e){ _rej(e); } }); }
+      };
+      resolve(resp);
+    };
+    try {
+      window.NativeBridge.httpRequestAsync(
+        (opts.method || "GET").toUpperCase(),
+        url,
+        JSON.stringify(opts.headers || {}),
+        opts.body || "",
+        String(ms),
+        id
+      );
+    } catch(e) {
+      clearTimeout(t);
+      delete __nativeHttpCb[id];
+      reject(e);
+    }
   });
+}
+function fetchTimeout(url, opts, ms){
+  opts = opts || {};
+  opts.timeout = ms;
+  return nativeFetch(url, opts);
 }
 
 /* ================= 存储（F34：本地加密） ================= */
@@ -3348,7 +3387,7 @@ function localImageToBase64(url){
     var _opts = {};
     var _mk = mediaApiKey();
     if(_mk && /^https?:\/\//i.test(url)){ _opts.headers = { "Authorization":"Bearer "+_mk }; }  /* agnes 媒体 URL 需鉴权；content:// 等本地地址不加 */
-    fetch(url, _opts).then(function(r){
+    nativeFetch(url, _opts).then(function(r){
       if(!r.ok) throw new Error("HTTP "+r.status);
       return r.blob();
     }).then(function(blob){
@@ -3370,7 +3409,7 @@ function landMedia(url, ext, cb){
   var _hdrs = {};
   var _mk = mediaApiKey();
   if(_mk){ _hdrs = { headers:{ "Authorization":"Bearer "+_mk } }; }
-  fetch(url, _hdrs).then(function(r){ if(!r.ok) throw 0; return r.blob(); }).then(function(blob){
+  nativeFetch(url, _hdrs).then(function(r){ if(!r.ok) throw 0; return r.blob(); }).then(function(blob){
     var rd = new FileReader();
     rd.onload = function(){
       try{ var uri = NativeBridge.saveMedia(String(rd.result), ext||"jpg");

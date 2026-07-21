@@ -1,5 +1,5 @@
 {
-  "version": "0.3.0",
-  "note": "v0.3.0 测试：agnes 风格换肤 + 下载鉴权修复(视频轮询 metadata.url) + studio 分镜落本地 + ABCD UI 大改与 5 处结构对齐",
+  "version": "0.3.1",
+  "note": "v0.3.1 测试：API 调用改走原生桥异步 HTTP（绕过 WebView CORS）+ WebView 开启 file:// 跨域白名单，修复生图/生视频/下载/参考图读取被拦截",
   "url": ""
 }
