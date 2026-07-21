@@ -2899,13 +2899,27 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.3.3";
+var APP_VERSION = "0.3.4";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.3.4", date:"2026-07-22", items:[
+    "修复：默认「检查更新地址」改为 test 通道，新装/重置用户免填即可拉到最新",
+    "修复：更新日志补全 v0.3.1 / v0.3.2 / v0.3.3 条目（此前漏更）"
+  ]},
+  { v:"0.3.3", date:"2026-07-22", items:[
+    "新增「游戏式 APK 大更新」：检测到新安装包版本时提示下载并安装，完整更新需重装 App（设置 → 关于 → 检查更新）",
+    "用户气泡与头像统一为 AI 同款（青→紫渐变 + 深色字 + 青色辉光）"
+  ]},
+  { v:"0.3.2", date:"2026-07-22", items:[
+    "创作命令消息渲染为结构化卡片：隐藏 [生图]/[视频]/[图生图] 与尺寸 raw 文本，显示为标签 + 提示词 + 元数据"
+  ]},
+  { v:"0.3.1", date:"2026-07-21", items:[
+    "修复生图/生视频/下载 被 WebView 跨域(CORS)拦截：原生桥异步 HTTP + WebView 开启 file:// 跨域白名单"
+  ]},
   { v:"0.2.10", date:"2026-07-21", items:[
     "复制更顺手：消息文字可自由选中；长按菜单在已选中文字时显示「复制选中」，否则「复制文字」",
     "图片 / 附件图 / 作品图点击放大查看（全屏预览，可保存）；视频新增「全屏」按钮",
@@ -4511,7 +4525,7 @@ function cellNav(label, onclick){
     '<span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>';
 }
 /* 默认热更新地址（GitHub Pages）。CFG.updateBase 为空时回退到此，确保新装/旧装用户都能直接检查更新 */
-var DEFAULT_UPDATE_BASE = "https://tan719405973-afk.github.io/phone-agent-hotupdate";
+var DEFAULT_UPDATE_BASE = "https://tan719405973-afk.github.io/phone-agent-hotupdate/test";
 function updateBaseUrl(){
   return (CFG.updateBase || DEFAULT_UPDATE_BASE || "").trim().replace(/\/+$/,"");
 }
