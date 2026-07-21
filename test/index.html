@@ -2899,13 +2899,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.3.4";
+var APP_VERSION = "0.3.5";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.3.5", date:"2026-07-22", items:[
+    "修复：APK 下载安装改为后台线程异步执行，避免阻塞界面；全程精确 toast 反馈便于定位失败原因",
+    "新增：未知来源安装权限未授权时给出明确引导（系统设置 → 应用 → 创作助手 → 允许安装未知应用）",
+    "修复：下载完成后校验安装包大小，过小（多为 404 错误页）直接报错而非静默失败"
+  ]},
   { v:"0.3.4", date:"2026-07-22", items:[
     "修复：默认「检查更新地址」改为 test 通道，新装/重置用户免填即可拉到最新",
     "修复：更新日志补全 v0.3.1 / v0.3.2 / v0.3.3 条目（此前漏更）"
@@ -4570,10 +4575,8 @@ function checkUpdate(){
         (apkJ.note||"有新版安装包可用")+" 将下载并安装新安装包（此更新需重新安装 App）。",
         function(){
           if(!hasNative() || !window.NativeBridge || !window.NativeBridge.downloadAndInstallApk){ toast("当前环境不支持 APK 安装，请在手机 App 内更新"); return; }
-          toast("正在下载安装包…");
-          var r = NativeBridge.downloadAndInstallApk(apkJ.apkUrl);
-          if(r && r.indexOf("err:")===0){ toast("下载失败："+r.slice(4)); }
-          else { toast("已开始下载，完成后将弹出安装"); }
+          toast("已发起下载，请稍候（进度与结果由系统提示）");
+          NativeBridge.downloadAndInstallApk(apkJ.apkUrl);
         });
       return;
     }
