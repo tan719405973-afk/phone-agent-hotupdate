@@ -106,6 +106,12 @@
   .bubble .cap{font-size:12.5px;color:inherit;opacity:.7;margin-top:6px;}
   .bubble .media-actions{display:flex;gap:14px;margin-top:8px;}
   .bubble .media-actions a{font-size:13px;color:var(--primary);text-decoration:none;cursor:pointer;}
+  .gen-request{display:flex;flex-direction:column;gap:6px;}
+  .gen-badge{align-self:flex-start;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;background:rgba(0,229,255,0.12);color:var(--primary);border:1px solid rgba(0,229,255,0.25);}
+  .gen-badge.gen-video{background:rgba(139,92,246,0.12);color:#a78bfa;border-color:rgba(139,92,246,0.25);}
+  .gen-badge.gen-imageEdit{background:rgba(236,72,153,0.12);color:#f472b6;border-color:rgba(236,72,153,0.25);}
+  .gen-prompt{font-size:15px;line-height:1.5;}
+  .gen-meta{font-size:12px;color:var(--text-3);display:flex;gap:10px;flex-wrap:wrap;}
   .typing{display:inline-block;}
   .typing .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:rgba(10,14,23,0.45);
     margin:0 2px;animation:blink 1.2s infinite;}
@@ -2893,7 +2899,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.3.1";
+var APP_VERSION = "0.3.2";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -3643,6 +3649,25 @@ function renderMsgs(){
   c.messages.forEach(function(m){ box.appendChild(renderRow(m)); });
   scrollBottom();
 }
+function parseGenMeta(text){
+  if(!text) return null;
+  var m = text.match(/^\[?(生图|图生图|视频)\]?\s*(.+?)\s*(?:\[(\d+x\d+)\])?\s*$/i);
+  if(!m) return null;
+  var modeMap = {"生图":"image", "图生图":"imageEdit", "视频":"video"};
+  return { mode:modeMap[m[1]] || "image", label:m[1], prompt:m[2].replace(/\s*（参考图×\d+）\s*/g,"").trim(), size:m[3] || "" };
+}
+function renderGenCard(meta, refs){
+  var badgeCls = "gen-badge" + (meta.mode==="video"?" gen-video":(meta.mode==="imageEdit"?" gen-imageEdit":""));
+  var icon = meta.mode==="video"?"🎬":(meta.mode==="imageEdit"?"🖼️":"🎨");
+  var metaHtml = "";
+  if(meta.size) metaHtml += '<span>尺寸 '+esc(meta.size)+'</span>';
+  if(refs) metaHtml += '<span>参考图 ×'+esc(String(refs))+'</span>';
+  return '<div class="gen-request">'+
+    '<div class="'+badgeCls+'">'+icon+' '+esc(meta.label)+'</div>'+
+    '<div class="gen-prompt">'+esc(meta.prompt)+'</div>'+
+    (metaHtml?'<div class="gen-meta">'+metaHtml+'</div>':'')+
+    '</div>';
+}
 function renderRow(m){
   var row = document.createElement("div");
   row.dataset.mid = m.id;
@@ -3665,7 +3690,12 @@ function renderRow(m){
         return '<span class="atchip-static">📎 '+esc(a.name)+'</span>';
       }).join("") + "<br>";
     }
-    inner = extra + renderRichText(m.text||"");
+    var meta = m.genMeta || parseGenMeta(m.text);
+    if(m.role==="user" && meta){
+      inner = extra + renderGenCard(meta, m.genMeta && m.genMeta.refs);
+    } else {
+      inner = extra + renderRichText(m.text||"");
+    }
     if(m.role==="assistant"){
       inner += '<div class="media-actions"><a onclick="downloadMsg(\''+m.id+'\')">下载回复</a>'+
                (m._err?'<a onclick="retryMsg(\''+m.id+'\')">重试</a>':'')+'</div>';
@@ -4756,9 +4786,10 @@ function runCreate(){
   }
   saveCfg();
   hide('createPage'); closeSettings();
-  var tag = mode==="video"?"[视频] ":(mode==="imageEdit"?"[图生图] ":"[生图] ");
+  var label = mode==="video"?"视频":(mode==="imageEdit"?"图生图":"生图");
+  var tag = "["+label+"] ";
   var txt = tag + p + (createRefs.length?(" （参考图×"+createRefs.length+"）"):"") + (size?(" ["+size+"]"):"");
-  appendMessage({role:"user", type:"text", text:txt});
+  appendMessage({role:"user", type:"text", text:txt, genMeta:{mode:mode, label:label, prompt:p, size:size||"", refs:createRefs.length}});
   renderMsgs(); renderConvList();
   var refs = createRefs.slice();
   var params = CFG.genParams;
