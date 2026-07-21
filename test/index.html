@@ -95,13 +95,13 @@
   .avatar{flex:0 0 auto;width:38px;height:38px;border-radius:50%;display:flex;
     align-items:center;justify-content:center;font-size:18px;font-weight:700;
     background:var(--grad);color:var(--agent-bubble-text);box-shadow:0 0 12px var(--glow-cyan);}
-  .row.user .avatar{background:var(--bg-2);color:var(--text-2);box-shadow:none;}
+  .row.user .avatar{background:var(--grad);color:var(--agent-bubble-text);box-shadow:0 0 12px var(--glow-cyan);}
   .bubble{
     max-width:74%;margin:0 10px;padding:10px 13px;border-radius:6px;line-height:1.5;
     background:var(--agent-bubble);color:var(--agent-bubble-text);word-break:break-word;white-space:pre-wrap;position:relative;font-size:15.5px;
     box-shadow:0 0 18px rgba(0,229,255,0.22);
   }
-  .row.user .bubble{background:var(--user-bubble);color:var(--text);border:1px solid var(--user-bubble-border);box-shadow:none;}
+  .row.user .bubble{background:var(--agent-bubble);color:var(--agent-bubble-text);box-shadow:0 0 18px rgba(0,229,255,0.22);}
   .bubble img,.bubble video{max-width:100%;border-radius:4px;display:block;margin-top:2px;}
   .bubble .cap{font-size:12.5px;color:inherit;opacity:.7;margin-top:6px;}
   .bubble .media-actions{display:flex;gap:14px;margin-top:8px;}
@@ -2899,7 +2899,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.3.2";
+var APP_VERSION = "0.3.3";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -4527,22 +4527,55 @@ function loadScript(url, ms){
     document.head.appendChild(s);
   });
 }
+/* 游戏式 APK 大更新：拉 apk-version.json，比对当前 APK 的 versionCode，
+   返回 json（有新版本）或 false（无/异常）。供 checkUpdate/silentCheckUpdate 调用。 */
+function checkApkUpdate(){
+  return new Promise(function(resolve){
+    var base = updateBaseUrl();
+    if(!base){ resolve(false); return; }
+    var url = base + "/apk-version.json?t=" + Date.now();
+    nativeFetch(url, {method:"GET"})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        if(j && j.versionCode && window.__PA_APK_CODE__ && j.versionCode > window.__PA_APK_CODE__){
+          resolve(j);
+        } else { resolve(false); }
+      })
+      .catch(function(){ resolve(false); });
+  });
+}
+
 function checkUpdate(){
   var base = updateBaseUrl();
   if(!base){ toast("请先在「关于 → 检查更新地址」填写更新地址"); return; }
   toast("正在检查更新…");
-  loadScript(base+"/version.js?t="+Date.now(), 15000)
-    .then(function(){
-      var j = window.__PA_VER__;
-      if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
-        showConfirm("发现新版本 v"+j.version, (j.note||"有新版可用")+"（点击更新将下载并立即应用，无需重装）", function(){
-          doInstallUpdate(base);
+  // 双轨：先查 APK 大更新（完整更新/重装），否则查 web 静默热更（无需重装）
+  checkApkUpdate().then(function(apkJ){
+    if(apkJ){
+      showConfirm("发现新版本 v"+apkJ.versionName+"（完整更新）",
+        (apkJ.note||"有新版安装包可用")+" 将下载并安装新安装包（此更新需重新安装 App）。",
+        function(){
+          if(!hasNative() || !window.NativeBridge || !window.NativeBridge.downloadAndInstallApk){ toast("当前环境不支持 APK 安装，请在手机 App 内更新"); return; }
+          toast("正在下载安装包…");
+          var r = NativeBridge.downloadAndInstallApk(apkJ.apkUrl);
+          if(r && r.indexOf("err:")===0){ toast("下载失败："+r.slice(4)); }
+          else { toast("已开始下载，完成后将弹出安装"); }
         });
-      } else {
-        toast("当前已是最新版 v"+APP_VERSION);
-      }
-    })
-    .catch(function(e){ toast("检查更新失败："+(e&&e.message||e)+"（确认地址可访问）"); });
+      return;
+    }
+    loadScript(base+"/version.js?t="+Date.now(), 15000)
+      .then(function(){
+        var j = window.__PA_VER__;
+        if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
+          showConfirm("发现新版本 v"+j.version, (j.note||"有新版可用")+"（点击更新将下载并立即应用，无需重装）", function(){
+            doInstallUpdate(base);
+          });
+        } else {
+          toast("当前已是最新版 v"+APP_VERSION);
+        }
+      })
+      .catch(function(e){ toast("检查更新失败："+(e&&e.message||e)+"（确认地址可访问）"); });
+  });
 }
 function doInstallUpdate(base){
   toast("正在下载更新…");
@@ -4567,14 +4600,21 @@ function doInstallUpdate(base){
 function silentCheckUpdate(){
   var base = updateBaseUrl();
   if(!base) return;
-  loadScript(base+"/version.js?t="+Date.now(), 12000)
-    .then(function(){
-      var j = window.__PA_VER__;
-      if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
-        toast("发现新版本 v"+j.version+"：去 设置 → 检查更新 升级");
-      }
-    })
-    .catch(function(e){ /* 静默忽略 */ });
+  // 双轨：先静默查 APK 大更新，再查 web 热更
+  checkApkUpdate().then(function(apkJ){
+    if(apkJ){
+      toast("发现新版本 v"+apkJ.versionName+"（完整更新）：去 设置 → 检查更新 升级");
+      return;
+    }
+    loadScript(base+"/version.js?t="+Date.now(), 12000)
+      .then(function(){
+        var j = window.__PA_VER__;
+        if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
+          toast("发现新版本 v"+j.version+"：去 设置 → 检查更新 升级");
+        }
+      })
+      .catch(function(e){ /* 静默忽略 */ });
+  });
 }
 function resetBuiltinUpdate(){
   if(!hasNative()){ toast("内置版本即当前，无需恢复"); return; }
