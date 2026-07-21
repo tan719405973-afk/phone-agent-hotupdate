@@ -4556,9 +4556,14 @@ function checkApkUpdate(){
     nativeFetch(url, {method:"GET"})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(j){
-        if(j && j.versionCode && window.__PA_APK_CODE__ && j.versionCode > window.__PA_APK_CODE__){
-          resolve(j);
-        } else { resolve(false); }
+        if(!j || !j.versionCode){ resolve(false); return; }
+        var curCode = window.__PA_APK_CODE__;
+        var hasCode = (typeof curCode === "number") && !isNaN(curCode);
+        // 优先用原生注入的 versionCode 比对；若注入缺失（极少数 ROM/时序问题），回退用 versionName 与 APP_VERSION 比，避免静默不弹
+        var newer = hasCode
+          ? (j.versionCode > curCode)
+          : (j.versionName && compareVer(j.versionName, APP_VERSION) > 0);
+        resolve(newer ? j : false);
       })
       .catch(function(){ resolve(false); });
   });
