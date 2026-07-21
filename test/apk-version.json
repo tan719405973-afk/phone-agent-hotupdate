@@ -1,8 +1,8 @@
 {
-  "versionCode": 20260730,
-  "versionName": "0.4.0",
+  "versionCode": 20260731,
+  "versionName": "0.4.1",
   "apkUrl": "https://tan719405973-afk.github.io/phone-agent-hotupdate/test/phone-agent-release.apk",
-  "note": "v0.4.0：APK 大更新重装链路验证包——检查更新弹出新版→下载并保存到手机→调起安装器重装。本次移除「作品（资产）页」模块；内置 web 仍为 v0.3.6（统一更新检查逻辑：单一 apk-version.json 清单 + 单一 readUpdate 函数）。",
-  "webVersion": "0.3.6",
-  "webNote": "v0.4.0：APK 大更新重装链路验证包——检查更新弹出新版→下载并保存到手机→调起安装器重装。本次移除「作品（资产）页」模块；内置 web 仍为 v0.3.6（统一更新检查逻辑：单一 apk-version.json 清单 + 单一 readUpdate 函数）。"
+  "note": "v0.4.1：修复「保存图片/视频」真正写入系统相册（MediaStore），相册立即可见；移除下载提示里的谎话文案；API 接口去掉偷偷兜底 Agnes 的硬编码（空地址即报错，首次仍预置可用 Agnes）。",
+  "webVersion": "0.4.1",
+  "webNote": "v0.4.1：修复「保存图片/视频」真正写入系统相册（MediaStore），相册立即可见；移除下载提示里的谎话文案；API 接口去掉偷偷兜底 Agnes 的硬编码（空地址即报错，首次仍预置可用 Agnes）。"
 }

@@ -2876,7 +2876,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.3.6";
+var APP_VERSION = "0.4.1";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -2961,7 +2961,7 @@ function currentApi(){
   return a;
 }
 function currentApiKey(){ return currentApi().key||""; }
-function apiBase(){ return (currentApi().baseUrl||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
+function apiBase(){ return (currentApi().baseUrl||"").replace(/\/+$/,""); }
 function currentModel(kind){ var m = (currentApi().models||{})[kind]; if(m && m.trim()) return m.trim(); return MODEL_DEFAULTS[kind]||""; }
 /* 官方推荐的默认模型（用户没填/填空时兜底，避免“模型乱填”导致功能失效） */
 var MODEL_DEFAULTS = { text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0" };
@@ -2994,7 +2994,7 @@ function mediaApi(){
   var r = list.filter(function(a){return a.routable;})[0];
   return r || currentApi();
 }
-function mediaApiBase(){ return (mediaApi().baseUrl||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
+function mediaApiBase(){ return (mediaApi().baseUrl||"").replace(/\/+$/,""); }
 function mediaApiKey(){ return mediaApi().key||""; }
 /* 找支持文件解析的供应商（BigModel 等，需已填 key） */
 function parseProvider(){
@@ -3207,7 +3207,7 @@ function downloadUrl(url, name){
     toast("正在下载…");
     var ext = (name && name.indexOf(".")>0) ? name.split(".").pop().replace(/[^a-z0-9]/gi,"") : "bin";
     var r = NativeBridge.downloadMedia(url, ext, "Bearer "+mediaApiKey());
-    if(r.indexOf("ok:")===0){ toast("已保存，请从系统查看器另存到相册"); return; }
+    if(r.indexOf("ok:")===0){ toast("已保存到相册"); return; }
     toast("下载失败：" + (r.indexOf("err:")===0 ? r.slice(4) : r));
     return;
   }
