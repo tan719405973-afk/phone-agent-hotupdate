@@ -1,5 +1,5 @@
 {
   "version": "0.3.6",
-  "note": "v0.3.6：更新系统统一——APK 与 web 静默热更合并为单一检查（同一份 apk-version.json 清单携带 webVersion，单一 readUpdate 函数），去除双文件双分支；继承默认 test 通道/异步下载/游戏式大更新/气泡统一。",
+  "note": "v0.4.0：APK 大更新重装链路验证包——检查更新弹出新版→下载并保存到手机→调起安装器重装。本次移除「作品（资产）页」模块；内置 web 仍为 v0.3.6（统一更新检查逻辑：单一 apk-version.json 清单 + 单一 readUpdate 函数）。",
   "url": ""
 }

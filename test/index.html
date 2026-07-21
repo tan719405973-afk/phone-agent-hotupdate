@@ -259,20 +259,7 @@
   .addref{margin:4px 0 8px;border:1px dashed var(--line);background:var(--input);color:var(--text-2);
     border-radius:8px;padding:8px 12px;font-size:14px;cursor:pointer;}
 
-  /* 作品（资产）页 */
-  .works-sec{margin:6px 0 4px;}
-  .works-sec h4{margin:14px 16px 8px;font-size:14px;color:var(--text-2);font-weight:600;}
-  .works-empty{margin:0 16px 8px;color:var(--text-3);font-size:13px;}
-  .works-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 16px;}
-  .works-grid a{display:block;}
-  .works-grid img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;display:block;background:var(--bg-2);}
-  .works-vid{margin:0 16px 12px;}
-  .works-vid video{width:100%;border-radius:8px;background:#000;max-height:240px;}
-  .works-vid .cap{font-size:13px;color:var(--text-2);margin-top:4px;}
-  .works-item{position:relative;}
-  .works-item .dl{position:absolute;right:4px;bottom:4px;margin:0;box-shadow:0 1px 4px rgba(0,0,0,.35);}
   .dl{display:inline-block;margin-top:6px;background:var(--primary);color:#0A0E17;border:none;border-radius:6px;padding:5px 12px;font-size:13px;text-decoration:none;font-weight:600;}
-  .dl-tip{font-size:12px;color:var(--text-3);margin:0 16px 8px;}
 
   select{font-size:14px;max-width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--input);color:var(--text);font-family:inherit;}
   .cell select{margin-left:8px;}
@@ -455,16 +442,6 @@
     <div class="page-body" id="studioBody"></div>
   </div>
 
-  <!-- 作品（资产）页 -->
-  <div class="page" id="worksPage">
-    <div class="page-head">
-      <button class="back" onclick="closeWorks()">
-        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-      </button>
-      <div class="pt">作品</div>
-    </div>
-    <div class="page-body" id="worksBody"></div>
-  </div>
 
   <!-- API 接口管理页 -->
   <div class="page" id="apiPage">
@@ -2927,7 +2904,7 @@ var CHANGELOG = [
   ]},
   { v:"0.2.10", date:"2026-07-21", items:[
     "复制更顺手：消息文字可自由选中；长按菜单在已选中文字时显示「复制选中」，否则「复制文字」",
-    "图片 / 附件图 / 作品图点击放大查看（全屏预览，可保存）；视频新增「全屏」按钮",
+    "图片 / 附件图点击放大查看（全屏预览，可保存）；视频新增「全屏」按钮",
     "AI 回复里的代码 / 提示词带「复制」按钮，一键复制整段代码或提示词",
     "多供应商：API 接口管理新增「智谱 BigModel」一键添加（免费档备份，Agnes 不可用时可切换）；支持 BigModel 文件解析（PDF/Word/图片等上传后自动解析正文并入对话，做知识库/提示词准备）"
   ]},
@@ -4457,7 +4434,6 @@ function renderSettings(){
     cellNav("生图 / 图生图", "openCreate(\'image\')")+
     cellNav("生视频", "openCreate(\'video\')")+
     '<div class="cell studio-row" onclick="openStudio()"><span class="ci">🎬</span><span class="cl">智能制片</span><span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>'+
-    cellNav("作品", "openWorks()")+
     '<div class="gt">外观与存储</div>'+
     cellNav("聊天背景（用图片）", "pickBg()")+
     (CFG.bgImage? cellNav("清除聊天背景", "clearBg()") : "")+
@@ -4523,7 +4499,7 @@ document.getElementById("bgFileInput").addEventListener("change", function(e){
   e.target.value = "";
 });
 function clearBg(){ CFG.bgImage=""; saveCfg(); applyBg(); renderSettings(); toast("已清除背景"); }
-var CELL_ICONS = { "生图 / 图生图":"🎨","生视频":"📹","智能制片":"🎬","作品":"🖼️","聊天背景（用图片）":"🖼️","清除聊天背景":"🧹","API 接口管理（当前：":"🔌","我的记忆":"🧠","更新日志":"📝","清理缓存":"🧹","导出 / 备份聊天":"📤","导入恢复聊天":"📥","检查更新":"🔄","分享给亲友（二维码）":"🔗","意见反馈":"💬","重新查看引导":"✨","版本历史 / 回退":"⏱️","开源 / 隐私声明":"🔒" };
+var CELL_ICONS = { "生图 / 图生图":"🎨","生视频":"📹","智能制片":"🎬","聊天背景（用图片）":"🖼️","清除聊天背景":"🧹","API 接口管理（当前：":"🔌","我的记忆":"🧠","更新日志":"📝","清理缓存":"🧹","导出 / 备份聊天":"📤","导入恢复聊天":"📥","检查更新":"🔄","分享给亲友（二维码）":"🔗","意见反馈":"💬","重新查看引导":"✨","版本历史 / 回退":"⏱️","开源 / 隐私声明":"🔒" };
 function cellNav(label, onclick){
   var ic = CELL_ICONS[label] || (label.indexOf("API 接口管理")>=0 ? "🔌" : "");
   return '<div class="cell" onclick="'+onclick+'"><span class="ci">'+ic+'</span><span class="cl">'+label+'</span>'+
@@ -4864,9 +4840,6 @@ function runCreate(){
   if(mode==="video") doVideo(p, refs, params); else doImage(p, refs, params);
 }
 
-/* ================= 作品（资产）页：图片 / 视频 / 文件 分开 ================= */
-function openWorks(){ renderWorks(); show('worksPage'); }
-function closeWorks(){ hide('worksPage'); renderSettings(); show('settingsPage'); }
 
 /* ================= API 接口管理页 ================= */
 var API_EDITING_ID = null;
@@ -5043,40 +5016,6 @@ function saveApi(){
 }
 function closeApiEdit(){ hide('apiEditPage'); renderApiList(); show('apiPage'); }
 
-function renderWorks(){
-  var box = document.getElementById("worksBody"); if(!box) return;
-  var imgs=[], vids=[], files=[];
-  (convs||[]).forEach(function(c){
-    (c.messages||[]).forEach(function(m){
-      if(m.type==="image" && m.media && m.media.url) imgs.push(m);
-      else if(m.type==="video" && m.media && m.media.url) vids.push(m);
-      else if(m.type==="file" && m.media && m.media.url) files.push(m);
-    });
-  });
-  function dl(url, name){
-    if(!url) return '';
-    return '<a class="dl" href="'+esc(url)+'" download="'+esc(name||"download")+'" target="_blank" onclick="event.stopPropagation()">下载</a>';
-  }
-  function sec(title, items, html){
-    if(!items.length) return '<div class="works-sec"><h4>'+title+'</h4><div class="works-empty">暂无，去生图 / 生视频生成后这里会出现</div></div>';
-    return '<div class="works-sec"><h4>'+title+'（'+items.length+' 项）</h4><div class="dl-tip">点「下载」可存到本地</div>'+html+'</div>';
-  }
-  var imgHtml = '<div class="works-grid">'+imgs.map(function(m){
-    return '<div class="works-item"><img src="'+esc(m.media.url)+'" onerror="this.style.opacity=.3" onclick="openPreview(\''+esc(m.media.url)+'\',\'image\')" style="cursor:pointer">'+dl(m.media.url,(m.media.caption||"image")+".png")+'</div>';
-  }).join('')+'</div>';
-  var vidHtml = vids.map(function(m){
-    return '<div class="works-vid"><video src="'+esc(m.media.url)+'" controls playsinline></video>'+
-      (m.media.caption?'<div class="cap">'+esc(m.media.caption)+'</div>':'')+dl(m.media.url,(m.media.caption||"video")+".mp4")+'</div>';
-  }).join('');
-  var fileHtml = files.map(function(m){
-    var fm=m.media||{}; var sz=fm.size?(fm.size/1048576>=1?(fm.size/1048576).toFixed(1)+" MB":Math.round(fm.size/1024)+" KB"):"";
-    return '<div class="filecard"><div class="fi">📄</div><div class="fm"><div class="fn">'+esc(fm.name||"文件")+'</div><div class="fs">'+esc(fm.mime||"文件")+(sz?(" · "+sz):"")+'</div></div>'+dl(fm.url,fm.name)+'</div>';
-  }).join('');
-  box.innerHTML =
-    sec("图片资产（生成的图 + 下载的图）", imgs, imgHtml)+
-    sec("视频资产（生成的视频）", vids, vidHtml)+
-    sec("文件资产（下载/上传的文件）", files, fileHtml);
-}
 
 /* ================= 导航 / 弹层 ================= */
 function openDrawer(){ document.getElementById("drawer").classList.add("show"); document.getElementById("drawerMask").classList.add("show"); renderConvList(); }
