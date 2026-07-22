@@ -2876,24 +2876,35 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.2";
+var APP_VERSION = "0.4.4";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.2", date:"2026-07-22", items:[
-    "修复：更新日志（设置 → 关于 → 更新日志）此前漏更 v0.4.0 / v0.4.1，现已补全"
-    "机制：更新日志改为由发布脚本自动同步，今后发版不再漏更"
+var CHANGELOG = [  { v:"0.4.4", date:"2026-07-22", items:[
+    "新增：长文模式（设置 → 长文写作）——以 .txt 为唯一真源，自动按「第X章」分章 + 手动「===」分章，左侧大纲可拖拽排序/删除/点选",
+    "新增：长文 AI 续写（取近 3 章续写下一章）与改写选中章，流式生成并写回原稿，全书结构视图（每章字数）",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.3", date:"2026-07-22", items:[
+    "修复：上下文丢失——用户开头上传的文件（附件正文）在后续回合被丢，导致「改文件」改不了；现已重建上下文时重新注入文件正文并钉住文件消息，压缩总结时也跳过文件",
+    "修复：生图意图路由——纯画面描述（带尺寸如「群像七仙女 1792x1024」）直接进生图，不再被当聊天用文字糊弄",
+    "修复：下载图片真正写入系统相册（MediaStore），base64 生图也进相册，相册立即可见",
+    "本次为 APK 重装更新（版本档案同步至 0.4.3）"
+  ]},
+  { v:"0.4.2", date:"2026-07-22", items:[
+    "修复：更新日志（设置 → 关于 → 更新日志）此前漏更 v0.4.0 / v0.4.1，现已补全",
+    "机制：更新日志改为由发布脚本自动同步，今后发版不再漏更",
     "本次为 APK 重装更新（版本档案同步至 0.4.2）"
   ]},
   { v:"0.4.1", date:"2026-07-22", items:[
-    "新增：保存图片/视频真正写入系统相册（MediaStore），相册立即可见"
-    "移除下载提示里的谎话文案（此前写的「请另存到相册」）"
+    "新增：保存图片/视频真正写入系统相册（MediaStore），相册立即可见",
+    "移除下载提示里的谎话文案（此前写的「请另存到相册」）",
     "调整：API 接口去掉偷偷兜底 Agnes 的硬编码（地址为空即报错提示），首次仍预置一个可用 Agnes"
   ]},
   { v:"0.4.0", date:"2026-07-22", items:[
-    "移除「作品（资产）页」模块（底部导航 / 页面 / 样式 / 函数全清）"
+    "移除「作品（资产）页」模块（底部导航 / 页面 / 样式 / 函数全清）",
     "APK 大更新重装链路验证：检查更新弹新版 → 下载并保存到手机 → 调起安装器重装"
   ]},
 
@@ -3216,10 +3227,19 @@ function deleteMsg(id){
 }
 function downloadUrl(url, name){
   if(!url){ toast("无可下载内容"); return; }
+  var ext = (name && name.indexOf(".")>0) ? name.split(".").pop().replace(/[^a-z0-9]/gi,"") : "bin";
+  /* dataURL（生图返回 base64 时）：直接走原生 base64 落地，不能当 http 去 downloadMedia（会解析失败） */
+  if(url.indexOf("data:")===0){
+    if(typeof NativeBridge!=="undefined" && NativeBridge && typeof NativeBridge.saveMedia==="function"){
+      toast("正在保存…");
+      var _uri = NativeBridge.saveMedia(url, ext);
+      if(_uri && _uri.indexOf("err:")!==0){ toast("已保存到相册"); } else { _fallbackDownload(url, name); }
+      return;
+    }
+  }
   /* F43：优先使用原生下载（绕过 WebView CORS 限制） */
   if(typeof NativeBridge!=="undefined" && NativeBridge && typeof NativeBridge.downloadMedia==="function"){
     toast("正在下载…");
-    var ext = (name && name.indexOf(".")>0) ? name.split(".").pop().replace(/[^a-z0-9]/gi,"") : "bin";
     var r = NativeBridge.downloadMedia(url, ext, "Bearer "+mediaApiKey());
     if(r.indexOf("ok:")===0){ toast("已保存到相册"); return; }
     toast("下载失败：" + (r.indexOf("err:")===0 ? r.slice(4) : r));
@@ -3805,6 +3825,13 @@ function onSend(){
   }
   var qMeta = quotedMsg ? quoteSummary(quotedMsg) : null;
   var route = routeIntent(text);
+  if(route === "image?"){
+    showActionSheet([
+      {label:"🎨 生图", onclick:function(){ dispatchRoute("image", text, atts, cleanPrompt(text,"image"), qMeta); }},
+      {label:"💬 聊天", onclick:function(){ dispatchRoute("chat", text, atts, cleanPrompt(text,"chat"), qMeta); }}
+    ]);
+    return;
+  }
   var prompt = cleanPrompt(text, route);
   prompt = quotePrefix + prompt;
 
@@ -3841,7 +3868,13 @@ async function maybeCompactCurrent(){
   var c = current(); if(!c) return;
   var txt = c.messages.filter(function(m){return m.type==="text";});
   if(txt.length <= CONV_COMPACT_AT) return;
-  var old = txt.slice(0, txt.length - CONV_KEEP_RECENT);
+  /* 【修复 v0.4.3】用户上传的文件（附件含正文）必须保留，绝不被总结或剔除，
+     否则几轮对话后"开头发的文件"被压成摘要、后续"改文件"会丢失原文 */
+  var fileIds = {};
+  txt.forEach(function(m){
+    if(m.role==="user" && m.attachments && m.attachments.some(function(a){return a.kind!=="image" && a.content;})) fileIds[m.id]=true;
+  });
+  var old = txt.slice(0, txt.length - CONV_KEEP_RECENT).filter(function(m){ return !fileIds[m.id]; });
   var src = old.map(function(m){
     if(m.role==="summary") return "（更早摘要）"+m.text;
     return (m.role==="user"?"用户":"助手")+"："+m.text;
@@ -3894,7 +3927,17 @@ function routeIntent(t){
   /* 正向：明确请求生成图片/视频（必须带动作意图，单独名词如"图片"不触发） */
   if(/^(生图|生成图片|生成图像|作图|画图|画一张|画一个|画幅|画位|画作|绘制|做张图|做个图|来张图|来一张图|来一幅|我要一张图|我要一幅|给我画|帮我画|帮我生成|给我生成|画个|画一|做海报|做logo|做插画|来张海报|来张插画|生成海报|生成插画|生成logo|画海报|画logo|画插画|出图|来图|我要图|给我张图|发张图|做张海报|设计海报|设计logo|设计插画|给我来张|给我来个|我要一个|来一|帮我做张|帮我做个|给我做张|给我做个|做一张|做一个|生成一张|生成一个|来一|整一张|整一个|p一张|p个|搞一张|搞一个|弄一张|弄一个|画一|搞图|整图|出一张)/i.test(s)) return "image";
   if(/^(生视频|生成视频|做视频|制作视频|做段视频|做个视频|来段视频|来段短片|来段动画|短片|动画|视频片段|生成一段|生成短片|来个视频|做个短片|变视频|转视频|转成视频|视频一下|动起来|动图|做宣传片|做mv|做动画|做短片|生成mv|生成宣传片|生成动画|给我视频|给我短片|给我动画|给我宣传片|给我mv|我要视频|我要短片|我要动画|我要宣传片|我要mv|做段视频|做段短片|做段动画|给我做段|帮我做段|生成段|来段|变段|转段|给我来个视频|给我来段视频|我要一个视频|做一个视频|生成一个视频|做一个短片|生成一个短片|整一段|整一个视频|搞一段|搞一个视频|弄一段|弄一个视频)/i.test(s)) return "video";
+  /* 高置信：纯画面描述且带尺寸标注（如「群像七仙女 1792x1024」）→ 直接生图，不再被当聊天糊弄 */
+  if(/\d{3,4}\s*[xX×]\s*\d{3,4}/.test(s)) return "image";
+  /* 中置信：像画面描述但无明确动作/疑问 → 交 UI 弹菜单确认（不静默当聊天） */
+  if(looksLikeArtPrompt(s)) return "image?";
   return "chat";
+}
+/* 疑似画面描述：含画面主体/风格词、无疑问、无对话性动词（讲/解释/翻译/总结/分析/写…） */
+function looksLikeArtPrompt(s){
+  if(/[?？]/.test(s)) return false;
+  if(/(讲|解释|翻译|总结|分析|是什么|为什么|怎么|哪|多少|几|推荐|介绍|告诉我|对比|评价|意思|区别|例子|帮我写|写个|写一)/i.test(s)) return false;
+  return /(画|图|景|像|仙女|人物|头像|猫|狗|动物|风景|城市|星空|山海|古风|科幻|赛博|插画|海报|logo|封面|壁纸|动漫|二次元|油画|水彩|像素|写实|角色|机甲|龙|森林|少女|男孩|女孩|情侣|全家福|表情包|贴纸|蒙娜丽莎|写真|肖像|群像)/i.test(s);
 }
 function cleanPrompt(t, intent){
   t = t.replace(/^(调用|帮我|给我|请|你)(帮我|给我|)?[，,、]?\s*/, "");
@@ -3912,8 +3955,26 @@ function doChat(text, attachments){
   var c = current();
   var allTxt = c.messages.filter(function(m){return m.type==="text";});
   var summaryMsg = allTxt.filter(function(m){return m.role==="summary";})[0];
-  var recent = allTxt.filter(function(m){return m.role!=="summary";}).slice(-12)
-    .map(function(m){return {role:m.role==="user"?"user":"assistant", content:m.text};});
+  /* 【修复 v0.4.3】重建上下文时把用户上传的文件正文重新注入，并"钉住"文件消息，
+     使其永不因 slice(-12) 或压缩被丢弃——否则"开头发的文件"几轮后就改不了 */
+  function isFileMsg(m){ return m.role==="user" && m.attachments && m.attachments.some(function(a){return a.kind!=="image" && a.content;}); }
+  function msgToApi(m){
+    if(isFileMsg(m)){
+      var parts = [{ type:"text", text: ((m.text && m.text.indexOf("[附件")!==0) ? m.text+"\n" : "") || "（请处理我上传的附件）" }];
+      m.attachments.forEach(function(a){
+        if(a.kind==="image"){ if(a.base64) parts.push({type:"image_url", image_url:{url:a.base64}}); }
+        else if(a.content){ parts.push({ type:"text", text:"\n\n【用户上传的文件："+a.name+"】\n```\n"+String(a.content).slice(0,40000)+"\n```" }); }
+      });
+      return {role:"user", content: parts};
+    }
+    return {role: m.role==="user"?"user":"assistant", content: m.text};
+  }
+  /* 历史消息（不含本轮刚发的用户消息，它走下方 userContent 单独发送，避免重复注入） */
+  var histMsgs = allTxt.slice(0, -1);
+  var fileMsgs = histMsgs.filter(isFileMsg);
+  var convTail = histMsgs.filter(function(m){return !isFileMsg(m);}).slice(-12);
+  var pinned = fileMsgs.filter(function(m){return convTail.indexOf(m) < 0;});
+  var recent = pinned.concat(convTail).map(msgToApi);
   var sysParts = [];
   if(summaryMsg) sysParts.push("【对话更早部分摘要，供参考】\n"+summaryMsg.text);
   var _memCtx = buildMemoryContext(text);
@@ -4453,6 +4514,9 @@ function renderSettings(){
     (CFG.bgImage? cellNav("清除聊天背景", "clearBg()") : "")+
     '<div class="cell" style="display:block;padding:10px 14px"><div class="cl" style="margin-bottom:6px">文件保存位置（手机本地）</div>'+
     '<input type="text" value="'+esc(CFG.saveLocation||"Download/phone-agent")+'" onchange="CFG.saveLocation=(this.value.trim()||\'Download/phone-agent\');saveCfg();toast(\'已保存保存位置\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box"></div>'+
+  '</div>'+
+  '<div class="group"><div class="gt">长文写作</div>'+
+    '<div class="cell" onclick="openLongWrite()"><span class="ci">📖</span><span class="cl">打开长文写作（小说 / 长文）</span><span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>'+
   '</div>'+
   '<div class="group"><div class="gt">账号</div>'+
     cellNav("API 接口管理（当前："+esc(currentApi().name)+"）", "openApiPage()")+
@@ -5244,6 +5308,231 @@ function sendFeedback(){
   toast("已复制反馈内容，去微信 / 备忘录粘贴发给开发者即可");
 }
 
+/* ================= 长文模式（小说 / 长文）v0.4.4 ================= */
+var LW_KEY = "pa_longwrite";
+var lwState = { title:"未命名小说", chapters:[], updated:0 };
+var lwSelId = null;
+var lwAbort = null;
+var lwEditTimer = null;
+
+function lwLoad(){
+  try{ var s = JSON.parse(localStorage.getItem(LW_KEY)||"null"); if(s && s.chapters){ lwState = s; } }catch(e){}
+}
+function lwSave(){
+  lwState.updated = Date.now();
+  try{ localStorage.setItem(LW_KEY, JSON.stringify(lwState)); }catch(e){ toast("保存失败："+(e&&e.message||e)); }
+}
+function lwWords(s){ return String(s||"").replace(/\s/g,"").length; }
+function lwSplit(text, prev){
+  var lines = String(text||"").split(/\r?\n/);
+  var chapters = [];
+  var cur = null;
+  var autoN = 0;
+  function pushCur(){ if(cur && (cur.text.trim()!=="" || cur.title)){ chapters.push(cur); } }
+  for(var i=0;i<lines.length;i++){
+    var line = lines[i];
+    var am = line.match(/^第[一二三四五六七八九十百千零0-9]+章.*$/);
+    var cm = line.match(/^Chapter\s+\d+.*$/i);
+    var mm = line.match(/^===$/);
+    if(am || cm){ pushCur(); cur = { id: uid("ch"), title: line.trim(), text:"", autoTitle:false }; }
+    else if(mm){ pushCur(); autoN++; cur = { id: uid("ch"), title:"第"+autoN+"部分", text:"", autoTitle:true, sep:"===" }; }
+    else { if(!cur){ cur = { id: uid("ch"), title:"（正文）", text:"", autoTitle:true }; } cur.text += (cur.text? "\n":"") + line; }
+  }
+  pushCur();
+  if(!chapters.length){ chapters.push({ id: uid("ch"), title:"（正文）", text:String(text||""), autoTitle:true }); }
+  if(prev && prev.length){
+    var used = {};
+    chapters.forEach(function(c){
+      var hit = prev.filter(function(p){ return !used[p.id] && p.text===c.text && p.title===c.title && !!p.sep===!!c.sep && p.autoTitle===c.autoTitle; })[0];
+      if(hit){ c.id = hit.id; used[hit.id]=true; }
+    });
+  }
+  return chapters;
+}
+function lwToText(st){
+  return (st.chapters||[]).map(function(c){
+    if(c.sep) return "===\n" + c.text;
+    if(!c.autoTitle) return c.title + "\n" + c.text;
+    return c.text;
+  }).join("\n\n");
+}
+function openLongWrite(){
+  lwLoad();
+  document.getElementById("lwTitle").value = lwState.title || "未命名小说";
+  document.getElementById("lwEditor").value = lwToText(lwState);
+  lwSelId = null; lwRenderOutline(); show("longWritePanel");
+}
+function lwClose(){ hide("longWritePanel"); }
+function lwOnTitle(){ lwState.title = (document.getElementById("lwTitle").value||"").trim() || "未命名小说"; lwSave(); }
+function lwOnEdit(){
+  clearTimeout(lwEditTimer);
+  lwEditTimer = setTimeout(function(){
+    lwState.chapters = lwSplit(document.getElementById("lwEditor").value, lwState.chapters);
+    if(lwSelId && !lwState.chapters.some(function(c){return c.id===lwSelId;})) lwSelId=null;
+    lwRenderOutline(); lwSave();
+  }, 600);
+}
+function lwChapterOffset(id){
+  var acc = 0;
+  for(var i=0;i<lwState.chapters.length;i++){
+    var c = lwState.chapters[i];
+    if(c.id===id) return acc;
+    var seg = (c.sep? "===\n" : (!c.autoTitle? c.title+"\n" : "")) + c.text;
+    acc += seg.length + (i<lwState.chapters.length-1? 2 : 0);
+  }
+  return -1;
+}
+function lwRenderOutline(){
+  var box = document.getElementById("lwOutline");
+  if(!lwState.chapters.length){ box.innerHTML = '<div class="lw-empty">还没有内容。粘贴全文，或点「新建」后撰写。</div>'; return; }
+  box.innerHTML = lwState.chapters.map(function(c, i){
+    var sel = (c.id===lwSelId)? " sel":"";
+    return '<div class="lw-ch'+sel+'" draggable="true" data-id="'+c.id+'" onclick="lwSelect(\''+c.id+'\')" ondragstart="lwDragStart(event)" ondragover="lwDragOver(event)" ondrop="lwDrop(event)">'+
+      '<span class="lw-ch-no">'+(i+1)+'</span>'+
+      '<span class="lw-ch-title">'+esc(c.title||"（无标题）")+'</span>'+
+      '<span class="lw-ch-wc">'+lwWords(c.text)+'字</span>'+
+      '<span class="lw-ch-del" onclick="event.stopPropagation();lwDel(\''+c.id+'\')">✕</span>'+
+    '</div>';
+  }).join("");
+}
+function lwSelect(id){
+  lwSelId = id;
+  var ta = document.getElementById("lwEditor");
+  var off = lwChapterOffset(id);
+  if(off>=0){ try{ ta.focus(); ta.setSelectionRange(off, off); }catch(e){} }
+  lwRenderOutline();
+}
+function lwDel(id){
+  lwState.chapters = lwState.chapters.filter(function(c){return c.id!==id;});
+  if(lwSelId===id) lwSelId=null;
+  document.getElementById("lwEditor").value = lwToText(lwState);
+  lwRenderOutline(); lwSave();
+}
+function lwNew(){
+  if(lwState.chapters.length && !confirm("新建会清空当前未导出的内容，确定？")) return;
+  lwState = { title:"未命名小说", chapters:[], updated:0 };
+  document.getElementById("lwTitle").value="未命名小说";
+  document.getElementById("lwEditor").value="";
+  lwSelId=null; lwRenderOutline(); lwSave();
+}
+function lwImport(){ document.getElementById("lwFile").click(); }
+function lwOnFile(e){
+  var f = e.target.files && e.target.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    var txt = String(rd.result||"");
+    lwState.title = (f.name||"未命名小说").replace(/\.[^.]+$/,"");
+    document.getElementById("lwTitle").value = lwState.title;
+    document.getElementById("lwEditor").value = txt;
+    lwState.chapters = lwSplit(txt); lwSelId=null; lwRenderOutline(); lwSave();
+    toast("已导入 "+f.name);
+  };
+  rd.readAsText(f); e.target.value="";
+}
+function lwExport(){
+  var txt = lwToText(lwState);
+  if(!txt.trim()){ toast("没有可导出的内容"); return; }
+  var name = (lwState.title||"未命名小说")+".txt";
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([txt], {type:"text/plain;charset=utf-8"}));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 1000);
+  toast("已导出 "+name);
+}
+var lwDragId = null;
+function lwDragStart(e){ lwDragId = e.currentTarget.getAttribute("data-id"); e.dataTransfer.effectAllowed="move"; }
+function lwDragOver(e){ e.preventDefault(); }
+function lwDrop(e){
+  e.preventDefault();
+  var toId = e.currentTarget.getAttribute("data-id");
+  if(!lwDragId || lwDragId===toId) return;
+  var from = lwState.chapters.filter(function(c){return c.id===lwDragId;})[0];
+  if(!from) return;
+  lwState.chapters = lwState.chapters.filter(function(c){return c.id!==lwDragId;});
+  var idx = lwState.chapters.findIndex(function(c){return c.id===toId;});
+  if(idx<0) lwState.chapters.push(from); else lwState.chapters.splice(idx,0,from);
+  lwDragId=null;
+  document.getElementById("lwEditor").value = lwToText(lwState);
+  lwRenderOutline(); lwSave();
+}
+function lwSetGen(on){
+  document.getElementById("lwBtnCont").style.display = on?"none":"inline-block";
+  document.getElementById("lwBtnRew").style.display = on?"none":"inline-block";
+  document.getElementById("lwBtnStop").style.display = on?"inline-block":"none";
+}
+function lwGenerate(prompt, sysText, onChunk, onDone){
+  if(lwAbort){ try{ lwAbort.abort(); }catch(e){} }
+  var ac = new AbortController(); lwAbort = ac;
+  var acc = "";
+  fetch(apiBase()+"/chat/completions",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    signal: ac.signal,
+    body: JSON.stringify({ model:currentModel("text"), stream:true, messages:[{role:"system",content:sysText},{role:"user",content:prompt}] })
+  }).then(function(resp){
+    if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,160)); });
+    var reader = resp.body.getReader(); var dec=new TextDecoder(); var buf="";
+    function pump(){
+      return reader.read().then(function(r){
+        if(r.done){ onDone(acc); return; }
+        buf += dec.decode(r.value,{stream:true});
+        var lines = buf.split("\n"); buf = lines.pop();
+        lines.forEach(function(line){
+          line=line.trim();
+          if(line.indexOf("data:")===0){
+            var d=line.slice(5).trim();
+            if(d==="[DONE]") return;
+            try{ var j=JSON.parse(d); var delta=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content; if(delta){ acc+=delta; onChunk&&onChunk(delta, acc); } }catch(e){}
+          }
+        });
+        return pump();
+      });
+    }
+    return pump();
+  }).catch(function(err){
+    if(err && (err.name==="AbortError"||/abort/i.test(err.message||""))){ onDone(acc, null, true); return; }
+    onDone(acc, err);
+  });
+}
+function lwContinue(){
+  if(!lwState.chapters.length){ toast("先写点或导入正文"); return; }
+  var ctx = lwState.chapters.slice(-3).map(function(c){return (c.autoTitle?"":c.title+"\n")+c.text;}).join("\n\n");
+  var instr = (document.getElementById("lwInstr").value||"").trim();
+  var sys = "你是一位专业小说续写助手。保持原文文风、人称与时态，紧接上文情节自然推进，不要重复已有内容，不要添加任何解释、标题或前缀，直接输出续写的纯正文。";
+  var prompt = "小说《"+(lwState.title||"未命名")+"》最近内容：\n\n"+ctx+"\n\n"+(instr?("续写要求："+instr+"\n"):"请续写下一章。")+"只输出续写正文。";
+  var st = document.getElementById("lwStatus"); st.textContent = "续写中…"; lwSetGen(true);
+  lwGenerate(prompt, sys, function(d, acc){ st.textContent = "续写中…（"+lwWords(acc)+"字）"; }, function(acc, err, aborted){
+    lwSetGen(false);
+    if(err){ st.textContent = "⚠️ "+friendlyErr(err); return; }
+    var gen = (acc||"").trim();
+    if(!gen){ st.textContent = "未生成内容"; return; }
+    lwState.chapters.push({ id:uid("ch"), title:"（续写）", text:gen, autoTitle:true });
+    document.getElementById("lwEditor").value = lwToText(lwState);
+    lwRenderOutline(); lwSave();
+    st.textContent = "已续写 "+lwWords(gen)+" 字";
+  });
+}
+function lwRewrite(){
+  if(!lwSelId){ toast("先在左侧选中要改写的章节"); return; }
+  var ch = lwState.chapters.filter(function(c){return c.id===lwSelId;})[0];
+  if(!ch){ toast("章节不存在"); return; }
+  var instr = (document.getElementById("lwInstr").value||"").trim() || "润色这段文字，保持原意";
+  var sys = "你是一位专业小说编辑。根据用户要求改写给定章节，保持文风一致，只输出改写后的完整章节正文，不要解释或加标题。";
+  var prompt = "请改写以下章节：\n\n"+(ch.autoTitle?"":ch.title+"\n")+ch.text+"\n\n改写要求："+instr+"\n只输出改写后的完整章节内容。";
+  var st = document.getElementById("lwStatus"); st.textContent = "改写中…"; lwSetGen(true);
+  lwGenerate(prompt, sys, function(d, acc){ st.textContent="改写中…（"+lwWords(acc)+"字）"; }, function(acc, err){
+    lwSetGen(false);
+    if(err){ st.textContent="⚠️ "+friendlyErr(err); return; }
+    var gen=(acc||"").trim();
+    if(!gen){ st.textContent="未生成内容"; return; }
+    ch.text = gen;
+    document.getElementById("lwEditor").value = lwToText(lwState);
+    lwRenderOutline(); lwSave();
+    st.textContent = "已改写 "+lwWords(gen)+" 字";
+  });
+}
+function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; document.getElementById("lwStatus").textContent="已停止"; lwSetGen(false); } }
+
 (async function init(){
   CFG = await loadCfg();   /* F34：异步解密本地配置（含加密 Key） */
   ensureInit();
@@ -5262,5 +5551,57 @@ function sendFeedback(){
   });
 })();
 </script>
+<style id="lwStyle">
+.lw-mask{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:200;display:none}
+.lw-mask.show{display:flex}
+.lw-box{width:100%;height:100%;max-width:1000px;margin:0 auto;background:var(--bg,#0e1420);display:flex;flex-direction:column}
+.lw-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line,#26304a)}
+.lw-title{flex:1;background:var(--bg-elev,#121826);border:1px solid var(--line,#26304a);border-radius:8px;padding:8px 10px;color:var(--text,#e7ecf3);font-size:15px;min-width:0}
+.lw-head-btns{display:flex;gap:6px;flex-shrink:0}
+.lw-head-btns button{padding:7px 12px;border:none;border-radius:8px;background:var(--accent,#3b82f6);color:#fff;font-size:13px}
+.lw-body{flex:1;display:flex;min-height:0}
+.lw-outline{width:42%;max-width:330px;border-right:1px solid var(--line,#26304a);overflow:auto;padding:8px;box-sizing:border-box}
+.lw-main{flex:1;display:flex;flex-direction:column;min-width:0}
+.lw-editor{flex:1;width:100%;border:none;outline:none;resize:none;padding:12px 14px;background:var(--bg,#0e1420);color:var(--text,#e7ecf3);font-size:15px;line-height:1.7;box-sizing:border-box;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
+.lw-tool{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line,#26304a);align-items:center}
+.lw-instr{flex:1;background:var(--bg-elev,#121826);border:1px solid var(--line,#26304a);border-radius:8px;padding:8px;color:var(--text,#e7ecf3);font-size:13px;min-width:0}
+.lw-tool button{padding:7px 12px;border:none;border-radius:8px;background:var(--accent,#3b82f6);color:#fff;font-size:13px;white-space:nowrap}
+.lw-status{padding:4px 14px 10px;font-size:12px;color:var(--text-2,#9aa6bd);min-height:18px}
+.lw-ch{display:flex;align-items:center;gap:6px;padding:8px;border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;color:var(--text,#e7ecf3)}
+.lw-ch:hover{background:var(--bg-elev,#121826)}
+.lw-ch.sel{background:var(--accent,#3b82f6);color:#fff}
+.lw-ch-no{width:20px;text-align:center;opacity:.7;flex-shrink:0}
+.lw-ch-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lw-ch-wc{font-size:11px;opacity:.7;flex-shrink:0}
+.lw-ch-del{opacity:.55;padding:0 4px;flex-shrink:0}
+.lw-empty{color:var(--text-2,#9aa6bd);font-size:13px;padding:16px;text-align:center}
+</style>
+<div id="longWritePanel" class="lw-mask">
+  <div class="lw-box">
+    <div class="lw-head">
+      <input id="lwTitle" class="lw-title" placeholder="书名" oninput="lwOnTitle()">
+      <div class="lw-head-btns">
+        <button onclick="lwNew()">新建</button>
+        <button onclick="lwImport()">导入</button>
+        <button onclick="lwExport()">导出</button>
+        <button onclick="lwClose()">关闭</button>
+      </div>
+    </div>
+    <div class="lw-body">
+      <div class="lw-outline" id="lwOutline"></div>
+      <div class="lw-main">
+        <textarea id="lwEditor" class="lw-editor" placeholder="在此粘贴或撰写全文…&#10;支持「第X章」自动分章；插入单独一行 === 可手动分章。&#10;左侧大纲可拖拽排序、删除、点选改写。" oninput="lwOnEdit()"></textarea>
+        <div class="lw-tool">
+          <input id="lwInstr" class="lw-instr" placeholder="给 AI 的指令（如：续写悬疑转折 / 把这段改口语化）">
+          <button id="lwBtnCont" onclick="lwContinue()">续写下一章</button>
+          <button id="lwBtnRew" onclick="lwRewrite()">改写选中章</button>
+          <button id="lwBtnStop" onclick="lwStop()" style="display:none">停止</button>
+        </div>
+        <div id="lwStatus" class="lw-status"></div>
+      </div>
+    </div>
+    <input type="file" id="lwFile" accept=".txt,.md,.markdown" style="display:none" onchange="lwOnFile(event)">
+  </div>
+</div>
 </body>
 </html>

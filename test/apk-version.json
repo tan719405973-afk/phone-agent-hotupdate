@@ -1,8 +1,8 @@
 {
-  "versionCode": 20260732,
-  "versionName": "0.4.2",
+  "versionCode": 20260733,
+  "versionName": "0.4.3",
   "apkUrl": "https://tan719405973-afk.github.io/phone-agent-hotupdate/test/phone-agent-release.apk",
-  "note": "v0.4.2：修复更新日志漏更（此前缺 v0.4.0/v0.4.1）——改为发布脚本自动同步，今后发版不再漏；并补全 v0.4.0（移除作品页）/v0.4.1（存图入系统相册 + 去 API 默认 Agnes 兜底）日志条目。",
-  "webVersion": "0.4.2",
-  "webNote": "v0.4.2：修复更新日志漏更（此前缺 v0.4.0/v0.4.1）——改为发布脚本自动同步，今后发版不再漏；并补全 v0.4.0（移除作品页）/v0.4.1（存图入系统相册 + 去 API 默认 Agnes 兜底）日志条目。"
+  "note": "v0.4.3：修复生图意图路由——纯画面描述（如「群像七仙女 1792x1024」）直接生图，不再被当聊天文字糊弄；修复下载：base64 生图也写入系统相册（MediaStore），相册立即可见。",
+  "webVersion": "0.4.4",
+  "webNote": "v0.4.3：修复生图意图路由——纯画面描述（如「群像七仙女 1792x1024」）直接生图，不再被当聊天文字糊弄；修复下载：base64 生图也写入系统相册（MediaStore），相册立即可见。"
 }
