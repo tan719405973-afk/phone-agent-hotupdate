@@ -3,6 +3,6 @@
   "versionName": "0.4.3",
   "apkUrl": "https://tan719405973-afk.github.io/phone-agent-hotupdate/test/phone-agent-release.apk",
   "note": "v0.4.3：修复生图意图路由——纯画面描述（如「群像七仙女 1792x1024」）直接生图，不再被当聊天文字糊弄；修复下载：base64 生图也写入系统相册（MediaStore），相册立即可见。",
-  "webVersion": "0.4.4",
+  "webVersion": "0.4.5",
   "webNote": "v0.4.3：修复生图意图路由——纯画面描述（如「群像七仙女 1792x1024」）直接生图，不再被当聊天文字糊弄；修复下载：base64 生图也写入系统相册（MediaStore），相册立即可见。"
 }
