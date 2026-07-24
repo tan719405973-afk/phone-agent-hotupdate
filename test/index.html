@@ -2876,13 +2876,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.8";
+var APP_VERSION = "0.4.9";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.8", date:"2026-07-24", items:[
+var CHANGELOG = [  { v:"0.4.9", date:"2026-07-25", items:[
+    "修复：生图/视频「下载」后系统图库看不到图片——MediaStore 写入在部分 ROM 静默失败并回退到 App 私有目录（图库扫不到），且 web 端误将回退判为成功弹「已保存到相册」",
+    "机制：原生 saveToGallery 改为三路径回退（RELATIVE_PATH → 不带路径 → 旧 API）+ 写完后 MediaScannerConnection.scanFile 显式刷图库",
+    "web 端反馈区分「已存相册 / 已存私有目录」，不再误导；本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.8", date:"2026-07-24", items:[
     "修复：「检查更新」拉取 web 热更/版本历史列表失败（更新挂了）——loadScript 原用 <script src> 从 file:// 源直连外网被 WebView 跨域拦截",
     "机制：loadScript 改走原生桥 nativeFetch 拿到脚本文本后再全局 eval（等效加载外部脚本），与生图/聊天同源绕过 CORS",
     "纯 web 热更，无需重装 APK",
@@ -3252,7 +3257,10 @@ function downloadUrl(url, name){
     if(typeof NativeBridge!=="undefined" && NativeBridge && typeof NativeBridge.saveMedia==="function"){
       toast("正在保存…");
       var _uri = NativeBridge.saveMedia(url, ext);
-      if(_uri && _uri.indexOf("err:")!==0){ toast("已保存到相册"); } else { _fallbackDownload(url, name); }
+      if(_uri && _uri.indexOf("err:")!==0){
+        if(_uri.indexOf("private:")===0){ toast("已存到 App 私有目录（图库可能看不到）"); }
+        else { toast("已保存到相册"); }
+      } else { _fallbackDownload(url, name); }
       return;
     }
   }
@@ -3261,6 +3269,7 @@ function downloadUrl(url, name){
     toast("正在下载…");
     var r = NativeBridge.downloadMedia(url, ext, "Bearer "+mediaApiKey());
     if(r.indexOf("ok:")===0){ toast("已保存到相册"); return; }
+    if(r.indexOf("private:")===0){ toast("已存到 App 私有目录（图库可能看不到）"); return; }
     toast("下载失败：" + (r.indexOf("err:")===0 ? r.slice(4) : r));
     return;
   }
