@@ -1,5 +1,10 @@
 [
   {
+    "v": "0.4.10",
+    "note": "v0.4.10：修复「检查更新」缓存误报「已是最新」——根因原生桥 httpRequestAsync 用 HttpURLConnection 未禁缓存（无 useCaches=false、无 Cache-Control/Pragma 头），首次检查把旧 apk-version.json 缓存，query 串 ?t=Date.now() 在部分 CDN/中间层被当次要 key 命中老缓存，导致 0.4.8 设备收不到 0.4.9 提示（已发生两次：0.4.6、0.4.8 设备均误报）；机制：httpRequestAsync 内 conn.useCaches=false + 加 Cache-Control:no-cache,no-store / Pragma:no-cache 头，强制每次取新数据；叠加 v0.4.9 生图下载入相册修复。本次为 APK 重装更新（版本档案同步至 0.4.10），覆盖安装保留数据。v0.4.9：修复生图/视频「下载」后系统图库看不到图片——根因 MediaStore 写入在部分 ROM 静默失败并回退到 App 私有目录（图库扫不到），且 web 端误将回退判为成功弹「已保存到相册」；机制：原生 saveToGallery 改为三路径回退（RELATIVE_PATH → 不带路径 → 旧 API）+ 写完后 MediaScannerConnection.scanFile 显式刷图库；web 端反馈区分「已存相册 / 已存私有目录」不再误导。本次为 APK 重装更新（版本档案同步至 0.4.9），覆盖安装保留数据。v0.4.8：修复「检查更新」拉取 web 热更失败——loadScript 改走原生桥 nativeFetch 拿文本再 eval，与生图/聊天同源修复。v0.4.7：修复聊天/长文 WebView 跨域拦截，改走原生桥 httpRequestAsync 绕过 CORS。纯 web 热更无需重装。",
+    "date": "2026-07-25"
+  },
+  {
     "v": "0.4.9",
     "note": "v0.4.9：修复生图/视频「下载」后系统图库看不到图片——根因 MediaStore 写入在部分 ROM 静默失败并回退到 App 私有目录（图库扫不到），且 web 端误将回退判为成功弹「已保存到相册」；机制：原生 saveToGallery 改为三路径回退（RELATIVE_PATH → 不带路径 → 旧 API）+ 写完后 MediaScannerConnection.scanFile 显式刷图库；web 端反馈区分「已存相册 / 已存私有目录」不再误导。本次为 APK 重装更新（版本档案同步至 0.4.9），覆盖安装保留数据。v0.4.8：修复「检查更新」拉取 web 热更失败——loadScript 改走原生桥 nativeFetch 拿文本再 eval，与生图/聊天同源修复。v0.4.7：修复聊天/长文 WebView 跨域拦截，改走原生桥 httpRequestAsync 绕过 CORS。纯 web 热更无需重装。",
     "date": "2026-07-25"
@@ -12,11 +17,6 @@
   {
     "v": "0.4.7",
     "note": "v0.4.7：修复聊天/长文模式在手机 WebView 下被跨域拦截（报「网络被拦截」）无法对话；改走原生桥 httpRequestAsync（与生图同一通道）绕过 WebView CORS，视频轮询与设置内「拉取模型」同步修复。纯 web 热更，无需重装 APK。",
-    "date": "2026-07-24"
-  },
-  {
-    "v": "0.4.6",
-    "note": "v0.4.6：修复删除对话后其自动总结的「记忆」仍被注入新对话的副作用；修复下载图片/视频写入系统相册——此前 0.4.3 修复版 APK 未推送到手机，本次重装生效。",
     "date": "2026-07-24"
   },
   {
