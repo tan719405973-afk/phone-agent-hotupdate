@@ -572,7 +572,6 @@
 <div id="toast"></div>
 <div class="dlg-mask" id="dlgMask"><div class="dlg" id="dlgBox"></div></div>
 <input type="file" id="fileInput" multiple style="display:none">
-<input type="file" id="bgFileInput" accept="image/*" style="display:none">
 
 <script>
 //---------------------------------------------------------------------
@@ -2876,13 +2875,17 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.10";
+var APP_VERSION = "0.4.11";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.10", date:"2026-07-25", items:[
+var CHANGELOG = [  { v:"0.4.11", date:"2026-07-25", items:[
+    "删除：「聊天背景（用图片）」功能——设置页入口、applyBg/pickBg/clearBg 函数、bgFileInput 隐藏 input、init 调用、CELL_ICONS 图标全部移除；旧 CFG.bgImage 数据不再被读取（死数据，不报错）",
+    "含 v0.4.10 检查更新缓存修复 + v0.4.9 生图下载入系统相册；本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.10", date:"2026-07-25", items:[
     "修复：「检查更新」缓存误报「已是最新」——原生桥 httpRequestAsync 用 HttpURLConnection 未禁缓存，首次检查把旧 apk-version.json 缓存，query 串 ?t=Date.now() 在部分 CDN/中间层被当次要 key 命中老缓存，导致旧版本设备收不到新版本提示（已发生两次：0.4.6、0.4.8 设备均误报）",
     "机制：httpRequestAsync 内 conn.useCaches=false + 加 Cache-Control:no-cache,no-store / Pragma:no-cache 头，强制每次取新数据",
     "叠加 v0.4.9 生图下载入系统相册修复；本次为 APK 重装更新，覆盖安装保留数据",
@@ -4562,8 +4565,6 @@ function renderSettings(){
     cellNav("生视频", "openCreate(\'video\')")+
     '<div class="cell studio-row" onclick="openStudio()"><span class="ci">🎬</span><span class="cl">智能制片</span><span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>'+
     '<div class="gt">外观与存储</div>'+
-    cellNav("聊天背景（用图片）", "pickBg()")+
-    (CFG.bgImage? cellNav("清除聊天背景", "clearBg()") : "")+
     '<div class="cell" style="display:block;padding:10px 14px"><div class="cl" style="margin-bottom:6px">文件保存位置（手机本地）</div>'+
     '<input type="text" value="'+esc(CFG.saveLocation||"Download/phone-agent")+'" onchange="CFG.saveLocation=(this.value.trim()||\'Download/phone-agent\');saveCfg();toast(\'已保存保存位置\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box"></div>'+
   '</div>'+
@@ -4605,31 +4606,7 @@ function applyTheme(){
   var ph = document.getElementById("phone");
   if(ph) ph.classList.toggle("dark", dark);
 }
-function applyBg(){
-  var m = document.getElementById("msgs");
-  if(!m) return;
-  if(CFG.bgImage){
-    m.style.backgroundImage = "url("+CFG.bgImage+")";
-    m.style.backgroundSize = "cover";
-    m.style.backgroundPosition = "center";
-    m.style.backgroundRepeat = "no-repeat";
-  }else{
-    m.style.backgroundImage = "";
-  }
-}
-function pickBg(){ document.getElementById("bgFileInput").click(); }
-document.getElementById("bgFileInput").addEventListener("change", function(e){
-  var f = e.target.files[0]; if(!f) return;
-  var rd = new FileReader();
-  rd.onload = function(){
-    CFG.bgImage = rd.result; saveCfg(); applyBg(); renderSettings();
-    toast("聊天背景已更新");
-  };
-  rd.readAsDataURL(f);
-  e.target.value = "";
-});
-function clearBg(){ CFG.bgImage=""; saveCfg(); applyBg(); renderSettings(); toast("已清除背景"); }
-var CELL_ICONS = { "生图 / 图生图":"🎨","生视频":"📹","智能制片":"🎬","聊天背景（用图片）":"🖼️","清除聊天背景":"🧹","API 接口管理（当前：":"🔌","我的记忆":"🧠","更新日志":"📝","清理缓存":"🧹","导出 / 备份聊天":"📤","导入恢复聊天":"📥","检查更新":"🔄","分享给亲友（二维码）":"🔗","意见反馈":"💬","重新查看引导":"✨","版本历史 / 回退":"⏱️","开源 / 隐私声明":"🔒" };
+var CELL_ICONS = { "生图 / 图生图":"🎨","生视频":"📹","智能制片":"🎬","API 接口管理（当前：":"🔌","我的记忆":"🧠","更新日志":"📝","清理缓存":"🧹","导出 / 备份聊天":"📤","导入恢复聊天":"📥","检查更新":"🔄","分享给亲友（二维码）":"🔗","意见反馈":"💬","重新查看引导":"✨","版本历史 / 回退":"⏱️","开源 / 隐私声明":"🔒" };
 function cellNav(label, onclick){
   var ic = CELL_ICONS[label] || (label.indexOf("API 接口管理")>=0 ? "🔌" : "");
   return '<div class="cell" onclick="'+onclick+'"><span class="ci">'+ic+'</span><span class="cl">'+label+'</span>'+
@@ -5606,7 +5583,6 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
   CFG = await loadCfg();   /* F34：异步解密本地配置（含加密 Key） */
   ensureInit();
   applyTheme();
-  applyBg();
   renderConvList(); renderMsgs(); updateTitle();
   updateOnline();          /* F17：离线状态条 */
   window.addEventListener("offline", function(){ updateOnline(); toast("网络已断开，发送可能失败"); });
