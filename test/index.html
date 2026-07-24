@@ -2876,13 +2876,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.6";
+var APP_VERSION = "0.4.7";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.6", date:"2026-07-24", items:[
+var CHANGELOG = [  { v:"0.4.7", date:"2026-07-24", items:[
+    "修复：聊天与长文模式在手机 WebView 环境下被跨域拦截（报「网络被拦截：请确认本机网络，请求地址是 https 可达」）而无法对话",
+    "机制：聊天/长文/视频轮询/设置「拉取模型」统一改走原生桥 httpRequestAsync（与图片生成同一通道），彻底绕过 WebView 对 file:// 源外网请求的跨域限制",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.6", date:"2026-07-24", items:[
     "修复：删除对话时同步清除其自动总结的「记忆」条目，避免已删除对话内容仍被注入新对话（上下文记忆副作用）",
     "修复：下载图片/视频真正写入系统相册（MediaStore）——此前 0.4.3 修复版 APK 未推送到手机，本次随 0.4.6 重装生效",
     "本次为 APK 重装更新（版本档案同步至 0.4.6）",
@@ -3335,6 +3340,23 @@ function fetchTimeout(url, opts, ms){
   opts = opts || {};
   opts.timeout = ms;
   return nativeFetch(url, opts);
+}
+/* 原生桥 httpRequestAsync 返回的是「整段 SSE 响应体」（所有 data: 块已拼接），
+   这里按行解析还原流式 delta，逐块回调 onDelta（保留打字机观感）。
+   用于把聊天/长文等原本依赖 fetch().body.getReader() 的流式链路改走原生桥，
+   以绕过手机 WebView 对 file:// 源跨域请求的外网拦截（原报错"网络被拦截"）。 */
+function parseSSEStream(fullBody, onDelta){
+  String(fullBody||"").split("\n").forEach(function(line){
+    line = line.trim();
+    if(line.indexOf("data:")!==0) return;
+    var d = line.slice(5).trim();
+    if(!d || d==="[DONE]") return;
+    try{
+      var j = JSON.parse(d);
+      var delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+      if(delta) onDelta(delta);
+    }catch(e){}
+  });
 }
 
 /* ================= 存储（F34：本地加密） ================= */
@@ -4045,32 +4067,22 @@ function doChat(text, attachments){
     var chatAcc = "";
     var chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 240000);
 
-    fetch(apiBase()+"/chat/completions",{
+    /* 【修复 v0.4.7】聊天原走 WebView 原生 fetch，在手机 file:// 环境下被跨域拦截（报"网络被拦截"）。
+        改走 fetchTimeout → 原生桥 httpRequestAsync（与生图同一通道），绕过 WebView CORS；
+        原生桥返回整段 SSE 响应体，下方用 parseSSEStream 手动解析还原流式输出。 */
+    fetchTimeout(apiBase()+"/chat/completions",{
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
-      signal: ac.signal,
+      timeout: 240000,
       body: JSON.stringify({ model:currentModel("text"), stream:true, messages: hist.concat([{role:"user", content:userContent}]) })
     }).then(function(resp){
       if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,120)); });
-      var reader = resp.body.getReader(); var dec=new TextDecoder(); var buf="";
-      function pump(){
-        return reader.read().then(function(r){
-          if(r.done){ finalizeChat(aiMsg,chatAcc,attachments); return; }
-          buf += dec.decode(r.value,{stream:true});
-          var lines = buf.split("\n"); buf = lines.pop();
-          lines.forEach(function(line){
-            line=line.trim();
-            if(line.indexOf("data:")===0){
-              var d=line.slice(5).trim();
-              if(d==="[DONE]") return;
-              try{ var j=JSON.parse(d); var delta=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
-                if(delta){ chatAcc+=delta; var bb=rowBubble(); if(bb) bb.textContent=chatAcc.replace(/^\s+/,""); scrollBottom(); } }catch(e){}
-            }
-          });
-          return pump();
-        });
-      }
-      return pump();
+      return resp.text();
+    }).then(function(fullBody){
+      parseSSEStream(fullBody, function(delta){
+        chatAcc+=delta; var bb=rowBubble(); if(bb) bb.textContent=chatAcc.replace(/^\s+/,""); scrollBottom();
+      });
+      finalizeChat(aiMsg, chatAcc, attachments);
     }).then(function(){
       clearTimeout(chatTimer); clearRetry(aiMsg.id);
     }).catch(function(err){
@@ -4311,7 +4323,7 @@ function pollVideo(vid, loading, tries){
   /* 官方推荐结果查询端点：GET /agnesapi?video_id=<VIDEO_ID>（媒体 base 去掉 /v1 后拼接）；
      最终视频地址在 metadata.url（英文文档兼容 remixed_from_video_id），status∈queued/in_progress/completed/failed */
   var q = (mediaApiBase().replace(/\/v1$/,"") + "/agnesapi?video_id=" + encodeURIComponent(vid));
-  fetch(q, { headers:{ "Authorization":"Bearer "+mediaApiKey() } })
+  fetchTimeout(q, { headers:{ "Authorization":"Bearer "+mediaApiKey() } })
   .then(function(r){ return r.json(); }).then(function(j){
     var url = (j && j.metadata && j.metadata.url) || (j && j.remixed_from_video_id) || (j && j.url) || (j && j.data && j.data.url) || (j && j.video_url);
     var status = (j && j.status) || (j && j.data && j.data.status);
@@ -5046,7 +5058,7 @@ function fetchUpstreamModels(){
   toast("正在从上游获取模型…");
   // 严格按用户填写的地址请求，不猜测补 /v1（部分上游并非 /v1 前缀）
   var url = rawBase.replace(/\/+$/,'') + "/models";
-  fetch(url, {headers:{"Authorization":"Bearer "+key}}).then(function(r){
+  fetchTimeout(url, {headers:{"Authorization":"Bearer "+key}}).then(function(r){
     if(!r.ok){
       if(r.status===401||r.status===403) throw new Error("鉴权失败(401/403)，Key 可能无效");
       if(r.status===404) throw new Error("接口未找到(404)，请确认请求地址填到 /models 所在前缀");
@@ -5507,31 +5519,19 @@ function lwGenerate(prompt, sysText, onChunk, onDone){
   if(lwAbort){ try{ lwAbort.abort(); }catch(e){} }
   var ac = new AbortController(); lwAbort = ac;
   var acc = "";
-  fetch(apiBase()+"/chat/completions",{
+  /* 【修复 v0.4.7】长文模式原走 WebView 原生 fetch，手机 file:// 下被跨域拦截（报"网络被拦截"）。
+      改走 fetchTimeout → 原生桥（与生图/聊天同一通道），用 parseSSEStream 解析整段 SSE 体。 */
+  fetchTimeout(apiBase()+"/chat/completions",{
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
-    signal: ac.signal,
+    timeout: 240000,
     body: JSON.stringify({ model:currentModel("text"), stream:true, messages:[{role:"system",content:sysText},{role:"user",content:prompt}] })
   }).then(function(resp){
     if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,160)); });
-    var reader = resp.body.getReader(); var dec=new TextDecoder(); var buf="";
-    function pump(){
-      return reader.read().then(function(r){
-        if(r.done){ onDone(acc); return; }
-        buf += dec.decode(r.value,{stream:true});
-        var lines = buf.split("\n"); buf = lines.pop();
-        lines.forEach(function(line){
-          line=line.trim();
-          if(line.indexOf("data:")===0){
-            var d=line.slice(5).trim();
-            if(d==="[DONE]") return;
-            try{ var j=JSON.parse(d); var delta=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content; if(delta){ acc+=delta; onChunk&&onChunk(delta, acc); } }catch(e){}
-          }
-        });
-        return pump();
-      });
-    }
-    return pump();
+    return resp.text();
+  }).then(function(fullBody){
+    parseSSEStream(fullBody, function(delta){ acc+=delta; onChunk&&onChunk(delta, acc); });
+    onDone(acc);
   }).catch(function(err){
     if(err && (err.name==="AbortError"||/abort/i.test(err.message||""))){ onDone(acc, null, true); return; }
     onDone(acc, err);
