@@ -2876,13 +2876,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.5";
+var APP_VERSION = "0.4.6";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.5", date:"2026-07-22", items:[
+var CHANGELOG = [  { v:"0.4.6", date:"2026-07-24", items:[
+    "修复：删除对话时同步清除其自动总结的「记忆」条目，避免已删除对话内容仍被注入新对话（上下文记忆副作用）",
+    "修复：下载图片/视频真正写入系统相册（MediaStore）——此前 0.4.3 修复版 APK 未推送到手机，本次随 0.4.6 重装生效",
+    "本次为 APK 重装更新（版本档案同步至 0.4.6）",
+  ]},
+  { v:"0.4.5", date:"2026-07-22", items:[
     "增强：长文模式分章结构全面扩展——新增 Markdown 标题（#/##/###）、章回体（第X回）、卷/部/篇大结构、Markdown 分隔线（---/***/___）、中文序号（一、）、数字序号（1. / 1、/ 1.1）自动识别，写作习惯无需改动",
     "纯 web 热更，无需重装 APK",
   ]},
@@ -3547,7 +3552,7 @@ function summarizeConv(conv, done){
   }, 60000).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
     var s = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
     if(s){ s = String(s).trim(); loadMem();
-      MEM.entries.unshift({ id: uid("mem"), ts: Date.now(), conv: conv.name||"对话", summary: s });
+      MEM.entries.unshift({ id: uid("mem"), ts: Date.now(), conv: conv.name||"对话", convId: conv.id, summary: s });
       if(MEM.entries.length > 50) MEM.entries = MEM.entries.slice(0,50);
       saveMem();
     }
@@ -3622,9 +3627,21 @@ function renameConversation(id){
 }
 function deleteConversation(id){
   showConfirm("删除对话", "确定删除这个对话？记录将无法恢复。", function(){
+    var _conv = convs.filter(function(c){ return c.id===id; })[0];
     convs = convs.filter(function(c){ return c.id!==id; });
     if(!convs.length){ convs=[makeConv("新对话")]; }
     if(id===currentId){ currentId = convs[0].id; }
+    /* F-记忆：删除对话时同步清除其自动总结的「记忆」条目，避免已删对话内容仍被注入新对话（上下文记忆副作用） */
+    try{
+      loadMem();
+      var _name = _conv ? _conv.name : "";
+      MEM.entries = MEM.entries.filter(function(e){
+        if(e.convId === id) return false;                                  /* 新格式：按对话 id 精确清除 */
+        if(!e.convId && _name && _name!=="新对话" && e.conv===_name) return false; /* 旧格式：按名称清除（避开默认名碰撞） */
+        return true;
+      });
+      saveMem();
+    }catch(e){}
     saveConvs(); renderConvList(); renderMsgs(); updateTitle();
   }, true);
 }
