@@ -2876,13 +2876,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.7";
+var APP_VERSION = "0.4.8";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.7", date:"2026-07-24", items:[
+var CHANGELOG = [  { v:"0.4.8", date:"2026-07-24", items:[
+    "修复：「检查更新」拉取 web 热更/版本历史列表失败（更新挂了）——loadScript 原用 <script src> 从 file:// 源直连外网被 WebView 跨域拦截",
+    "机制：loadScript 改走原生桥 nativeFetch 拿到脚本文本后再全局 eval（等效加载外部脚本），与生图/聊天同源绕过 CORS",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.7", date:"2026-07-24", items:[
     "修复：聊天与长文模式在手机 WebView 环境下被跨域拦截（报「网络被拦截：请确认本机网络，请求地址是 https 可达」）而无法对话",
     "机制：聊天/长文/视频轮询/设置「拉取模型」统一改走原生桥 httpRequestAsync（与图片生成同一通道），彻底绕过 WebView 对 file:// 源外网请求的跨域限制",
     "纯 web 热更，无需重装 APK",
@@ -4623,14 +4628,21 @@ function updateBaseUrl(){
 }
 /* 用 <script> 注入方式加载更新文件，绕过 GitHub Pages 等不返回 CORS 头的限制（fetch 会被跨域拦截） */
 function loadScript(url, ms){
+  /* 【修复 v0.4.8】原实现用 <script src> 标签从 file:// 源直连加载外网脚本，
+     手机 WebView 对 file:// 源跨域加载外网资源直接拦截（与聊天裸 fetch 同源问题），
+     导致「检查更新」拉 app.js / 版本列表 / 清单兜底全部失败（更新挂了）。
+     改为走原生桥 nativeFetch 拿文本，再全局 eval（等效于加载外部脚本、设置 window.__PA_xxx__），
+     彻底绕过 WebView CORS。 */
   return new Promise(function(res, rej){
-    var s = document.createElement("script");
-    var done = false;
-    var to = setTimeout(function(){ if(!done){ done=true; s.parentNode && s.parentNode.removeChild(s); rej(new Error("加载超时")); } }, ms||15000);
-    s.onload = function(){ if(!done){ done=true; clearTimeout(to); res(); } };
-    s.onerror = function(){ if(!done){ done=true; clearTimeout(to); rej(new Error("加载失败（地址不可达/被墙）")); } };
-    s.src = url;
-    document.head.appendChild(s);
+    var to = setTimeout(function(){ rej(new Error("加载超时")); }, ms||15000);
+    nativeFetch(url, {method:"GET"})
+      .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+      .then(function(t){
+        clearTimeout(to);
+        try { (0,eval)(t); } catch(e){ /* 纯赋值脚本，异常无害 */ }
+        res();
+      })
+      .catch(function(e){ clearTimeout(to); rej(e); });
   });
 }
 /* 游戏式 APK 大更新：拉 apk-version.json，比对当前 APK 的 versionCode，
