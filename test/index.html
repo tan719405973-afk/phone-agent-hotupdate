@@ -3266,24 +3266,16 @@ function bindCodeblockLongPress(el){
 function onRowLongPress(m, e){
   var items = [];
   if(m.type === "text"){
-    var sel = (window.getSelection && window.getSelection().toString) ? window.getSelection().toString() : "";
-    if(sel && sel.trim()){
-      items.push({label:"复制选中", onclick:function(){ copyText(sel); }});
-    }
-    if(m.role === "user") items.push({label:"重发", onclick:function(){ resendUser(m); }});
-    if(m.role === "assistant") items.push({label:"保存为文件", onclick:function(){ downloadMsg(m.id); }});
-    /* 文字消息 不 preventDefault —— Chromium 原生出选词柄 + 浮动复制工具栏，
-       用户可在系统工具栏复制，也可用 App 的「复制选中」（若有选中文字）。
-       不再弹「复制文字」（整条复制），整条复制走系统工具栏的「全选→复制」。 */
-  } else {
-    // 图片/视频/文件：阻止系统菜单，弹 App 自定义菜单
-    if(e && e.preventDefault) e.preventDefault();
-    if(m.type === "image"){
-      items.push({label:"保存图片", onclick:function(){ downloadUrl(m.media.url, (m.media.caption||"image")+".png"); }});
-      items.push({label:"复制链接", onclick:function(){ copyText(m.media.url); }});
-    } else if(m.type === "video"){
-      items.push({label:"保存视频", onclick:function(){ downloadUrl(m.media.url, "video.mp4"); }});
-    }
+    /* 文字消息：不要菜单，不出弹窗——让 Chromium 原生出选词柄 + 浮动复制工具栏即可 */
+    return;
+  }
+  // 图片/视频/文件：阻止系统菜单，弹 App 自定义菜单
+  if(e && e.preventDefault) e.preventDefault();
+  if(m.type === "image"){
+    items.push({label:"保存图片", onclick:function(){ downloadUrl(m.media.url, (m.media.caption||"image")+".png"); }});
+    items.push({label:"复制链接", onclick:function(){ copyText(m.media.url); }});
+  } else if(m.type === "video"){
+    items.push({label:"保存视频", onclick:function(){ downloadUrl(m.media.url, "video.mp4"); }});
   }
   if(m.type !== "loading"){
     items.push({label:"引用", onclick:function(){ quoteMsg(m); }});
