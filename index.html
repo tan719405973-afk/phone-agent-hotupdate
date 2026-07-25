@@ -2875,13 +2875,29 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.11";
+var APP_VERSION = "0.4.14";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.11", date:"2026-07-25", items:[
+var CHANGELOG = [  { v:"0.4.14", date:"2026-07-25", items:[
+    "根治：检查更新永远显示「已是最新 v0.4.11」——根因是 CFG.updateBase 默认值写死成主通道地址（无 /test），它在 updateBaseUrl() 里优先级高于 DEFAULT_UPDATE_BASE(/test)，导致新装/重置/恢复内置版本后都读主通道(冻结 0.4.11)，永远收不到 /test 的新版",
+    "机制：①CFG.updateBase 默认值改为空字符串，让 updateBaseUrl() 回退到 DEFAULT_UPDATE_BASE(/test)；②updateBaseUrl() 加兜底——若配置值恰为裸主通道地址(无 /test)，视为误配自动纠偏回 /test（主通道是备份、不作更新源）",
+    "含 v0.4.13 覆盖安装自动清旧热更缓存；本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.13", date:"2026-07-25", items:[
+    "根治：覆盖安装 APK 后，旧热更网页缓存（files/www/index.html）盖住新版，导致「装完还是旧版本」——启动比对 APK BuildConfig.VERSION_CODE 与本地记录，版本变化即自动删除旧缓存，让新 APK 内置 web 直接生效（游戏客户端「大更新清补丁」标准做法）",
+    "纯 web 热更（versionCode 不变）不受影响，缓存照常生效",
+    "含 v0.4.12 代码块长按修复；本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.12", date:"2026-07-25", items:[
+    "修复：长按 AI 回复里的代码块，被冒泡到消息行 onRowLongPress → 弹「复制文字」复制整条 AI 回复（含代码块外的说明文字），无法只复制代码块",
+    "机制：给 .codeblock 单独绑 longpress，touchstart stopPropagation 阻止冒泡到外层消息行 + 弹「复制这段代码」菜单（复用 showActionSheet + copyText(window._codes[cid])）；右键菜单也走同一路径",
+    "附带：preventDefault 阻止 WebView 默认长按进入选词模式，避免和我们的菜单打架（短按 / 拖选仍走默认选词入口）",
+    "本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.11", date:"2026-07-25", items:[
     "删除：「聊天背景（用图片）」功能——设置页入口、applyBg/pickBg/clearBg 函数、bgFileInput 隐藏 input、init 调用、CELL_ICONS 图标全部移除；旧 CFG.bgImage 数据不再被读取（死数据，不报错）",
     "含 v0.4.10 检查更新缓存修复 + v0.4.9 生图下载入系统相册；本次为 APK 重装更新，覆盖安装保留数据",
   ]},
@@ -3117,7 +3133,7 @@ var DEFAULT_CFG = {
   theme: "light",
   saveLocation: "Download/phone-agent",
   bgImage: "",
-  updateBase: "https://tan719405973-afk.github.io/phone-agent-hotupdate",   /* F35：热更新地址（GitHub Pages 为默认值，空=不检查） */
+  updateBase: "",   /* F35：默认空 → 回退 DEFAULT_UPDATE_BASE(/test)；曾误填主通道(无/test)导致永远「已是最新」(v0.4.14 根治) */
   shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
   genParams: { size:"", n:1 },  /* F23 生成参数：尺寸(空=模型默认) / 张数 */
   fontScale: 1                  /* F31 字体大小：0.85 小 / 1 标准 / 1.15 大 / 1.3 特大 */
@@ -3203,6 +3219,39 @@ function bindLongPress(el, cb){
   el.addEventListener("touchmove", function(){ if(timer){ clearTimeout(timer); timer=null; } });
   el.addEventListener("touchend", function(){ if(timer){ clearTimeout(timer); timer=null; } });
   el.addEventListener("contextmenu", function(e){ e.preventDefault(); cb(); });
+}
+/* F42-fix：代码块长按单独处理——stopPropagation 阻止冒泡到外层消息行 onRowLongPress，
+   否则长按代码块会被吞进"复制文字"（整条 AI 回复）。这里弹"复制这段代码"只复制代码块内容。 */
+function bindCodeblockLongPress(el){
+  var cid = el.getAttribute("data-cid");
+  if(!cid) return;
+  var timer = null;
+  el.addEventListener("touchstart", function(e){
+    e.stopPropagation();  // 不让 row 的 longpress timer 启动
+    e.preventDefault();   // 阻止 WebView 默认长按进入选词模式，让我们的菜单接管
+    timer = setTimeout(function(){
+      timer = null;
+      if(window.getSelection){ window.getSelection().removeAllRanges(); }
+      var code = window._codes[cid];
+      if(code == null) return;
+      showActionSheet([{label:"复制这段代码", onclick:function(){ copyText(code); }}]);
+    }, 480);
+  });
+  el.addEventListener("touchmove", function(e){
+    if(timer){ clearTimeout(timer); timer = null; }
+    e.stopPropagation();
+  });
+  el.addEventListener("touchend", function(e){
+    if(timer){ clearTimeout(timer); timer = null; }
+    e.stopPropagation();
+  });
+  el.addEventListener("contextmenu", function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    var code = window._codes[cid];
+    if(code == null) return;
+    showActionSheet([{label:"复制这段代码", onclick:function(){ copyText(code); }}]);
+  });
 }
 function onRowLongPress(m){
   var items = [];
@@ -3816,6 +3865,9 @@ function renderRow(m){
   }
   row.innerHTML = '<div class="avatar">'+av+'</div><div class="bubble">'+inner+'</div>';
   bindLongPress(row, function(){ onRowLongPress(m); });
+  // F42-fix：消息内每个代码块单独绑 longpress，长按代码块不冒泡到 row 的 onRowLongPress
+  var cbs = row.querySelectorAll(".codeblock");
+  for(var ci=0; ci<cbs.length; ci++) bindCodeblockLongPress(cbs[ci]);
   return row;
 }
 function mediaActions(url,label){
@@ -4615,7 +4667,11 @@ function cellNav(label, onclick){
 /* 默认热更新地址（GitHub Pages）。CFG.updateBase 为空时回退到此，确保新装/旧装用户都能直接检查更新 */
 var DEFAULT_UPDATE_BASE = "https://tan719405973-afk.github.io/phone-agent-hotupdate/test";
 function updateBaseUrl(){
-  return (CFG.updateBase || DEFAULT_UPDATE_BASE || "").trim().replace(/\/+$/,"");
+  var u = (CFG.updateBase || "").trim().replace(/\/+$/,"");
+  if(!u) u = DEFAULT_UPDATE_BASE;
+  // 兜底：裸主通道（无 /test）视为误配——主通道是备份、不作更新源，回退 /test（v0.4.14 根治「通道错位」复发）
+  if(u === "https://tan719405973-afk.github.io/phone-agent-hotupdate") u = DEFAULT_UPDATE_BASE;
+  return u;
 }
 /* 用 <script> 注入方式加载更新文件，绕过 GitHub Pages 等不返回 CORS 头的限制（fetch 会被跨域拦截） */
 function loadScript(url, ms){
@@ -5200,7 +5256,7 @@ function renderRichText(text){
       var code = parts[i].trim();
       var cid = "cb" + (++_codeSeq);
       window._codes[cid] = code;
-      html += '<div class="codeblock"><div class="codebar"><span class="codelang">代码</span>'+
+      html += '<div class="codeblock" data-cid="'+cid+'"><div class="codebar"><span class="codelang">代码</span>'+
               '<button class="copybtn" onclick="copyText(window._codes[\''+cid+'])">复制</button></div>'+
               '<pre><code>'+esc(code)+'</code></pre></div>';
     } else {
