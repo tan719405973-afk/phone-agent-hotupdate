@@ -2875,13 +2875,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.12";
+var APP_VERSION = "0.4.13";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.12", date:"2026-07-25", items:[
+var CHANGELOG = [  { v:"0.4.13", date:"2026-07-25", items:[
+    "根治：覆盖安装 APK 后，旧热更网页缓存（files/www/index.html）盖住新版，导致「装完还是旧版本」——启动比对 APK BuildConfig.VERSION_CODE 与本地记录，版本变化即自动删除旧缓存，让新 APK 内置 web 直接生效（游戏客户端「大更新清补丁」标准做法）",
+    "纯 web 热更（versionCode 不变）不受影响，缓存照常生效",
+    "含 v0.4.12 代码块长按修复；本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.12", date:"2026-07-25", items:[
     "修复：长按 AI 回复里的代码块，被冒泡到消息行 onRowLongPress → 弹「复制文字」复制整条 AI 回复（含代码块外的说明文字），无法只复制代码块",
     "机制：给 .codeblock 单独绑 longpress，touchstart stopPropagation 阻止冒泡到外层消息行 + 弹「复制这段代码」菜单（复用 showActionSheet + copyText(window._codes[cid])）；右键菜单也走同一路径",
     "附带：preventDefault 阻止 WebView 默认长按进入选词模式，避免和我们的菜单打架（短按 / 拖选仍走默认选词入口）",
