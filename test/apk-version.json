@@ -3,6 +3,6 @@
   "versionName": "0.4.16",
   "apkUrl": "https://tan719405973-afk.github.io/phone-agent-hotupdate/test/phone-agent-release-0.4.16.apk",
   "note": "v0.4.18（web 热更）：去掉整个 480ms 定时器 + 文字消息不 preventDefault——Chromium 原生长按选词柄正常出现；app 菜单仅保留「复制选中/重发/保存引用删除」，不再复用复制功能",
-  "webVersion": "0.4.21",
+  "webVersion": "0.4.22",
   "webNote": "v0.4.18（web 热更）：去掉整个 480ms 定时器 + 文字消息不 preventDefault——Chromium 原生长按选词柄正常出现；app 菜单仅保留「复制选中/重发/保存引用删除」，不再复用复制功能"
 }

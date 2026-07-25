@@ -2875,7 +2875,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.21";
+var APP_VERSION = "0.4.22";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -3626,6 +3626,7 @@ function summarizeConv(conv, done){
   var txt = conv.messages.filter(function(m){return m.type==="text" && m.text;}).slice(-20)
     .map(function(m){ return (m.role==="user"?"用户":"助手")+"："+m.text; }).join("\n");
   if(txt.length < 30){ done&&done(); return; }
+  toast("正在总结对话记忆…");
   var prompt = "请总结以下对话中值得长期记住的信息（用户身份/偏好/正在做的项目/待办/关键结论），用 3-5 条中文要点，每条一行，不要序号、不要任何解释或引号：\n\n"+txt;
   fetchTimeout(apiBase()+"/chat/completions",{
     method:"POST", headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
@@ -3638,7 +3639,10 @@ function summarizeConv(conv, done){
       saveMem();
     }
     done&&done();
-  }).catch(function(){ done&&done(); });
+  }).catch(function(e){
+    toast("记忆总结失败（API 请求异常），请检查 API 是否可用");
+    done&&done();
+  });
 }
 function buildMemoryContext(input){
   loadMem();
