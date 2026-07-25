@@ -2,80 +2,118 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AI 创作助手</title>
+<title>agnes · 全模态 AI 个人助手</title>
 <style>
-  /* ============ 微信风格设计 token（白底 + 唯一微信绿 + 零装饰） ============ */
+  /* ============ agnes 深色霓虹设计 token（青→紫 135° 渐变，去微信绿/白底） ============ */
   :root{
-    --green:#07C160;        /* 唯一强调色 */
-    --green-press:#06AD56;
-    --bg:#EDEDED;           /* 微信灰底 */
-    --white:#FFFFFF;        /* 卡片/面板 */
-    --card:#FFFFFF;         /* 弹窗/浮层 */
-    --input:#F4F4F4;        /* 输入框/按钮底色 */
-    --user-bubble:#95EC69;  /* 用户绿气泡 */
-    --bubble-bg:rgba(255,255,255,0.85); /* AI 气泡半透（有背景图时可见） */
-    --bubble-user-bg:rgba(149,236,105,0.85);
-    --text:#191919;
-    --text-2:#5F5E5A;
-    --text-3:#9A9A9A;
-    --line:#E3E3E3;
-    --danger:#FA5151;
+    /* 品牌强调 */
+    --primary:#00E5FF;
+    --secondary:#8B5CF6;
+    --grad:linear-gradient(135deg,#00E5FF,#8B5CF6);
+    --glow-cyan:rgba(0,229,255,0.45);
+    --glow-violet:rgba(139,92,246,0.40);
+
+    /* 深色背景层级 */
+    --bg:#0A0E17;            /* 全屏基底 */
+    --bg-elev:#121826;       /* 分组/表面 */
+    --bg-2:#1A2233;          /* 卡片/抽屉/浮层 */
+    --card:#1A2233;
+
+    /* 输入/按钮底色（深） */
+    --input:#1E2738;
+
+    /* 文字 */
+    --text:#EAF2FF;
+    --text-1:#EAF2FF;
+    --text-2:#9AA7BD;
+    --text-3:#566073;
+
+    /* 分隔线 */
+    --line:rgba(255,255,255,0.08);
+    --line-strong:rgba(255,255,255,0.16);
+
+    /* 语义色（深色取亮值） */
+    --danger:#F87171;
+    --success:#34D399;
+
+    /* 气泡 */
+    --agent-bubble:var(--grad);
+    --agent-bubble-text:#0A0E17;
+    --user-bubble:rgba(234,242,255,0.07);
+    --user-bubble-border:rgba(255,255,255,0.10);
+
+    /* 兼容别名（JS 内联样式可能引用，皆映射到霓虹/深色，避免破版） */
+    --green:var(--primary);
+    --green-press:var(--secondary);
+    --white:var(--bg-2);
+    --bubble-bg:var(--agent-bubble);
+    --bubble-user-bg:var(--user-bubble);
+    --accent:var(--primary);
+
     --safe-top:0px;
     --safe-bottom:0px;
-    --font-scale:1;          /* F31 字体大小缩放（设置可调：0.85/1/1.15/1.3） */
+    --font-scale:1;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;height:100%;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;}
   body{
-    background:#c9c9c9;display:flex;align-items:center;justify-content:center;
+    background:#05070d;display:flex;align-items:center;justify-content:center;
     color:var(--text);font-size:calc(16px * var(--font-scale, 1));
   }
   /* 手机屏模拟外框（电脑上预览像个 App；真机全屏时自动铺满） */
   #phone{
     position:relative;width:100%;max-width:400px;height:100vh;max-height:860px;
     background:var(--bg);overflow:hidden;display:flex;flex-direction:column;
-    box-shadow:0 0 0 1px rgba(0,0,0,.05);
+    box-shadow:0 0 60px rgba(0,0,0,0.6);
   }
   @media (max-width:420px){ #phone{max-height:none;height:100vh;} }
 
   /* ============ 顶部栏 ============ */
   .topbar{
-    flex:0 0 auto;height:52px;background:var(--white);border-bottom:1px solid var(--line);
+    flex:0 0 auto;height:52px;background:rgba(10,14,23,0.82);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-bottom:1px solid var(--line);
     display:flex;align-items:center;justify-content:space-between;padding:0 6px;
-    padding-top:var(--safe-top);
+    padding-top:var(--safe-top);z-index:30;
   }
   .topbar .tb-btn{
     width:44px;height:44px;border:none;background:none;display:flex;align-items:center;
-    justify-content:center;cursor:pointer;border-radius:8px;
+    justify-content:center;cursor:pointer;border-radius:8px;color:var(--text);
   }
-  .topbar .tb-btn:active{background:var(--line);}
+  .topbar .tb-btn:active{background:rgba(255,255,255,0.06);}
   .topbar .tb-title{font-size:17px;font-weight:600;flex:1;text-align:center;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;}
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;color:var(--text);}
   .icon{width:24px;height:24px;display:block;}
   .icon path,.icon line,.icon circle,.icon rect,.icon polyline{stroke:var(--text);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 
   /* ============ 消息区 ============ */
-  .msgs{flex:1 1 auto;overflow-y:auto;padding:14px 12px 4px;-webkit-overflow-scrolling:touch;}
+  .msgs{flex:1 1 auto;overflow-y:auto;padding:14px 12px 4px;-webkit-overflow-scrolling:touch;background:var(--bg);}
   .row{display:flex;margin-bottom:16px;align-items:flex-start;}
   .row.user{flex-direction:row-reverse;}
-  .avatar{flex:0 0 auto;width:38px;height:38px;border-radius:6px;display:flex;
-    align-items:center;justify-content:center;font-size:18px;background:var(--green);color:#fff;}
-  .row.user .avatar{background:#B0B0B0;}
+  .avatar{flex:0 0 auto;width:38px;height:38px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:18px;font-weight:700;
+    background:var(--grad);color:var(--agent-bubble-text);box-shadow:0 0 12px var(--glow-cyan);}
+  .row.user .avatar{background:var(--grad);color:var(--agent-bubble-text);box-shadow:0 0 12px var(--glow-cyan);}
   .bubble{
     max-width:74%;margin:0 10px;padding:10px 13px;border-radius:6px;line-height:1.5;
-    background:var(--bubble-bg);word-break:break-word;white-space:pre-wrap;position:relative;font-size:15.5px;
+    background:var(--agent-bubble);color:var(--agent-bubble-text);word-break:break-word;white-space:pre-wrap;position:relative;font-size:15.5px;
+    box-shadow:0 0 18px rgba(0,229,255,0.22);
   }
-  .row.user .bubble{background:var(--bubble-user-bg);}
+  .row.user .bubble{background:var(--agent-bubble);color:var(--agent-bubble-text);box-shadow:0 0 18px rgba(0,229,255,0.22);}
   .bubble img,.bubble video{max-width:100%;border-radius:4px;display:block;margin-top:2px;}
-  .bubble .cap{font-size:12.5px;color:var(--text-2);margin-top:6px;}
+  .bubble .cap{font-size:12.5px;color:inherit;opacity:.7;margin-top:6px;}
   .bubble .media-actions{display:flex;gap:14px;margin-top:8px;}
-  .bubble .media-actions a{font-size:13px;color:var(--green);text-decoration:none;cursor:pointer;}
+  .bubble .media-actions a{font-size:13px;color:var(--primary);text-decoration:none;cursor:pointer;}
+  .gen-request{display:flex;flex-direction:column;gap:6px;}
+  .gen-badge{align-self:flex-start;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;background:rgba(0,229,255,0.12);color:var(--primary);border:1px solid rgba(0,229,255,0.25);}
+  .gen-badge.gen-video{background:rgba(139,92,246,0.12);color:#a78bfa;border-color:rgba(139,92,246,0.25);}
+  .gen-badge.gen-imageEdit{background:rgba(236,72,153,0.12);color:#f472b6;border-color:rgba(236,72,153,0.25);}
+  .gen-prompt{font-size:15px;line-height:1.5;}
+  .gen-meta{font-size:12px;color:var(--text-3);display:flex;gap:10px;flex-wrap:wrap;}
   .typing{display:inline-block;}
-  .typing .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--text-3);
+  .typing .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:rgba(10,14,23,0.45);
     margin:0 2px;animation:blink 1.2s infinite;}
   .typing .dot:nth-child(2){animation-delay:.2s;} .typing .dot:nth-child(3){animation-delay:.4s;}
   @keyframes blink{0%,60%,100%{opacity:.25;}30%{opacity:1;}}
@@ -83,27 +121,28 @@
 
   /* ============ 输入栏 ============ */
   .inputbar{
-    flex:0 0 auto;background:var(--white);border-top:1px solid var(--line);
-    padding:8px 8px calc(8px + var(--safe-bottom));display:flex;align-items:flex-end;gap:8px;
+    flex:0 0 auto;background:rgba(10,14,23,0.82);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-top:1px solid var(--line);
+    padding:8px 8px calc(8px + var(--safe-bottom));display:flex;align-items:flex-end;gap:8px;z-index:30;
   }
-  .inputbar .ib-btn{width:38px;height:38px;flex:0 0 auto;border:none;background:var(--input);border-radius:8px;
-    display:flex;align-items:center;justify-content:center;cursor:pointer;color:#555;padding:0;}
-  .inputbar .ib-btn:active{background:var(--line);}
+  .inputbar .ib-btn{width:38px;height:38px;flex:0 0 auto;border:none;background:rgba(255,255,255,0.05);border-radius:8px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-2);padding:0;}
+  .inputbar .ib-btn:active{background:rgba(255,255,255,0.10);}
   .inputbar textarea{
-    flex:1 1 auto;resize:none;border:none;background:var(--input);border-radius:8px;
+    flex:1 1 auto;resize:none;border:none;background:rgba(255,255,255,0.06);border-radius:8px;
     padding:9px 12px;font-size:15.5px;line-height:1.4;max-height:100px;font-family:inherit;outline:none;overflow:hidden;
-    color:var(--text);caret-color:var(--text);
+    color:var(--text);caret-color:var(--primary);
   }
-  .inputbar .send{background:var(--green);color:#fff;border:none;border-radius:8px;padding:0 16px;
-    height:38px;flex:0 0 auto;font-size:15px;cursor:pointer;}
-  .inputbar .send:active{background:var(--green-press);}
-  .inputbar .send:disabled{opacity:.5;}
-  .inputbar .send.stopping{background:#e64340;color:#fff;}
-  .inputbar .send.stopping:active{background:#c53936;}
-  .inputbar .send.guide{background:var(--green);}
+  .inputbar textarea::placeholder{color:var(--text-2);}
+  .inputbar .send{background:var(--grad);color:#0A0E17;border:none;border-radius:8px;padding:0 16px;
+    height:38px;flex:0 0 auto;font-size:15px;cursor:pointer;box-shadow:0 0 18px rgba(0,229,255,0.30);font-weight:600;}
+  .inputbar .send:active{opacity:.88;}
+  .inputbar .send:disabled{opacity:.5;box-shadow:none;}
+  .inputbar .send.stopping{background:var(--danger);color:#fff;box-shadow:none;}
+  .inputbar .send.stopping:active{background:#dc2626;}
+  .inputbar .send.guide{background:var(--grad);}
   /* F13/F14 待发送附件区 */
   .attach-zone{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px 0;
-    background:var(--white);border-top:1px solid var(--line);}
+    background:var(--bg-2);border-top:1px solid var(--line);}
   .atchip{display:inline-flex;align-items:center;gap:5px;max-width:200px;
     background:var(--input);border:1px solid var(--line);border-radius:14px;
     padding:4px 10px;font-size:13px;color:var(--text);}
@@ -114,60 +153,60 @@
     border:1px solid var(--line);background:var(--input);display:inline-block;vertical-align:top;}
   /* 引用条（长按消息→引用，发送时把引用内容一起带给 AI） */
   .quote-bar{flex:0 0 auto;display:none;align-items:center;gap:8px;
-    background:var(--bubble-bg);border:1px solid var(--line);border-left:3px solid var(--green);
+    background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid var(--primary);
     border-radius:8px;padding:6px 10px;margin:0 10px;font-size:13px;color:var(--text-2);
     max-width:calc(100% - 20px);}
-  .quote-bar .qb-ic{color:var(--green);font-size:15px;flex:0 0 auto;}
+  .quote-bar .qb-ic{color:var(--primary);font-size:15px;flex:0 0 auto;}
   .quote-bar .qb-txt{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .quote-bar .qb-x{flex:0 0 auto;color:var(--text-3);font-size:18px;line-height:1;cursor:pointer;padding:0 2px;}
-  .quoted-chip{display:inline-block;background:var(--input);border-left:3px solid var(--green);
+  .quoted-chip{display:inline-block;background:var(--bg-elev);border-left:3px solid var(--primary);
     border-radius:4px;padding:2px 8px;margin:0 0 4px 0;font-size:12px;color:var(--text-2);
     max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .filecard{display:flex;align-items:center;gap:10px;background:var(--white);border:1px solid var(--line);
+  .filecard{display:flex;align-items:center;gap:10px;background:var(--bg-elev);border:1px solid var(--line);
     border-radius:8px;padding:8px 10px;max-width:240px;margin-top:2px;}
   .filecard .fi{font-size:24px;flex:0 0 auto;line-height:1;}
   .filecard .fm{min-width:0;}
-  .filecard .fn{font-size:14px;color:var(--text-1);word-break:break-all;}
+  .filecard .fn{font-size:14px;color:var(--text);word-break:break-all;}
   .filecard .fs{font-size:12px;color:var(--text-3);margin-top:2px;}
 
   /* ============ 抽屉 / 遮罩 ============ */
-  .mask{position:fixed;inset:0;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;
+  .mask{position:fixed;inset:0;background:rgba(5,8,14,0.62);opacity:0;pointer-events:none;
     transition:opacity .25s;z-index:20;}
   .mask.show{opacity:1;pointer-events:auto;}
-  .drawer{position:absolute;top:0;bottom:0;left:0;width:78%;max-width:300px;background:var(--white);
-    transform:translateX(-100%);transition:transform .25s;z-index:30;display:flex;flex-direction:column;}
+  .drawer{position:absolute;top:0;bottom:0;left:0;width:78%;max-width:300px;background:var(--bg-2);
+    transform:translateX(-100%);transition:transform .25s;z-index:30;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);}
   .drawer.show{transform:translateX(0);}
   .drawer-head{padding:calc(16px + var(--safe-top)) 16px 12px;border-bottom:1px solid var(--line);
     display:flex;align-items:center;justify-content:space-between;}
-  .drawer-head b{font-size:17px;}
-  .drawer-head .newconv{background:var(--green);color:#fff;border:none;border-radius:16px;
-    padding:6px 12px;font-size:13px;cursor:pointer;}
+  .drawer-head b{font-size:17px;color:var(--text);}
+  .drawer-head .newconv{background:var(--grad);color:#0A0E17;border:none;border-radius:16px;
+    padding:6px 12px;font-size:13px;cursor:pointer;font-weight:600;box-shadow:0 0 16px rgba(0,229,255,0.25);}
   .conv-list{flex:1;overflow-y:auto;}
-  .conv-item{padding:13px 16px;border-bottom:1px solid var(--line);cursor:pointer;position:relative;}
-  .conv-item.active{background:#f0faf3;}
-  .conv-item .cname{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conv-item{padding:13px 16px;border-bottom:1px solid var(--line);cursor:pointer;position:relative;border-left:2px solid transparent;}
+  .conv-item.active{background:rgba(0,229,255,0.08);border-left-color:var(--primary);}
+  .conv-item .cname{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
   .conv-item .cprev{font-size:12.5px;color:var(--text-3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .conv-item .cops{position:absolute;right:10px;top:12px;display:flex;gap:2px;}
   .conv-item .cops button{border:none;background:none;font-size:12px;color:var(--text-3);
     padding:4px 6px;cursor:pointer;border-radius:6px;}
-  .conv-item .cops button:active{background:#eee;}
+  .conv-item .cops button:active{background:rgba(255,255,255,0.06);}
 
   /* ============ 设置页（整屏滑入） ============ */
   .page{position:absolute;inset:0;background:var(--bg);transform:translateX(100%);
     transition:transform .25s;z-index:40;display:flex;flex-direction:column;}
   .page.show{transform:translateX(0);}
-  .page-head{flex:0 0 auto;height:52px;background:var(--white);border-bottom:1px solid var(--line);
-    display:flex;align-items:center;padding:0 6px;padding-top:var(--safe-top);}
+  .page-head{flex:0 0 auto;height:52px;background:rgba(10,14,23,0.82);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;padding:0 6px;padding-top:var(--safe-top);z-index:30;}
   .page-head .back{width:44px;height:44px;border:none;background:none;display:flex;align-items:center;
-    justify-content:center;cursor:pointer;}
-  .page-head .pt{font-size:17px;font-weight:600;}
-  .page-body{flex:1;overflow-y:auto;padding-bottom:calc(30px + var(--safe-bottom));}
+    justify-content:center;cursor:pointer;color:var(--text);}
+  .page-head .pt{font-size:17px;font-weight:600;color:var(--text);}
+  .page-body{flex:1;overflow-y:auto;padding-bottom:calc(30px + var(--safe-bottom));background:var(--bg);}
   .group{margin-top:18px;}
   .group .gt{font-size:13px;color:var(--text-3);padding:6px 16px;}
-  .cell{background:var(--white);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;
+  .cell{background:var(--bg-elev);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;
     border-bottom:1px solid var(--line);cursor:pointer;gap:12px;}
-  .cell:active{background:var(--line);}
-  .cell .cl{font-size:15.5px;}
+  .cell:active{background:rgba(255,255,255,0.04);}
+  .cell .cl{font-size:15.5px;color:var(--text);}
   .cell .cr{font-size:14px;color:var(--text-3);display:flex;align-items:center;gap:6px;max-width:60%;
     justify-content:flex-end;text-align:right;}
   .cell .cr .chev{width:16px;height:16px;}
@@ -192,21 +231,21 @@
   .dlg-mask{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:90;display:none;
     align-items:center;justify-content:center;}
   .dlg-mask.show{display:flex;}
-  .dlg{background:var(--card);border-radius:12px;width:80%;max-width:300px;overflow:hidden;}
-  .dlg .dh{padding:20px 20px 8px;font-size:16px;font-weight:600;text-align:center;}
+  .dlg{background:var(--bg-2);border-radius:12px;width:80%;max-width:300px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);}
+  .dlg .dh{padding:20px 20px 8px;font-size:16px;font-weight:600;text-align:center;color:var(--text);}
   .dlg .db{padding:0 20px 16px;font-size:14px;color:var(--text-2);text-align:center;line-height:1.6;}
   .dlg .di{margin:0 20px 16px;width:calc(100% - 40px);border:1px solid var(--line);border-radius:8px;
-    padding:10px;font-size:15px;outline:none;}
+    padding:10px;font-size:15px;outline:none;background:var(--input);color:var(--text);}
   .dlg .df{display:flex;border-top:1px solid var(--line);}
   .dlg .df button{flex:1;border:none;background:none;padding:13px;font-size:16px;cursor:pointer;}
   .dlg .df button.cancel{color:var(--text-2);border-right:1px solid var(--line);}
-  .dlg .df button.ok{color:var(--green);font-weight:600;}
+  .dlg .df button.ok{color:var(--primary);font-weight:600;}
   .dlg .df button.ok.danger{color:var(--danger);}
 
   /* 创作二级页里的模式选择 */
-  .seg{display:flex;background:#f0f0f0;border-radius:8px;margin:14px 16px 0;padding:3px;}
+  .seg{display:flex;background:rgba(255,255,255,0.06);border-radius:8px;margin:14px 16px 0;padding:3px;}
   .seg button{flex:1;border:none;background:none;padding:8px;font-size:14px;border-radius:6px;cursor:pointer;color:var(--text-2);}
-  .seg button.on{background:var(--card);color:var(--text);font-weight:600;}
+  .seg button.on{background:var(--bg-2);color:var(--text);font-weight:600;}
 
   /* 设置页下拉框（主题/保存位置） */
   .cell .cr select{font-size:14px;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--input);max-width:160px;}
@@ -220,43 +259,30 @@
   .addref{margin:4px 0 8px;border:1px dashed var(--line);background:var(--input);color:var(--text-2);
     border-radius:8px;padding:8px 12px;font-size:14px;cursor:pointer;}
 
-  /* 作品（资产）页 */
-  .works-sec{margin:6px 0 4px;}
-  .works-sec h4{margin:14px 16px 8px;font-size:14px;color:var(--text-2);font-weight:600;}
-  .works-empty{margin:0 16px 8px;color:var(--text-3);font-size:13px;}
-  .works-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 16px;}
-  .works-grid a{display:block;}
-  .works-grid img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;display:block;background:#eee;}
-  .works-vid{margin:0 16px 12px;}
-  .works-vid video{width:100%;border-radius:8px;background:#000;max-height:240px;}
-  .works-vid .cap{font-size:13px;color:var(--text-2);margin-top:4px;}
-  .works-item{position:relative;}
-  .works-item .dl{position:absolute;right:4px;bottom:4px;margin:0;box-shadow:0 1px 4px rgba(0,0,0,.35);}
-  .dl{display:inline-block;margin-top:6px;background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:13px;text-decoration:none;}
-  .dl-tip{font-size:12px;color:var(--text-3);margin:0 16px 8px;}
+  .dl{display:inline-block;margin-top:6px;background:var(--primary);color:#0A0E17;border:none;border-radius:6px;padding:5px 12px;font-size:13px;text-decoration:none;font-weight:600;}
 
-  select{font-size:14px;max-width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--white);color:var(--text);font-family:inherit;}
+  select{font-size:14px;max-width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--input);color:var(--text);font-family:inherit;}
   .cell select{margin-left:8px;}
-  .api-card{display:flex;align-items:center;gap:12px;background:var(--white);border:1.5px solid var(--line);border-radius:12px;padding:14px;margin:0 16px 10px;cursor:pointer;}
-  .api-card.api-cur{border-color:var(--green);background:#f3fff7;}
-  .api-icon{width:40px;height:40px;border-radius:50%;background:var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text);flex:0 0 auto;}
+  .api-card{display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1.5px solid var(--line);border-radius:12px;padding:14px;margin:0 16px 10px;cursor:pointer;}
+  .api-card.api-cur{border-color:var(--primary);background:rgba(0,229,255,0.08);}
+  .api-icon{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text-2);flex:0 0 auto;}
   .api-info{flex:1 1 auto;min-width:0;}
   .api-name{font-size:15px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;}
   .api-tag{font-size:11px;color:#888;border:1px solid #ddd;border-radius:4px;padding:1px 6px;}
   .api-url{font-size:12px;color:var(--text-3);margin-top:3px;word-break:break-all;}
   .api-actions{display:flex;gap:8px;}
   .api-actions button{background:var(--input);border:none;border-radius:6px;padding:5px 10px;font-size:13px;color:var(--text);cursor:pointer;}
-  .api-actions button.danger{color:#e53935;}
+  .api-actions button.danger{color:var(--danger);}
 
   /* 长按操作菜单（底部上滑） */
-  .actionsheet{position:absolute;left:0;right:0;bottom:0;background:var(--white);z-index:60;
-    transform:translateY(100%);transition:transform .25s;padding-bottom:var(--safe-bottom);}
+  .actionsheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg-2);z-index:60;
+    transform:translateY(100%);transition:transform .25s;padding-bottom:var(--safe-bottom);box-shadow:0 -8px 32px rgba(0,0,0,0.5);}
   .actionsheet.show{transform:translateY(0);}
   .actionsheet .as-item{padding:16px;text-align:center;font-size:16px;color:var(--text);
     border-bottom:1px solid var(--line);cursor:pointer;}
-  .actionsheet .as-item:active{background:var(--line);}
+  .actionsheet .as-item:active{background:rgba(255,255,255,0.04);}
   .actionsheet .as-item.danger{color:var(--danger);}
-  .actionsheet .as-cancel{margin-top:6px;background:var(--white);padding:16px;text-align:center;
+  .actionsheet .as-cancel{margin-top:6px;background:var(--bg-2);padding:16px;text-align:center;
     font-size:16px;font-weight:600;color:var(--text-2);cursor:pointer;}
 
   /* 离线提示条 */
@@ -265,10 +291,10 @@
 
   /* 加载中可取消 / 失败可重试 链接 */
   .bubble .gen-actions{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;}
-  .bubble .gen-actions a{font-size:13px;color:var(--green);text-decoration:none;cursor:pointer;}
+  .bubble .gen-actions a{font-size:13px;color:var(--primary);text-decoration:none;cursor:pointer;}
 
   /* 崩溃日志页 */
-  .crash-item{background:var(--white);border-bottom:1px solid var(--line);padding:12px 16px;}
+  .crash-item{background:var(--bg-elev);border-bottom:1px solid var(--line);padding:12px 16px;}
   .crash-item .ct{font-size:12px;color:var(--text-3);}
   .crash-item .cm{font-size:13px;color:var(--text);margin-top:4px;word-break:break-word;white-space:pre-wrap;}
   .crash-empty{text-align:center;color:var(--text-3);font-size:13px;margin:40px 16px;}
@@ -278,12 +304,12 @@
   /* 长按禁止 iOS 文字选择气泡，但允许选中文字自由复制 */
   .bubble{ -webkit-touch-callout:none; -webkit-user-select:text; user-select:text; }
   /* 代码块（F42）：AI 回复里的代码/提示词带复制按钮 */
-  .codeblock{ position:relative; background:#f6f8fa; border:1px solid var(--line); border-radius:8px; margin:6px 0; overflow:hidden; }
-  .codebar{ display:flex; justify-content:space-between; align-items:center; padding:4px 8px; background:#eef1f4; border-bottom:1px solid var(--line); }
+  .codeblock{ position:relative; background:#0d1117; border:1px solid var(--line); border-radius:8px; margin:6px 0; overflow:hidden; }
+  .codebar{ display:flex; justify-content:space-between; align-items:center; padding:4px 8px; background:#161b22; border-bottom:1px solid var(--line); }
   .codelang{ font-size:11px; color:var(--text-3); }
-  .copybtn{ font-size:12px; color:var(--accent); background:none; border:none; padding:2px 6px; cursor:pointer; }
+  .copybtn{ font-size:12px; color:var(--primary); background:none; border:none; padding:2px 6px; cursor:pointer; }
   .codeblock pre{ margin:0; padding:10px; overflow-x:auto; }
-  .codeblock code{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; white-space:pre; color:#24292e; line-height:1.5; }
+  .codeblock code{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; white-space:pre; color:#c9d1d9; line-height:1.5; }
   .rt{ white-space:pre-wrap; word-break:break-word; }
   /* 预览大图/视频（F43） */
   .preview-mask{ position:fixed; inset:0; background:rgba(0,0,0,.92); display:none; align-items:center; justify-content:center; z-index:999; }
@@ -292,6 +318,46 @@
   .preview-box img{ max-width:96vw; max-height:80vh; object-fit:contain; border-radius:6px; }
   .preview-actions{ margin-top:12px; }
   .preview-actions a{ color:#fff; background:rgba(255,255,255,.16); padding:8px 18px; border-radius:20px; font-size:14px; margin:0 6px; display:inline-block; }
+
+  /* ===== agnes 品牌增强（ABCD + 5处结构对齐） ===== */
+  /* 顶栏品牌 + 在线状态点 */
+  .tb-title-wrap{ display:flex;align-items:center;justify-content:center;flex:1;min-width:0;gap:6px; }
+  .tb-brand{ font-weight:700;letter-spacing:.3px;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent; }
+  .status-dot{ width:8px;height:8px;border-radius:50%;background:var(--primary);
+    box-shadow:0 0 0 0 rgba(0,229,255,0.6); animation:agnesPulse 2s infinite; flex:0 0 auto; }
+  @keyframes agnesPulse{ 0%{box-shadow:0 0 0 0 rgba(0,229,255,0.55);} 70%{box-shadow:0 0 0 7px rgba(0,229,255,0);} 100%{box-shadow:0 0 0 0 rgba(0,229,255,0);} }
+
+  /* 渐变箭头发送键（圆形，默认箭头 / 生成中显「停止」） */
+  .inputbar .send{ width:40px;height:40px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;
+    color:transparent;font-size:0; }
+  .inputbar .send::after{ content:""; width:0;height:0; border-left:9px solid #0A0E17;
+    border-top:6px solid transparent; border-bottom:6px solid transparent; }
+  .inputbar .send.stopping{ color:#fff;font-size:15px; }
+  .inputbar .send.stopping::after{ display:none; }
+
+  /* 气泡淡入（科技质感） */
+  .row{ animation:agnesFade .26s ease both; }
+  @keyframes agnesFade{ from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:translateY(0);} }
+  .row.summary-row{ animation:none; }
+
+  /* 演示状态条 */
+  .demo-bar{ display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:12px;color:var(--text-2);
+    background:rgba(0,229,255,0.05);border-bottom:1px solid var(--line); }
+  .demo-bar .dot{ width:7px;height:7px;border-radius:50%;background:var(--text-3);flex:0 0 auto; }
+  .demo-bar.online .dot{ background:var(--success); box-shadow:0 0 8px rgba(52,211,153,0.6); }
+  .demo-bar .txt{ flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+
+  /* 设置页图标行 + 工作室强调 */
+  .cell .ci{ font-size:17px;width:22px;text-align:center;flex:0 0 auto; }
+  .cell .ci:empty{ display:none; }
+  .cell.studio-row{ background:linear-gradient(135deg, rgba(0,229,255,0.10), rgba(139,92,246,0.12)); }
+  .cell.studio-row .cl{ background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:600; }
+
+  /* 工作室步骤指示 */
+  .studio-steps{ display:flex;gap:6px;padding:4px 16px 12px; }
+  .studio-steps .st{ flex:1;text-align:center;font-size:11px;color:var(--text-3);padding:8px 2px;border-radius:8px;
+    border:1px solid var(--line);background:var(--bg-2); }
+  .studio-steps .st .n{ display:block;font-size:15px;font-weight:700;margin-bottom:3px; }
 </style>
 </head>
 <body>
@@ -302,7 +368,7 @@
     <button class="tb-btn" onclick="openDrawer()" aria-label="菜单">
       <svg class="icon" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
     </button>
-    <div class="tb-title" id="topTitle">AI 创作助手</div>
+    <div class="tb-title-wrap"><span class="tb-title" id="topTitle">agnes</span><span class="status-dot" id="statusDot"></span></div>
     <button class="tb-btn" onclick="openSettings()" aria-label="设置">
       <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
@@ -310,6 +376,8 @@
 
   <!-- 离线提示条（F17） -->
   <div id="offlineBar">⚠ 网络已断开，请检查 Wi-Fi 或移动网络</div>
+  <!-- 演示 / 在线状态条 -->
+  <div id="demoBar" class="demo-bar"><span class="dot"></span><span class="txt" id="demoTxt"></span></div>
 
   <!-- 消息区 -->
   <div class="msgs" id="msgs"></div>
@@ -374,16 +442,6 @@
     <div class="page-body" id="studioBody"></div>
   </div>
 
-  <!-- 作品（资产）页 -->
-  <div class="page" id="worksPage">
-    <div class="page-head">
-      <button class="back" onclick="closeWorks()">
-        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-      </button>
-      <div class="pt">作品</div>
-    </div>
-    <div class="page-body" id="worksBody"></div>
-  </div>
 
   <!-- API 接口管理页 -->
   <div class="page" id="apiPage">
@@ -514,7 +572,6 @@
 <div id="toast"></div>
 <div class="dlg-mask" id="dlgMask"><div class="dlg" id="dlgBox"></div></div>
 <input type="file" id="fileInput" multiple style="display:none">
-<input type="file" id="bgFileInput" accept="image/*" style="display:none">
 
 <script>
 //---------------------------------------------------------------------
@@ -2818,16 +2875,93 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.2.11";
+var APP_VERSION = "0.4.11";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [
+var CHANGELOG = [  { v:"0.4.11", date:"2026-07-25", items:[
+    "删除：「聊天背景（用图片）」功能——设置页入口、applyBg/pickBg/clearBg 函数、bgFileInput 隐藏 input、init 调用、CELL_ICONS 图标全部移除；旧 CFG.bgImage 数据不再被读取（死数据，不报错）",
+    "含 v0.4.10 检查更新缓存修复 + v0.4.9 生图下载入系统相册；本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.10", date:"2026-07-25", items:[
+    "修复：「检查更新」缓存误报「已是最新」——原生桥 httpRequestAsync 用 HttpURLConnection 未禁缓存，首次检查把旧 apk-version.json 缓存，query 串 ?t=Date.now() 在部分 CDN/中间层被当次要 key 命中老缓存，导致旧版本设备收不到新版本提示（已发生两次：0.4.6、0.4.8 设备均误报）",
+    "机制：httpRequestAsync 内 conn.useCaches=false + 加 Cache-Control:no-cache,no-store / Pragma:no-cache 头，强制每次取新数据",
+    "叠加 v0.4.9 生图下载入系统相册修复；本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.9", date:"2026-07-25", items:[
+    "修复：生图/视频「下载」后系统图库看不到图片——MediaStore 写入在部分 ROM 静默失败并回退到 App 私有目录（图库扫不到），且 web 端误将回退判为成功弹「已保存到相册」",
+    "机制：原生 saveToGallery 改为三路径回退（RELATIVE_PATH → 不带路径 → 旧 API）+ 写完后 MediaScannerConnection.scanFile 显式刷图库",
+    "web 端反馈区分「已存相册 / 已存私有目录」，不再误导；本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.8", date:"2026-07-24", items:[
+    "修复：「检查更新」拉取 web 热更/版本历史列表失败（更新挂了）——loadScript 原用 <script src> 从 file:// 源直连外网被 WebView 跨域拦截",
+    "机制：loadScript 改走原生桥 nativeFetch 拿到脚本文本后再全局 eval（等效加载外部脚本），与生图/聊天同源绕过 CORS",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.7", date:"2026-07-24", items:[
+    "修复：聊天与长文模式在手机 WebView 环境下被跨域拦截（报「网络被拦截：请确认本机网络，请求地址是 https 可达」）而无法对话",
+    "机制：聊天/长文/视频轮询/设置「拉取模型」统一改走原生桥 httpRequestAsync（与图片生成同一通道），彻底绕过 WebView 对 file:// 源外网请求的跨域限制",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.6", date:"2026-07-24", items:[
+    "修复：删除对话时同步清除其自动总结的「记忆」条目，避免已删除对话内容仍被注入新对话（上下文记忆副作用）",
+    "修复：下载图片/视频真正写入系统相册（MediaStore）——此前 0.4.3 修复版 APK 未推送到手机，本次随 0.4.6 重装生效",
+    "本次为 APK 重装更新（版本档案同步至 0.4.6）",
+  ]},
+  { v:"0.4.5", date:"2026-07-22", items:[
+    "增强：长文模式分章结构全面扩展——新增 Markdown 标题（#/##/###）、章回体（第X回）、卷/部/篇大结构、Markdown 分隔线（---/***/___）、中文序号（一、）、数字序号（1. / 1、/ 1.1）自动识别，写作习惯无需改动",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.4", date:"2026-07-22", items:[
+    "新增：长文模式（设置 → 长文写作）——以 .txt 为唯一真源，自动按「第X章」分章 + 手动「===」分章，左侧大纲可拖拽排序/删除/点选",
+    "新增：长文 AI 续写（取近 3 章续写下一章）与改写选中章，流式生成并写回原稿，全书结构视图（每章字数）",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.3", date:"2026-07-22", items:[
+    "修复：上下文丢失——用户开头上传的文件（附件正文）在后续回合被丢，导致「改文件」改不了；现已重建上下文时重新注入文件正文并钉住文件消息，压缩总结时也跳过文件",
+    "修复：生图意图路由——纯画面描述（带尺寸如「群像七仙女 1792x1024」）直接进生图，不再被当聊天用文字糊弄",
+    "修复：下载图片真正写入系统相册（MediaStore），base64 生图也进相册，相册立即可见",
+    "本次为 APK 重装更新（版本档案同步至 0.4.3）"
+  ]},
+  { v:"0.4.2", date:"2026-07-22", items:[
+    "修复：更新日志（设置 → 关于 → 更新日志）此前漏更 v0.4.0 / v0.4.1，现已补全",
+    "机制：更新日志改为由发布脚本自动同步，今后发版不再漏更",
+    "本次为 APK 重装更新（版本档案同步至 0.4.2）"
+  ]},
+  { v:"0.4.1", date:"2026-07-22", items:[
+    "新增：保存图片/视频真正写入系统相册（MediaStore），相册立即可见",
+    "移除下载提示里的谎话文案（此前写的「请另存到相册」）",
+    "调整：API 接口去掉偷偷兜底 Agnes 的硬编码（地址为空即报错提示），首次仍预置一个可用 Agnes"
+  ]},
+  { v:"0.4.0", date:"2026-07-22", items:[
+    "移除「作品（资产）页」模块（底部导航 / 页面 / 样式 / 函数全清）",
+    "APK 大更新重装链路验证：检查更新弹新版 → 下载并保存到手机 → 调起安装器重装"
+  ]},
+
+  { v:"0.3.5", date:"2026-07-22", items:[
+    "修复：APK 下载安装改为后台线程异步执行，避免阻塞界面；全程精确 toast 反馈便于定位失败原因",
+    "新增：未知来源安装权限未授权时给出明确引导（系统设置 → 应用 → 创作助手 → 允许安装未知应用）",
+    "修复：下载完成后校验安装包大小，过小（多为 404 错误页）直接报错而非静默失败"
+  ]},
+  { v:"0.3.4", date:"2026-07-22", items:[
+    "修复：默认「检查更新地址」改为 test 通道，新装/重置用户免填即可拉到最新",
+    "修复：更新日志补全 v0.3.1 / v0.3.2 / v0.3.3 条目（此前漏更）"
+  ]},
+  { v:"0.3.3", date:"2026-07-22", items:[
+    "新增「游戏式 APK 大更新」：检测到新安装包版本时提示下载并安装，完整更新需重装 App（设置 → 关于 → 检查更新）",
+    "用户气泡与头像统一为 AI 同款（青→紫渐变 + 深色字 + 青色辉光）"
+  ]},
+  { v:"0.3.2", date:"2026-07-22", items:[
+    "创作命令消息渲染为结构化卡片：隐藏 [生图]/[视频]/[图生图] 与尺寸 raw 文本，显示为标签 + 提示词 + 元数据"
+  ]},
+  { v:"0.3.1", date:"2026-07-21", items:[
+    "修复生图/生视频/下载 被 WebView 跨域(CORS)拦截：原生桥异步 HTTP + WebView 开启 file:// 跨域白名单"
+  ]},
   { v:"0.2.10", date:"2026-07-21", items:[
     "复制更顺手：消息文字可自由选中；长按菜单在已选中文字时显示「复制选中」，否则「复制文字」",
-    "图片 / 附件图 / 作品图点击放大查看（全屏预览，可保存）；视频新增「全屏」按钮",
+    "图片 / 附件图点击放大查看（全屏预览，可保存）；视频新增「全屏」按钮",
     "AI 回复里的代码 / 提示词带「复制」按钮，一键复制整段代码或提示词",
     "多供应商：API 接口管理新增「智谱 BigModel」一键添加（免费档备份，Agnes 不可用时可切换）；支持 BigModel 文件解析（PDF/Word/图片等上传后自动解析正文并入对话，做知识库/提示词准备）"
   ]},
@@ -2884,8 +3018,7 @@ function currentApi(){
   return a;
 }
 function currentApiKey(){ return currentApi().key||""; }
-function apiBase(){ return (currentApi().baseUrl||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
-function pollBase(){ return apiBase().replace(/\/v1$/,"")+"/agnesapi"; }
+function apiBase(){ return (currentApi().baseUrl||"").replace(/\/+$/,""); }
 function currentModel(kind){ var m = (currentApi().models||{})[kind]; if(m && m.trim()) return m.trim(); return MODEL_DEFAULTS[kind]||""; }
 /* 官方推荐的默认模型（用户没填/填空时兜底，避免“模型乱填”导致功能失效） */
 var MODEL_DEFAULTS = { text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0" };
@@ -2918,7 +3051,7 @@ function mediaApi(){
   var r = list.filter(function(a){return a.routable;})[0];
   return r || currentApi();
 }
-function mediaApiBase(){ return (mediaApi().baseUrl||"https://apihub.agnes-ai.com/v1").replace(/\/+$/,""); }
+function mediaApiBase(){ return (mediaApi().baseUrl||"").replace(/\/+$/,""); }
 function mediaApiKey(){ return mediaApi().key||""; }
 /* 找支持文件解析的供应商（BigModel 等，需已填 key） */
 function parseProvider(){
@@ -3126,19 +3259,35 @@ function deleteMsg(id){
 }
 function downloadUrl(url, name){
   if(!url){ toast("无可下载内容"); return; }
+  var ext = (name && name.indexOf(".")>0) ? name.split(".").pop().replace(/[^a-z0-9]/gi,"") : "bin";
+  /* dataURL（生图返回 base64 时）：直接走原生 base64 落地，不能当 http 去 downloadMedia（会解析失败） */
+  if(url.indexOf("data:")===0){
+    if(typeof NativeBridge!=="undefined" && NativeBridge && typeof NativeBridge.saveMedia==="function"){
+      toast("正在保存…");
+      var _uri = NativeBridge.saveMedia(url, ext);
+      if(_uri && _uri.indexOf("err:")!==0){
+        if(_uri.indexOf("private:")===0){ toast("已存到 App 私有目录（图库可能看不到）"); }
+        else { toast("已保存到相册"); }
+      } else { _fallbackDownload(url, name); }
+      return;
+    }
+  }
   /* F43：优先使用原生下载（绕过 WebView CORS 限制） */
   if(typeof NativeBridge!=="undefined" && NativeBridge && typeof NativeBridge.downloadMedia==="function"){
     toast("正在下载…");
-    var ext = (name && name.indexOf(".")>0) ? name.split(".").pop().replace(/[^a-z0-9]/gi,"") : "bin";
-    var r = NativeBridge.downloadMedia(url, ext);
-    if(r.indexOf("ok:")===0){ toast("已保存，请从系统查看器另存到相册"); return; }
+    var r = NativeBridge.downloadMedia(url, ext, "Bearer "+mediaApiKey());
+    if(r.indexOf("ok:")===0){ toast("已保存到相册"); return; }
+    if(r.indexOf("private:")===0){ toast("已存到 App 私有目录（图库可能看不到）"); return; }
     toast("下载失败：" + (r.indexOf("err:")===0 ? r.slice(4) : r));
     return;
   }
   /* 旧版 APK 回退：fetch → base64 dataURL → 原生桥保存到本地 */
   if(hasNative()){
     toast("正在拉取文件…");
-    fetchTimeout(url, {method:"GET", mode:"cors", referrerPolicy:"no-referrer"}, 30000)
+    var _hdrs = {method:"GET", mode:"cors", referrerPolicy:"no-referrer"};
+    var _mk = mediaApiKey();
+    if(_mk){ _hdrs.headers = { "Authorization":"Bearer "+_mk }; }
+    fetchTimeout(url, _hdrs, 30000)
       .then(function(r){ return r.blob(); })
       .then(function(b){
         var rd = new FileReader();
@@ -3167,12 +3316,68 @@ function _fallbackDownload(url, name){
   }catch(e){ toast("下载失败：" + friendlyErr(e)); }
 }
 /* F17：带超时的 fetch（超时即抛错，便于区分「超时」与「网络不通」） */
-function fetchTimeout(url, opts, ms){
+var __nativeHttpCb = {};
+var __nativeHttpId = 0;
+function nativeFetch(url, opts){
+  opts = opts || {};
   return new Promise(function(resolve, reject){
-    var done = false;
-    var t = setTimeout(function(){ done = true; reject(new Error("请求超时（等待超过 "+(ms/1000)+" 秒），可能是网络慢或服务繁忙")); }, ms);
-    fetch(url, opts).then(function(r){ if(!done){ clearTimeout(t); resolve(r); } })
-      .catch(function(e){ if(!done){ clearTimeout(t); reject(e); } });
+    if(!hasNative() || !window.NativeBridge || !window.NativeBridge.httpRequestAsync || !/^https?:\/\//i.test(url)){
+      fetch(url, opts).then(resolve).catch(reject);
+      return;
+    }
+    var id = "__nh"+(++__nativeHttpId);
+    var ms = opts.timeout || ((opts.method && opts.method.toUpperCase() !== "GET") ? 120000 : 30000);
+    var t = setTimeout(function(){
+      delete __nativeHttpCb[id];
+      reject(new Error("请求超时（等待超过 "+(ms/1000)+" 秒），可能是网络慢或服务繁忙"));
+    }, ms);
+    __nativeHttpCb[id] = function(res){
+      clearTimeout(t);
+      delete __nativeHttpCb[id];
+      var resp = {
+        ok: res.status >= 200 && res.status < 300,
+        status: res.status,
+        text: function(){ return Promise.resolve(res.body || ""); },
+        json: function(){ return new Promise(function(_res,_rej){ try{ _res(JSON.parse(res.body || "{}")); }catch(e){ _rej(e); } }); }
+      };
+      resolve(resp);
+    };
+    try {
+      window.NativeBridge.httpRequestAsync(
+        (opts.method || "GET").toUpperCase(),
+        url,
+        JSON.stringify(opts.headers || {}),
+        opts.body || "",
+        String(ms),
+        id
+      );
+    } catch(e) {
+      clearTimeout(t);
+      delete __nativeHttpCb[id];
+      reject(e);
+    }
+  });
+}
+function fetchTimeout(url, opts, ms){
+  opts = opts || {};
+  opts.timeout = ms;
+  return nativeFetch(url, opts);
+}
+/* 原生桥 httpRequestAsync 返回的是「整段 SSE 响应体」（所有 data: 块已拼接），
+   这里按行解析还原流式 delta，逐块回调 onDelta（保留打字机观感）。
+   用于把聊天/长文等原本依赖 fetch().body.getReader() 的流式链路改走原生桥，
+   以绕过手机 WebView 对 file:// 源跨域请求的外网拦截（原报错"网络被拦截"）。 */
+function parseSSEStream(fullBody, onDelta){
+  String(fullBody||"").split("\n").forEach(function(line){
+    line = line.trim();
+    if(line.indexOf("data:")!==0) return;
+    var d = line.slice(5).trim();
+    if(!d || d==="[DONE]") return;
+    try{
+      var j = JSON.parse(d);
+      var delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+      if(delta) onDelta(delta);
+    }catch(e){}
   });
 }
 
@@ -3268,7 +3473,10 @@ function localImageToBase64(url){
   return new Promise(function(resolve, reject){
     if(!url) return reject("no url");
     if(url.indexOf("data:")===0) return resolve(url);
-    fetch(url).then(function(r){
+    var _opts = {};
+    var _mk = mediaApiKey();
+    if(_mk && /^https?:\/\//i.test(url)){ _opts.headers = { "Authorization":"Bearer "+_mk }; }  /* agnes 媒体 URL 需鉴权；content:// 等本地地址不加 */
+    nativeFetch(url, _opts).then(function(r){
       if(!r.ok) throw new Error("HTTP "+r.status);
       return r.blob();
     }).then(function(blob){
@@ -3287,7 +3495,10 @@ function ensureImageBase64(a){
 /* 生成媒体 URL → 异步落地本地；返回最终可显示 URL（失败回退远程） */
 function landMedia(url, ext, cb){
   if(!hasNative() || !url || url.indexOf("data:")===0 || url.indexOf("content:")===0){ cb(url); return; }
-  fetch(url).then(function(r){ if(!r.ok) throw 0; return r.blob(); }).then(function(blob){
+  var _hdrs = {};
+  var _mk = mediaApiKey();
+  if(_mk){ _hdrs = { headers:{ "Authorization":"Bearer "+_mk } }; }
+  nativeFetch(url, _hdrs).then(function(r){ if(!r.ok) throw 0; return r.blob(); }).then(function(blob){
     var rd = new FileReader();
     rd.onload = function(){
       try{ var uri = NativeBridge.saveMedia(String(rd.result), ext||"jpg");
@@ -3385,7 +3596,7 @@ function summarizeConv(conv, done){
   }, 60000).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
     var s = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
     if(s){ s = String(s).trim(); loadMem();
-      MEM.entries.unshift({ id: uid("mem"), ts: Date.now(), conv: conv.name||"对话", summary: s });
+      MEM.entries.unshift({ id: uid("mem"), ts: Date.now(), conv: conv.name||"对话", convId: conv.id, summary: s });
       if(MEM.entries.length > 50) MEM.entries = MEM.entries.slice(0,50);
       saveMem();
     }
@@ -3412,18 +3623,18 @@ function buildMemoryContext(input){
 function openMemory(){
   loadMem();
   var list = MEM.entries.map(function(e, i){
-    return '<div class="cell" style="display:block"><div style="font-size:13px;color:#555;line-height:1.5">'+esc(e.summary)+
+    return '<div class="cell" style="display:block"><div style="font-size:13px;color:var(--text-2);line-height:1.5">'+esc(e.summary)+
       '</div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'+
-      '<span style="font-size:11px;color:#aaa">'+(e.conv||"")+' · '+new Date(e.ts).toLocaleDateString()+'</span>'+
-      '<b style="color:#e64340;font-size:13px" onclick="delMem('+i+')">删除</b></div></div>';
-  }).join("") || '<div style="padding:20px;text-align:center;color:#999">还没有记忆。多聊几句，切到别的对话时会自动总结。</div>';
+      '<span style="font-size:11px;color:var(--text-3)">'+(e.conv||"")+' · '+new Date(e.ts).toLocaleDateString()+'</span>'+
+      '<b style="color:var(--danger);font-size:13px" onclick="delMem('+i+')">删除</b></div></div>';
+  }).join("") || '<div style="padding:20px;text-align:center;color:var(--text-3)">还没有记忆。多聊几句，切到别的对话时会自动总结。</div>';
   document.getElementById("memoryBody").innerHTML =
     '<div class="group"><div class="gt">用户画像（AI 会参考，可手动编辑）</div>'+
       '<div class="cell" style="display:block"><textarea id="memProfile" rows="4" style="width:100%;border:none;outline:none;font-size:14px;font-family:inherit;resize:none">'+esc(MEM.profile||"")+'</textarea></div>'+
       '<div style="padding:10px 16px"><button style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer" onclick="saveMemProfile()">保存画像</button></div>'+
     '</div>'+
     '<div class="group"><div class="gt">对话要点（'+MEM.entries.length+' 条）</div>'+ list +'</div>'+
-    '<div style="padding:16px"><button style="width:100%;background:#fff;color:#e64340;border:1px solid #e64340;border-radius:8px;padding:11px;font-size:14px;cursor:pointer" onclick="clearMem()">清空所有记忆</button></div>';
+    '<div style="padding:16px"><button style="width:100%;background:transparent;color:var(--danger);border:1px solid rgba(248,113,113,0.4);border-radius:8px;padding:11px;font-size:14px;cursor:pointer" onclick="clearMem()">清空所有记忆</button></div>';
   show('memoryPage');
 }
 function saveMemProfile(){
@@ -3460,9 +3671,21 @@ function renameConversation(id){
 }
 function deleteConversation(id){
   showConfirm("删除对话", "确定删除这个对话？记录将无法恢复。", function(){
+    var _conv = convs.filter(function(c){ return c.id===id; })[0];
     convs = convs.filter(function(c){ return c.id!==id; });
     if(!convs.length){ convs=[makeConv("新对话")]; }
     if(id===currentId){ currentId = convs[0].id; }
+    /* F-记忆：删除对话时同步清除其自动总结的「记忆」条目，避免已删对话内容仍被注入新对话（上下文记忆副作用） */
+    try{
+      loadMem();
+      var _name = _conv ? _conv.name : "";
+      MEM.entries = MEM.entries.filter(function(e){
+        if(e.convId === id) return false;                                  /* 新格式：按对话 id 精确清除 */
+        if(!e.convId && _name && _name!=="新对话" && e.conv===_name) return false; /* 旧格式：按名称清除（避开默认名碰撞） */
+        return true;
+      });
+      saveMem();
+    }catch(e){}
     saveConvs(); renderConvList(); renderMsgs(); updateTitle();
   }, true);
 }
@@ -3482,7 +3705,8 @@ function appendMessage(msg){
 }
 
 /* ================= 渲染 ================= */
-function updateTitle(){ var c=current(); document.getElementById("topTitle").textContent = c ? c.name : "AI 创作助手"; }
+function updateTitle(){ var c=current(); var t=document.getElementById("topTitle"); if(!t) return;
+  t.innerHTML = '<span class="tb-brand">agnes</span>' + (c && c.name && c.name!=='新对话' ? ' <span style="opacity:.5">·</span> ' + esc(c.name) : ''); }
 
 function renderConvList(){
   var box = document.getElementById("convList");
@@ -3502,16 +3726,42 @@ function renderConvList(){
   });
 }
 
+function updateDemoBar(){
+  var bar=document.getElementById("demoBar"); if(!bar) return;
+  var txt=document.getElementById("demoTxt"); if(!txt) return;
+  if(currentApiKey()){ bar.className="demo-bar online"; txt.textContent="agnes 全模态在线 · 已连接 API"; }
+  else { bar.className="demo-bar"; txt.textContent="演示模式 · 未配置 Key，去 设置 → API 接口管理 填入即可真聊"; }
+}
 function renderMsgs(){
   var box = document.getElementById("msgs");
-  var c = current();
+  var c = current(); updateDemoBar();
   box.innerHTML = "";
   if(!c || !c.messages.length){
-    box.innerHTML = '<div class="empty-tip">你好，我是 AI 创作助手 👋<br>可以聊天、画图、生成视频。<br>试试发「画一只戴帽子的猫」<br><br>（首次使用请先到右上角设置里填入 API Key）</div>';
+    box.innerHTML = '<div class="row" style="align-items:center"><div class="avatar">A</div><div class="bubble">你好，我是 <b>agnes</b> 智能助手 👋<br>可以聊天、画图、生成视频。<br>试试发「画一只戴帽子的猫」</div></div>' +
+      '<div class="empty-tip" style="margin-top:12px">（首次使用请先到右上角设置里填入 API Key）</div>';
     return;
   }
   c.messages.forEach(function(m){ box.appendChild(renderRow(m)); });
   scrollBottom();
+}
+function parseGenMeta(text){
+  if(!text) return null;
+  var m = text.match(/^\[?(生图|图生图|视频)\]?\s*(.+?)\s*(?:\[(\d+x\d+)\])?\s*$/i);
+  if(!m) return null;
+  var modeMap = {"生图":"image", "图生图":"imageEdit", "视频":"video"};
+  return { mode:modeMap[m[1]] || "image", label:m[1], prompt:m[2].replace(/\s*（参考图×\d+）\s*/g,"").trim(), size:m[3] || "" };
+}
+function renderGenCard(meta, refs){
+  var badgeCls = "gen-badge" + (meta.mode==="video"?" gen-video":(meta.mode==="imageEdit"?" gen-imageEdit":""));
+  var icon = meta.mode==="video"?"🎬":(meta.mode==="imageEdit"?"🖼️":"🎨");
+  var metaHtml = "";
+  if(meta.size) metaHtml += '<span>尺寸 '+esc(meta.size)+'</span>';
+  if(refs) metaHtml += '<span>参考图 ×'+esc(String(refs))+'</span>';
+  return '<div class="gen-request">'+
+    '<div class="'+badgeCls+'">'+icon+' '+esc(meta.label)+'</div>'+
+    '<div class="gen-prompt">'+esc(meta.prompt)+'</div>'+
+    (metaHtml?'<div class="gen-meta">'+metaHtml+'</div>':'')+
+    '</div>';
 }
 function renderRow(m){
   var row = document.createElement("div");
@@ -3522,7 +3772,7 @@ function renderRow(m){
     return row;
   }
   row.className = "row " + (m.role==="user"?"user":"ai");
-  var av = m.role==="user" ? "我" : "AI";
+  var av = m.role==="user" ? "我" : "A";
   var inner = "";
   if(m.type==="text"){
     var extra = "";
@@ -3535,7 +3785,12 @@ function renderRow(m){
         return '<span class="atchip-static">📎 '+esc(a.name)+'</span>';
       }).join("") + "<br>";
     }
-    inner = extra + renderRichText(m.text||"");
+    var meta = m.genMeta || parseGenMeta(m.text);
+    if(m.role==="user" && meta){
+      inner = extra + renderGenCard(meta, m.genMeta && m.genMeta.refs);
+    } else {
+      inner = extra + renderRichText(m.text||"");
+    }
     if(m.role==="assistant"){
       inner += '<div class="media-actions"><a onclick="downloadMsg(\''+m.id+'\')">下载回复</a>'+
                (m._err?'<a onclick="retryMsg(\''+m.id+'\')">重试</a>':'')+'</div>';
@@ -3635,6 +3890,13 @@ function onSend(){
   }
   var qMeta = quotedMsg ? quoteSummary(quotedMsg) : null;
   var route = routeIntent(text);
+  if(route === "image?"){
+    showActionSheet([
+      {label:"🎨 生图", onclick:function(){ dispatchRoute("image", text, atts, cleanPrompt(text,"image"), qMeta); }},
+      {label:"💬 聊天", onclick:function(){ dispatchRoute("chat", text, atts, cleanPrompt(text,"chat"), qMeta); }}
+    ]);
+    return;
+  }
   var prompt = cleanPrompt(text, route);
   prompt = quotePrefix + prompt;
 
@@ -3671,7 +3933,13 @@ async function maybeCompactCurrent(){
   var c = current(); if(!c) return;
   var txt = c.messages.filter(function(m){return m.type==="text";});
   if(txt.length <= CONV_COMPACT_AT) return;
-  var old = txt.slice(0, txt.length - CONV_KEEP_RECENT);
+  /* 【修复 v0.4.3】用户上传的文件（附件含正文）必须保留，绝不被总结或剔除，
+     否则几轮对话后"开头发的文件"被压成摘要、后续"改文件"会丢失原文 */
+  var fileIds = {};
+  txt.forEach(function(m){
+    if(m.role==="user" && m.attachments && m.attachments.some(function(a){return a.kind!=="image" && a.content;})) fileIds[m.id]=true;
+  });
+  var old = txt.slice(0, txt.length - CONV_KEEP_RECENT).filter(function(m){ return !fileIds[m.id]; });
   var src = old.map(function(m){
     if(m.role==="summary") return "（更早摘要）"+m.text;
     return (m.role==="user"?"用户":"助手")+"："+m.text;
@@ -3724,7 +3992,17 @@ function routeIntent(t){
   /* 正向：明确请求生成图片/视频（必须带动作意图，单独名词如"图片"不触发） */
   if(/^(生图|生成图片|生成图像|作图|画图|画一张|画一个|画幅|画位|画作|绘制|做张图|做个图|来张图|来一张图|来一幅|我要一张图|我要一幅|给我画|帮我画|帮我生成|给我生成|画个|画一|做海报|做logo|做插画|来张海报|来张插画|生成海报|生成插画|生成logo|画海报|画logo|画插画|出图|来图|我要图|给我张图|发张图|做张海报|设计海报|设计logo|设计插画|给我来张|给我来个|我要一个|来一|帮我做张|帮我做个|给我做张|给我做个|做一张|做一个|生成一张|生成一个|来一|整一张|整一个|p一张|p个|搞一张|搞一个|弄一张|弄一个|画一|搞图|整图|出一张)/i.test(s)) return "image";
   if(/^(生视频|生成视频|做视频|制作视频|做段视频|做个视频|来段视频|来段短片|来段动画|短片|动画|视频片段|生成一段|生成短片|来个视频|做个短片|变视频|转视频|转成视频|视频一下|动起来|动图|做宣传片|做mv|做动画|做短片|生成mv|生成宣传片|生成动画|给我视频|给我短片|给我动画|给我宣传片|给我mv|我要视频|我要短片|我要动画|我要宣传片|我要mv|做段视频|做段短片|做段动画|给我做段|帮我做段|生成段|来段|变段|转段|给我来个视频|给我来段视频|我要一个视频|做一个视频|生成一个视频|做一个短片|生成一个短片|整一段|整一个视频|搞一段|搞一个视频|弄一段|弄一个视频)/i.test(s)) return "video";
+  /* 高置信：纯画面描述且带尺寸标注（如「群像七仙女 1792x1024」）→ 直接生图，不再被当聊天糊弄 */
+  if(/\d{3,4}\s*[xX×]\s*\d{3,4}/.test(s)) return "image";
+  /* 中置信：像画面描述但无明确动作/疑问 → 交 UI 弹菜单确认（不静默当聊天） */
+  if(looksLikeArtPrompt(s)) return "image?";
   return "chat";
+}
+/* 疑似画面描述：含画面主体/风格词、无疑问、无对话性动词（讲/解释/翻译/总结/分析/写…） */
+function looksLikeArtPrompt(s){
+  if(/[?？]/.test(s)) return false;
+  if(/(讲|解释|翻译|总结|分析|是什么|为什么|怎么|哪|多少|几|推荐|介绍|告诉我|对比|评价|意思|区别|例子|帮我写|写个|写一)/i.test(s)) return false;
+  return /(画|图|景|像|仙女|人物|头像|猫|狗|动物|风景|城市|星空|山海|古风|科幻|赛博|插画|海报|logo|封面|壁纸|动漫|二次元|油画|水彩|像素|写实|角色|机甲|龙|森林|少女|男孩|女孩|情侣|全家福|表情包|贴纸|蒙娜丽莎|写真|肖像|群像)/i.test(s);
 }
 function cleanPrompt(t, intent){
   t = t.replace(/^(调用|帮我|给我|请|你)(帮我|给我|)?[，,、]?\s*/, "");
@@ -3742,8 +4020,26 @@ function doChat(text, attachments){
   var c = current();
   var allTxt = c.messages.filter(function(m){return m.type==="text";});
   var summaryMsg = allTxt.filter(function(m){return m.role==="summary";})[0];
-  var recent = allTxt.filter(function(m){return m.role!=="summary";}).slice(-12)
-    .map(function(m){return {role:m.role==="user"?"user":"assistant", content:m.text};});
+  /* 【修复 v0.4.3】重建上下文时把用户上传的文件正文重新注入，并"钉住"文件消息，
+     使其永不因 slice(-12) 或压缩被丢弃——否则"开头发的文件"几轮后就改不了 */
+  function isFileMsg(m){ return m.role==="user" && m.attachments && m.attachments.some(function(a){return a.kind!=="image" && a.content;}); }
+  function msgToApi(m){
+    if(isFileMsg(m)){
+      var parts = [{ type:"text", text: ((m.text && m.text.indexOf("[附件")!==0) ? m.text+"\n" : "") || "（请处理我上传的附件）" }];
+      m.attachments.forEach(function(a){
+        if(a.kind==="image"){ if(a.base64) parts.push({type:"image_url", image_url:{url:a.base64}}); }
+        else if(a.content){ parts.push({ type:"text", text:"\n\n【用户上传的文件："+a.name+"】\n```\n"+String(a.content).slice(0,40000)+"\n```" }); }
+      });
+      return {role:"user", content: parts};
+    }
+    return {role: m.role==="user"?"user":"assistant", content: m.text};
+  }
+  /* 历史消息（不含本轮刚发的用户消息，它走下方 userContent 单独发送，避免重复注入） */
+  var histMsgs = allTxt.slice(0, -1);
+  var fileMsgs = histMsgs.filter(isFileMsg);
+  var convTail = histMsgs.filter(function(m){return !isFileMsg(m);}).slice(-12);
+  var pinned = fileMsgs.filter(function(m){return convTail.indexOf(m) < 0;});
+  var recent = pinned.concat(convTail).map(msgToApi);
   var sysParts = [];
   if(summaryMsg) sysParts.push("【对话更早部分摘要，供参考】\n"+summaryMsg.text);
   var _memCtx = buildMemoryContext(text);
@@ -3793,32 +4089,22 @@ function doChat(text, attachments){
     var chatAcc = "";
     var chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 240000);
 
-    fetch(apiBase()+"/chat/completions",{
+    /* 【修复 v0.4.7】聊天原走 WebView 原生 fetch，在手机 file:// 环境下被跨域拦截（报"网络被拦截"）。
+        改走 fetchTimeout → 原生桥 httpRequestAsync（与生图同一通道），绕过 WebView CORS；
+        原生桥返回整段 SSE 响应体，下方用 parseSSEStream 手动解析还原流式输出。 */
+    fetchTimeout(apiBase()+"/chat/completions",{
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
-      signal: ac.signal,
+      timeout: 240000,
       body: JSON.stringify({ model:currentModel("text"), stream:true, messages: hist.concat([{role:"user", content:userContent}]) })
     }).then(function(resp){
       if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,120)); });
-      var reader = resp.body.getReader(); var dec=new TextDecoder(); var buf="";
-      function pump(){
-        return reader.read().then(function(r){
-          if(r.done){ finalizeChat(aiMsg,chatAcc,attachments); return; }
-          buf += dec.decode(r.value,{stream:true});
-          var lines = buf.split("\n"); buf = lines.pop();
-          lines.forEach(function(line){
-            line=line.trim();
-            if(line.indexOf("data:")===0){
-              var d=line.slice(5).trim();
-              if(d==="[DONE]") return;
-              try{ var j=JSON.parse(d); var delta=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
-                if(delta){ chatAcc+=delta; var bb=rowBubble(); if(bb) bb.textContent=chatAcc.replace(/^\s+/,""); scrollBottom(); } }catch(e){}
-            }
-          });
-          return pump();
-        });
-      }
-      return pump();
+      return resp.text();
+    }).then(function(fullBody){
+      parseSSEStream(fullBody, function(delta){
+        chatAcc+=delta; var bb=rowBubble(); if(bb) bb.textContent=chatAcc.replace(/^\s+/,""); scrollBottom();
+      });
+      finalizeChat(aiMsg, chatAcc, attachments);
     }).then(function(){
       clearTimeout(chatTimer); clearRetry(aiMsg.id);
     }).catch(function(err){
@@ -4025,7 +4311,13 @@ function doVideo(prompt, refs, params){
     var body = { model:currentModel("video"), prompt:prompt };
     if(validRefs && validRefs.length) body.image = validRefs.length === 1 ? validRefs[0] : validRefs;   /* 图生视频：单图传字符串，多图传数组 */
     if(params && params.size && !(validRefs && validRefs.length)){ var _wh=String(params.size).split("x"); if(_wh.length===2){ if(parseInt(_wh[0],10)) body.width=parseInt(_wh[0],10); if(parseInt(_wh[1],10)) body.height=parseInt(_wh[1],10); } }   /* 视频用 width/height；图生视频不传宽高 */
-    if(params && params.durationFrames){ body.num_frames = Number(params.durationFrames); body.frame_rate = 24; }   /* 时长：帧数(8n+1)÷帧率=秒 */
+    if(params && params.durationFrames){
+      var _nf = Math.round(Number(params.durationFrames));
+      if(_nf < 1) _nf = 25;
+      _nf = Math.min(_nf, 441);                 /* 官方上限 441 */
+      _nf = Math.round((_nf - 1) / 8) * 8 + 1;  /* 收敛到 8n+1（如 25=3×8+1） */
+      body.num_frames = _nf; body.frame_rate = 24;   /* 时长：帧数(8n+1)÷帧率=秒 */
+    }
     fetchTimeout(mediaApiBase()+"/videos",{
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+mediaApiKey() },
@@ -4034,7 +4326,7 @@ function doVideo(prompt, refs, params){
       if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
       return r.json();
     }).then(function(j){
-      var vid = j.video_id || j.id || (j.data&&j.data.video_id);
+      var vid = j.video_id || j.task_id || j.id || (j.data&&j.data.video_id);
       if(!vid) throw new Error("未返回 video_id");
       pollVideo(vid, loading, 0);
     }).catch(function(err){
@@ -4050,11 +4342,13 @@ function doVideo(prompt, refs, params){
 function pollVideo(vid, loading, tries){
   if(videoPollCancel){ videoPollCancel=false; replaceLoading(loading,"（已取消视频生成）"); return; }
   if(tries>60){ loading._err=true; replaceLoading(loading,"⚠️ 视频生成超时，请稍后重试"); return; }
-  fetch(pollBase()+"?video_id="+encodeURIComponent(vid),{
-    headers:{ "Authorization":"Bearer "+currentApiKey() }
-  }).then(function(r){ return r.json(); }).then(function(j){
-    var url = j.url || (j.data&&j.data.url) || j.video_url;
-    var status = j.status || (j.data&&j.data.status);
+  /* 官方推荐结果查询端点：GET /agnesapi?video_id=<VIDEO_ID>（媒体 base 去掉 /v1 后拼接）；
+     最终视频地址在 metadata.url（英文文档兼容 remixed_from_video_id），status∈queued/in_progress/completed/failed */
+  var q = (mediaApiBase().replace(/\/v1$/,"") + "/agnesapi?video_id=" + encodeURIComponent(vid));
+  fetchTimeout(q, { headers:{ "Authorization":"Bearer "+mediaApiKey() } })
+  .then(function(r){ return r.json(); }).then(function(j){
+    var url = (j && j.metadata && j.metadata.url) || (j && j.remixed_from_video_id) || (j && j.url) || (j && j.data && j.data.url) || (j && j.video_url);
+    var status = (j && j.status) || (j && j.data && j.data.status);
     if(url){
       removeMsg(loading.id); clearRetry(loading.id);
       landAndAppend("video", url, "视频已生成", mediaExt(url));
@@ -4072,6 +4366,7 @@ function pollVideo(vid, loading, tries){
 function openStudio(){
   var body = document.getElementById("studioBody");
   body.innerHTML =
+    '<div class="studio-steps"><div class="st"><span class="n">1</span>规划</div><div class="st"><span class="n">2</span>分镜</div><div class="st"><span class="n">3</span>合成</div><div class="st"><span class="n">4</span>成片</div></div>'+
     '<div class="group"><div class="gt">主题（一句话描述你想做的短片）</div>'+
       '<div class="cell" style="display:block"><textarea id="studioTheme" rows="3" style="width:100%;border:none;outline:none;font-size:15px;font-family:inherit;resize:none"></textarea></div>'+
     '</div>'+
@@ -4118,17 +4413,18 @@ function runStudio(){
     var arr = parseStudioPlan(txt);
     if(!arr || !arr.length) throw new Error("分镜规划解析失败");
     loading.text = "② 逐镜出图（0/"+arr.length+"）"; renderMsgs();
-    studioGenShots(arr, 0, loading, params, theme, style);
+    studioGenShots(arr, 0, loading, params, theme, style, []);
   }).catch(function(err){
     loading._err = true;
     attachRetry(loading.id, function(){ runStudio(); });
     replaceLoading(loading, "⚠️ 智能制片规划失败："+friendlyErr(err));
   });
 }
-function studioGenShots(arr, idx, loading, params, theme, style){
+function studioGenShots(arr, idx, loading, params, theme, style, shotUrls){
+  shotUrls = shotUrls || [];
   if(idx >= arr.length){
     loading.text = "③ 合成视频中…"; renderMsgs();
-    studioMakeVideo(arr, loading, params, theme, style);
+    studioMakeVideo(arr, loading, params, theme, style, shotUrls);
     return;
   }
   var shot = arr[idx] || {};
@@ -4146,24 +4442,19 @@ function studioGenShots(arr, idx, loading, params, theme, style){
     var url = j.data && j.data[0] && (j.data[0].url || j.data[0].b64_json);
     if(!url) throw new Error("分镜"+(idx+1)+"未返回图片");
     if(j.data[0].b64_json) url = "data:image/png;base64,"+j.data[0].b64_json;
-    appendMessage({role:"assistant", type:"image", media:{url:url, caption:"分镜"+(idx+1)+"："+(shot.shot||"")}});
-    renderMsgs(); renderConvList();
-    studioGenShots(arr, idx+1, loading, params, theme, style);
+    shotUrls.push(url);   /* 记住 studio 自己产出的帧，供后续视频参考（不再扫整段对话） */
+    landAndAppend("image", url, "分镜"+(idx+1)+"："+(shot.shot||""), mediaExt(url));   /* 落本地，避免远程 URL 过期裂图 */
+    studioGenShots(arr, idx+1, loading, params, theme, style, shotUrls);
   }).catch(function(err){
     appendMessage({role:"assistant", type:"text", text:"⚠️ 分镜"+(idx+1)+"出图失败："+friendlyErr(err)});
     renderMsgs(); renderConvList();
-    studioGenShots(arr, idx+1, loading, params, theme, style);
+    studioGenShots(arr, idx+1, loading, params, theme, style, shotUrls);
   });
 }
-function studioMakeVideo(arr, loading, params, theme, style){
-  var c = current(); if(!c){ return; }
-  var lastImg = null;
-  for(var i=c.messages.length-1;i>=0;i--){
-    if(c.messages[i].type==="image"){ lastImg = c.messages[i].media.url; break; }
-  }
+function studioMakeVideo(arr, loading, params, theme, style, shotUrls){
   var vprompt = theme + (style?("，"+style):"") + "；动态：" + arr.map(function(s){return s.video_prompt||"";}).filter(Boolean).join("；");
   removeMsg(loading.id);
-  doVideo(vprompt, lastImg?[lastImg]:[], params);
+  doVideo(vprompt, (shotUrls && shotUrls.length) ? shotUrls : [], params);   /* 用 studio 自己产出的帧，不扫整段对话 */
 }
 
 function removeMsg(id){
@@ -4272,13 +4563,13 @@ function renderSettings(){
   '<div class="group"><div class="gt">创作</div>'+
     cellNav("生图 / 图生图", "openCreate(\'image\')")+
     cellNav("生视频", "openCreate(\'video\')")+
-    cellNav("智能制片", "openStudio()")+
-    cellNav("作品", "openWorks()")+
+    '<div class="cell studio-row" onclick="openStudio()"><span class="ci">🎬</span><span class="cl">智能制片</span><span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>'+
     '<div class="gt">外观与存储</div>'+
-    cellNav("聊天背景（用图片）", "pickBg()")+
-    (CFG.bgImage? cellNav("清除聊天背景", "clearBg()") : "")+
     '<div class="cell" style="display:block;padding:10px 14px"><div class="cl" style="margin-bottom:6px">文件保存位置（手机本地）</div>'+
     '<input type="text" value="'+esc(CFG.saveLocation||"Download/phone-agent")+'" onchange="CFG.saveLocation=(this.value.trim()||\'Download/phone-agent\');saveCfg();toast(\'已保存保存位置\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box"></div>'+
+  '</div>'+
+  '<div class="group"><div class="gt">长文写作</div>'+
+    '<div class="cell" onclick="openLongWrite()"><span class="ci">📖</span><span class="cl">打开长文写作（小说 / 长文）</span><span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>'+
   '</div>'+
   '<div class="group"><div class="gt">账号</div>'+
     cellNav("API 接口管理（当前："+esc(currentApi().name)+"）", "openApiPage()")+
@@ -4291,7 +4582,7 @@ function renderSettings(){
     cellNav("导出 / 备份聊天", "exportChats()")+
     cellNav("导入恢复聊天", "importChats()")+
     '<div class="cell" style="display:block;padding:10px 14px">'+
-      '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">检查更新地址（电脑 / Pages 上放 index.html + version.json）</div>'+
+      '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">检查更新地址（电脑 / Pages 上放 index.html + apk-version.json 统一清单）</div>'+
       '<input type="text" placeholder="http://电脑IP:端口 或 GitHub Pages" value="'+esc(CFG.updateBase || DEFAULT_UPDATE_BASE || "")+'" onchange="CFG.updateBase=this.value.trim();saveCfg();toast(\'已保存更新地址\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+
     '</div>'+
     cellNav("检查更新", "checkUpdate()")+
@@ -4315,67 +4606,102 @@ function applyTheme(){
   var ph = document.getElementById("phone");
   if(ph) ph.classList.toggle("dark", dark);
 }
-function applyBg(){
-  var m = document.getElementById("msgs");
-  if(!m) return;
-  if(CFG.bgImage){
-    m.style.backgroundImage = "url("+CFG.bgImage+")";
-    m.style.backgroundSize = "cover";
-    m.style.backgroundPosition = "center";
-    m.style.backgroundRepeat = "no-repeat";
-  }else{
-    m.style.backgroundImage = "";
-  }
-}
-function pickBg(){ document.getElementById("bgFileInput").click(); }
-document.getElementById("bgFileInput").addEventListener("change", function(e){
-  var f = e.target.files[0]; if(!f) return;
-  var rd = new FileReader();
-  rd.onload = function(){
-    CFG.bgImage = rd.result; saveCfg(); applyBg(); renderSettings();
-    toast("聊天背景已更新");
-  };
-  rd.readAsDataURL(f);
-  e.target.value = "";
-});
-function clearBg(){ CFG.bgImage=""; saveCfg(); applyBg(); renderSettings(); toast("已清除背景"); }
+var CELL_ICONS = { "生图 / 图生图":"🎨","生视频":"📹","智能制片":"🎬","API 接口管理（当前：":"🔌","我的记忆":"🧠","更新日志":"📝","清理缓存":"🧹","导出 / 备份聊天":"📤","导入恢复聊天":"📥","检查更新":"🔄","分享给亲友（二维码）":"🔗","意见反馈":"💬","重新查看引导":"✨","版本历史 / 回退":"⏱️","开源 / 隐私声明":"🔒" };
 function cellNav(label, onclick){
-  return '<div class="cell" onclick="'+onclick+'"><span class="cl">'+label+'</span>'+
+  var ic = CELL_ICONS[label] || (label.indexOf("API 接口管理")>=0 ? "🔌" : "");
+  return '<div class="cell" onclick="'+onclick+'"><span class="ci">'+ic+'</span><span class="cl">'+label+'</span>'+
     '<span class="cr"><svg class="chev icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span></div>';
 }
 /* 默认热更新地址（GitHub Pages）。CFG.updateBase 为空时回退到此，确保新装/旧装用户都能直接检查更新 */
-var DEFAULT_UPDATE_BASE = "https://tan719405973-afk.github.io/phone-agent-hotupdate";
+var DEFAULT_UPDATE_BASE = "https://tan719405973-afk.github.io/phone-agent-hotupdate/test";
 function updateBaseUrl(){
   return (CFG.updateBase || DEFAULT_UPDATE_BASE || "").trim().replace(/\/+$/,"");
 }
 /* 用 <script> 注入方式加载更新文件，绕过 GitHub Pages 等不返回 CORS 头的限制（fetch 会被跨域拦截） */
 function loadScript(url, ms){
+  /* 【修复 v0.4.8】原实现用 <script src> 标签从 file:// 源直连加载外网脚本，
+     手机 WebView 对 file:// 源跨域加载外网资源直接拦截（与聊天裸 fetch 同源问题），
+     导致「检查更新」拉 app.js / 版本列表 / 清单兜底全部失败（更新挂了）。
+     改为走原生桥 nativeFetch 拿文本，再全局 eval（等效于加载外部脚本、设置 window.__PA_xxx__），
+     彻底绕过 WebView CORS。 */
   return new Promise(function(res, rej){
-    var s = document.createElement("script");
-    var done = false;
-    var to = setTimeout(function(){ if(!done){ done=true; s.parentNode && s.parentNode.removeChild(s); rej(new Error("加载超时")); } }, ms||15000);
-    s.onload = function(){ if(!done){ done=true; clearTimeout(to); res(); } };
-    s.onerror = function(){ if(!done){ done=true; clearTimeout(to); rej(new Error("加载失败（地址不可达/被墙）")); } };
-    s.src = url;
-    document.head.appendChild(s);
+    var to = setTimeout(function(){ rej(new Error("加载超时")); }, ms||15000);
+    nativeFetch(url, {method:"GET"})
+      .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+      .then(function(t){
+        clearTimeout(to);
+        try { (0,eval)(t); } catch(e){ /* 纯赋值脚本，异常无害 */ }
+        res();
+      })
+      .catch(function(e){ clearTimeout(to); rej(e); });
   });
 }
+/* 游戏式 APK 大更新：拉 apk-version.json，比对当前 APK 的 versionCode，
+   返回 json（有新版本）或 false（无/异常）。供 checkUpdate/silentCheckUpdate 调用。 */
+/* 统一更新清单：拉 apk-version.json（单一真源，携带 APK 与 web 版本），
+   返回 {versionCode,versionName,apkUrl,note,webVersion,webNote}（新版）
+   或旧版 {version,note}（version.js 兜底）。供 checkUpdate/silentCheckUpdate 共用，
+   消除「APK 与 web 双文件双分支」。 */
+function readUpdate(){
+  return new Promise(function(resolve){
+    var base = updateBaseUrl();
+    if(!base){ resolve(null); return; }
+    var url = base + "/apk-version.json?t=" + Date.now();
+    nativeFetch(url, {method:"GET"})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        if(j && (j.versionCode || j.webVersion || j.version)){ resolve(j); return; }
+        // 清单缺失/异常：兜底用 version.js（旧格式 {version,note}）
+        loadScript(base+"/version.js?t="+Date.now(), 12000)
+          .then(function(){ resolve(window.__PA_VER__ || null); })
+          .catch(function(){ resolve(null); });
+      })
+      .catch(function(){
+        loadScript(base+"/version.js?t="+Date.now(), 12000)
+          .then(function(){ resolve(window.__PA_VER__ || null); })
+          .catch(function(){ resolve(null); });
+      });
+  });
+}
+/* 从统一清单解析 APK / web 是否可更新（两路共用，避免重复逻辑） */
+function evalUpdate(j){
+  var curCode = window.__PA_APK_CODE__;
+  var hasCode = (typeof curCode === "number") && !isNaN(curCode);
+  var apkNewer = j.versionCode ? (hasCode ? (j.versionCode > curCode)
+      : (j.versionName && compareVer(j.versionName, APP_VERSION) > 0)) : false;
+  var webVer = j.webVersion || j.version;
+  var webNote = j.webNote || j.note || "";
+  var webNewer = !!(webVer && compareVer(webVer, APP_VERSION) > 0);
+  return { apkNewer: apkNewer, webVer: webVer, webNote: webNote, webNewer: webNewer,
+           apkName: j.versionName, apkNote: j.note, apkUrl: j.apkUrl };
+}
+
 function checkUpdate(){
   var base = updateBaseUrl();
   if(!base){ toast("请先在「关于 → 检查更新地址」填写更新地址"); return; }
   toast("正在检查更新…");
-  loadScript(base+"/version.js?t="+Date.now(), 15000)
-    .then(function(){
-      var j = window.__PA_VER__;
-      if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
-        showConfirm("发现新版本 v"+j.version, (j.note||"有新版可用")+"（点击更新将下载并立即应用，无需重装）", function(){
-          doInstallUpdate(base);
+  // 统一检查：APK 大更新优先，其次 web 静默热更（同一清单、同一函数）
+  readUpdate().then(function(j){
+    if(!j){ toast("检查更新失败（确认地址可访问）"); return; }
+    var u = evalUpdate(j);
+    if(u.apkNewer){
+      showConfirm("发现新版本 v"+u.apkName+"（完整更新）",
+        (u.apkNote||"有新版安装包可用")+" 将下载并安装新安装包（此更新需重新安装 App）。",
+        function(){
+          if(!hasNative() || !window.NativeBridge || !window.NativeBridge.downloadAndInstallApk){ toast("当前环境不支持 APK 安装，请在手机 App 内更新"); return; }
+          toast("已发起下载，请稍候（进度与结果由系统提示）");
+          NativeBridge.downloadAndInstallApk(u.apkUrl);
         });
-      } else {
-        toast("当前已是最新版 v"+APP_VERSION);
-      }
-    })
-    .catch(function(e){ toast("检查更新失败："+(e&&e.message||e)+"（确认地址可访问）"); });
+      return;
+    }
+    if(u.webNewer){
+      showConfirm("发现新版本 v"+u.webVer, (u.webNote||"有新版可用")+"（点击更新将下载并立即应用，无需重装）", function(){
+        doInstallUpdate(base);
+      });
+      return;
+    }
+    toast("当前已是最新版 v"+APP_VERSION);
+  });
 }
 function doInstallUpdate(base){
   toast("正在下载更新…");
@@ -4400,14 +4726,13 @@ function doInstallUpdate(base){
 function silentCheckUpdate(){
   var base = updateBaseUrl();
   if(!base) return;
-  loadScript(base+"/version.js?t="+Date.now(), 12000)
-    .then(function(){
-      var j = window.__PA_VER__;
-      if(j && j.version && compareVer(j.version, APP_VERSION) > 0){
-        toast("发现新版本 v"+j.version+"：去 设置 → 检查更新 升级");
-      }
-    })
-    .catch(function(e){ /* 静默忽略 */ });
+  // 统一检查：APK 大更新优先，其次 web 静默热更
+  readUpdate().then(function(j){
+    if(!j) return;
+    var u = evalUpdate(j);
+    if(u.apkNewer){ toast("发现新版本 v"+u.apkName+"（完整更新）：去 设置 → 检查更新 升级"); return; }
+    if(u.webNewer){ toast("发现新版本 v"+u.webVer+"：去 设置 → 检查更新 升级"); }
+  });
 }
 function resetBuiltinUpdate(){
   if(!hasNative()){ toast("内置版本即当前，无需恢复"); return; }
@@ -4439,7 +4764,7 @@ function renderVersionHistory(){
         '<div style="font-size:13px;color:var(--text-2);margin-top:4px;line-height:1.5">'+esc(it.note||"")+'</div>'+
       '</div>';
     }).join("") +
-    (hasNative()? '<div style="padding:16px"><button style="width:100%;background:#fff;color:#e64340;border:1px solid #e64340;border-radius:8px;padding:11px;font-size:14px;cursor:pointer" onclick="resetBuiltinUpdate()">恢复内置版本（清掉所有热更）</button></div>' : '');
+    (hasNative()? '<div style="padding:16px"><button style="width:100%;background:transparent;color:var(--danger);border:1px solid rgba(248,113,113,0.4);border-radius:8px;padding:11px;font-size:14px;cursor:pointer" onclick="resetBuiltinUpdate()">恢复内置版本（清掉所有热更）</button></div>' : '');
   }).catch(function(e){ box.innerHTML='<div class="crash-empty">加载失败：'+esc(e&&e.message||e)+'</div>'; });
 }
 function rollbackTo(v){
@@ -4619,18 +4944,16 @@ function runCreate(){
   }
   saveCfg();
   hide('createPage'); closeSettings();
-  var tag = mode==="video"?"[视频] ":(mode==="imageEdit"?"[图生图] ":"[生图] ");
+  var label = mode==="video"?"视频":(mode==="imageEdit"?"图生图":"生图");
+  var tag = "["+label+"] ";
   var txt = tag + p + (createRefs.length?(" （参考图×"+createRefs.length+"）"):"") + (size?(" ["+size+"]"):"");
-  appendMessage({role:"user", type:"text", text:txt});
+  appendMessage({role:"user", type:"text", text:txt, genMeta:{mode:mode, label:label, prompt:p, size:size||"", refs:createRefs.length}});
   renderMsgs(); renderConvList();
   var refs = createRefs.slice();
   var params = CFG.genParams;
   if(mode==="video") doVideo(p, refs, params); else doImage(p, refs, params);
 }
 
-/* ================= 作品（资产）页：图片 / 视频 / 文件 分开 ================= */
-function openWorks(){ renderWorks(); show('worksPage'); }
-function closeWorks(){ hide('worksPage'); renderSettings(); show('settingsPage'); }
 
 /* ================= API 接口管理页 ================= */
 var API_EDITING_ID = null;
@@ -4738,7 +5061,7 @@ function fetchUpstreamModels(){
   toast("正在从上游获取模型…");
   // 严格按用户填写的地址请求，不猜测补 /v1（部分上游并非 /v1 前缀）
   var url = rawBase.replace(/\/+$/,'') + "/models";
-  fetch(url, {headers:{"Authorization":"Bearer "+key}}).then(function(r){
+  fetchTimeout(url, {headers:{"Authorization":"Bearer "+key}}).then(function(r){
     if(!r.ok){
       if(r.status===401||r.status===403) throw new Error("鉴权失败(401/403)，Key 可能无效");
       if(r.status===404) throw new Error("接口未找到(404)，请确认请求地址填到 /models 所在前缀");
@@ -4807,40 +5130,6 @@ function saveApi(){
 }
 function closeApiEdit(){ hide('apiEditPage'); renderApiList(); show('apiPage'); }
 
-function renderWorks(){
-  var box = document.getElementById("worksBody"); if(!box) return;
-  var imgs=[], vids=[], files=[];
-  (convs||[]).forEach(function(c){
-    (c.messages||[]).forEach(function(m){
-      if(m.type==="image" && m.media && m.media.url) imgs.push(m);
-      else if(m.type==="video" && m.media && m.media.url) vids.push(m);
-      else if(m.type==="file" && m.media && m.media.url) files.push(m);
-    });
-  });
-  function dl(url, name){
-    if(!url) return '';
-    return '<a class="dl" href="'+esc(url)+'" download="'+esc(name||"download")+'" target="_blank" onclick="event.stopPropagation()">下载</a>';
-  }
-  function sec(title, items, html){
-    if(!items.length) return '<div class="works-sec"><h4>'+title+'</h4><div class="works-empty">暂无，去生图 / 生视频生成后这里会出现</div></div>';
-    return '<div class="works-sec"><h4>'+title+'（'+items.length+' 项）</h4><div class="dl-tip">点「下载」可存到本地</div>'+html+'</div>';
-  }
-  var imgHtml = '<div class="works-grid">'+imgs.map(function(m){
-    return '<div class="works-item"><img src="'+esc(m.media.url)+'" onerror="this.style.opacity=.3" onclick="openPreview(\''+esc(m.media.url)+'\',\'image\')" style="cursor:pointer">'+dl(m.media.url,(m.media.caption||"image")+".png")+'</div>';
-  }).join('')+'</div>';
-  var vidHtml = vids.map(function(m){
-    return '<div class="works-vid"><video src="'+esc(m.media.url)+'" controls playsinline></video>'+
-      (m.media.caption?'<div class="cap">'+esc(m.media.caption)+'</div>':'')+dl(m.media.url,(m.media.caption||"video")+".mp4")+'</div>';
-  }).join('');
-  var fileHtml = files.map(function(m){
-    var fm=m.media||{}; var sz=fm.size?(fm.size/1048576>=1?(fm.size/1048576).toFixed(1)+" MB":Math.round(fm.size/1024)+" KB"):"";
-    return '<div class="filecard"><div class="fi">📄</div><div class="fm"><div class="fn">'+esc(fm.name||"文件")+'</div><div class="fs">'+esc(fm.mime||"文件")+(sz?(" · "+sz):"")+'</div></div>'+dl(fm.url,fm.name)+'</div>';
-  }).join('');
-  box.innerHTML =
-    sec("图片资产（生成的图 + 下载的图）", imgs, imgHtml)+
-    sec("视频资产（生成的视频）", vids, vidHtml)+
-    sec("文件资产（下载/上传的文件）", files, fileHtml);
-}
 
 /* ================= 导航 / 弹层 ================= */
 function openDrawer(){ document.getElementById("drawer").classList.add("show"); document.getElementById("drawerMask").classList.add("show"); renderConvList(); }
@@ -4990,7 +5279,7 @@ function renderShareQR(){
   var box = document.getElementById('shareQR');
   if(!box) return;
   var url = (CFG.shareUrl || CFG.updateBase || "").trim();
-  if(!url){ box.innerHTML = '<div style="color:#999;font-size:13px;padding:50px 12px">请先在下方填写分享链接</div>'; return; }
+  if(!url){ box.innerHTML = '<div style="color:var(--text-3);font-size:13px;padding:50px 12px">请先在下方填写分享链接</div>'; return; }
   try{
     var qr = qrcode(0, 'M');
     qr.addData(url); qr.make();
@@ -5055,11 +5344,245 @@ function sendFeedback(){
   toast("已复制反馈内容，去微信 / 备忘录粘贴发给开发者即可");
 }
 
+/* ================= 长文模式（小说 / 长文）v0.4.4 ================= */
+var LW_KEY = "pa_longwrite";
+var lwState = { title:"未命名小说", chapters:[], updated:0 };
+var lwSelId = null;
+var lwAbort = null;
+var lwEditTimer = null;
+
+function lwLoad(){
+  try{ var s = JSON.parse(localStorage.getItem(LW_KEY)||"null"); if(s && s.chapters){ lwState = s; } }catch(e){}
+}
+function lwSave(){
+  lwState.updated = Date.now();
+  try{ localStorage.setItem(LW_KEY, JSON.stringify(lwState)); }catch(e){ toast("保存失败："+(e&&e.message||e)); }
+}
+function lwWords(s){ return String(s||"").replace(/\s/g,"").length; }
+function lwSplit(text, prev){
+  var lines = String(text||"").split(/\r?\n/);
+  var chapters = [];
+  var cur = null;
+  var autoN = 0;
+  function heading(line){
+    var m;
+    if((m = line.match(/^#{1,3}\s+(.+)$/))) return { title:m[1].trim(), raw:line, md:true };
+    if(/^第[一二三四五六七八九十百千零0-9]+章.*$/.test(line)) return { title:line.trim() };
+    if(/^Chapter\s+\d+.*$/i.test(line)) return { title:line.trim() };
+    if(/^第[一二三四五六七八九十百千零0-9]+回.*$/.test(line)) return { title:line.trim() };
+    if(/^[卷部篇][一二三四五六七八九十百千零0-9]+.*$/.test(line)) return { title:line.trim() };
+    if(/^[一二三四五六七八九十百千零0-9]+、[^\n]{0,30}$/.test(line)) return { title:line.trim() };
+    if(/^\d{1,3}[.、][^\n]{0,30}$/.test(line)) return { title:line.trim() };
+    if(/^\d{1,3}\.\d{1,3}[^\n]{0,30}$/.test(line)) return { title:line.trim() };
+    return null;
+  }
+  function pushCur(){ if(cur && (cur.text.trim()!=="" || cur.title)){ chapters.push(cur); } }
+  for(var i=0;i<lines.length;i++){
+    var line = lines[i];
+    var hm = line.match(/^===$/);
+    var dm = line.match(/^(?:---|\*\*\*|___)$/);
+    var hd = heading(line);
+    if(hd){
+      pushCur();
+      cur = { id: uid("ch"), title: hd.title, text:"", autoTitle:false };
+      if(hd.md){ cur.md = true; cur.raw = hd.raw; }
+    } else if(hm){
+      pushCur(); autoN++; cur = { id: uid("ch"), title:"第"+autoN+"部分", text:"", autoTitle:true, sep:"===", sepChar:"===" };
+    } else if(dm){
+      pushCur(); autoN++; cur = { id: uid("ch"), title:"第"+autoN+"部分", text:"", autoTitle:true, sep:true, sepChar:line.trim() };
+    } else {
+      if(!cur){ cur = { id: uid("ch"), title:"（正文）", text:"", autoTitle:true }; }
+      cur.text += (cur.text? "\n":"") + line;
+    }
+  }
+  pushCur();
+  if(!chapters.length){ chapters.push({ id: uid("ch"), title:"（正文）", text:String(text||""), autoTitle:true }); }
+  if(prev && prev.length){
+    var used = {};
+    chapters.forEach(function(c){
+      var hit = prev.filter(function(p){ return !used[p.id] && p.text===c.text && p.title===c.title && !!p.sep===!!c.sep && p.autoTitle===c.autoTitle && !!p.md===!!c.md; })[0];
+      if(hit){ c.id = hit.id; used[hit.id]=true; }
+    });
+  }
+  return chapters;
+}
+function lwToText(st){
+  return (st.chapters||[]).map(function(c){
+    if(c.sep) return (c.sepChar||"===") + "\n" + c.text;
+    if(c.md) return c.raw + "\n" + c.text;
+    if(!c.autoTitle) return c.title + "\n" + c.text;
+    return c.text;
+  }).join("\n\n");
+}
+function openLongWrite(){
+  lwLoad();
+  document.getElementById("lwTitle").value = lwState.title || "未命名小说";
+  document.getElementById("lwEditor").value = lwToText(lwState);
+  lwSelId = null; lwRenderOutline(); show("longWritePanel");
+}
+function lwClose(){ hide("longWritePanel"); }
+function lwOnTitle(){ lwState.title = (document.getElementById("lwTitle").value||"").trim() || "未命名小说"; lwSave(); }
+function lwOnEdit(){
+  clearTimeout(lwEditTimer);
+  lwEditTimer = setTimeout(function(){
+    lwState.chapters = lwSplit(document.getElementById("lwEditor").value, lwState.chapters);
+    if(lwSelId && !lwState.chapters.some(function(c){return c.id===lwSelId;})) lwSelId=null;
+    lwRenderOutline(); lwSave();
+  }, 600);
+}
+function lwChapterOffset(id){
+  var acc = 0;
+  for(var i=0;i<lwState.chapters.length;i++){
+    var c = lwState.chapters[i];
+    if(c.id===id) return acc;
+    var seg = (c.sep? (c.sepChar||"===")+"\n" : (!c.autoTitle? (c.md? c.raw+"\n" : c.title+"\n") : "")) + c.text;
+    acc += seg.length + (i<lwState.chapters.length-1? 2 : 0);
+  }
+  return -1;
+}
+function lwRenderOutline(){
+  var box = document.getElementById("lwOutline");
+  if(!lwState.chapters.length){ box.innerHTML = '<div class="lw-empty">还没有内容。粘贴全文，或点「新建」后撰写。</div>'; return; }
+  box.innerHTML = lwState.chapters.map(function(c, i){
+    var sel = (c.id===lwSelId)? " sel":"";
+    return '<div class="lw-ch'+sel+'" draggable="true" data-id="'+c.id+'" onclick="lwSelect(\''+c.id+'\')" ondragstart="lwDragStart(event)" ondragover="lwDragOver(event)" ondrop="lwDrop(event)">'+
+      '<span class="lw-ch-no">'+(i+1)+'</span>'+
+      '<span class="lw-ch-title">'+esc(c.title||"（无标题）")+'</span>'+
+      '<span class="lw-ch-wc">'+lwWords(c.text)+'字</span>'+
+      '<span class="lw-ch-del" onclick="event.stopPropagation();lwDel(\''+c.id+'\')">✕</span>'+
+    '</div>';
+  }).join("");
+}
+function lwSelect(id){
+  lwSelId = id;
+  var ta = document.getElementById("lwEditor");
+  var off = lwChapterOffset(id);
+  if(off>=0){ try{ ta.focus(); ta.setSelectionRange(off, off); }catch(e){} }
+  lwRenderOutline();
+}
+function lwDel(id){
+  lwState.chapters = lwState.chapters.filter(function(c){return c.id!==id;});
+  if(lwSelId===id) lwSelId=null;
+  document.getElementById("lwEditor").value = lwToText(lwState);
+  lwRenderOutline(); lwSave();
+}
+function lwNew(){
+  if(lwState.chapters.length && !confirm("新建会清空当前未导出的内容，确定？")) return;
+  lwState = { title:"未命名小说", chapters:[], updated:0 };
+  document.getElementById("lwTitle").value="未命名小说";
+  document.getElementById("lwEditor").value="";
+  lwSelId=null; lwRenderOutline(); lwSave();
+}
+function lwImport(){ document.getElementById("lwFile").click(); }
+function lwOnFile(e){
+  var f = e.target.files && e.target.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    var txt = String(rd.result||"");
+    lwState.title = (f.name||"未命名小说").replace(/\.[^.]+$/,"");
+    document.getElementById("lwTitle").value = lwState.title;
+    document.getElementById("lwEditor").value = txt;
+    lwState.chapters = lwSplit(txt); lwSelId=null; lwRenderOutline(); lwSave();
+    toast("已导入 "+f.name);
+  };
+  rd.readAsText(f); e.target.value="";
+}
+function lwExport(){
+  var txt = lwToText(lwState);
+  if(!txt.trim()){ toast("没有可导出的内容"); return; }
+  var name = (lwState.title||"未命名小说")+".txt";
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([txt], {type:"text/plain;charset=utf-8"}));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 1000);
+  toast("已导出 "+name);
+}
+var lwDragId = null;
+function lwDragStart(e){ lwDragId = e.currentTarget.getAttribute("data-id"); e.dataTransfer.effectAllowed="move"; }
+function lwDragOver(e){ e.preventDefault(); }
+function lwDrop(e){
+  e.preventDefault();
+  var toId = e.currentTarget.getAttribute("data-id");
+  if(!lwDragId || lwDragId===toId) return;
+  var from = lwState.chapters.filter(function(c){return c.id===lwDragId;})[0];
+  if(!from) return;
+  lwState.chapters = lwState.chapters.filter(function(c){return c.id!==lwDragId;});
+  var idx = lwState.chapters.findIndex(function(c){return c.id===toId;});
+  if(idx<0) lwState.chapters.push(from); else lwState.chapters.splice(idx,0,from);
+  lwDragId=null;
+  document.getElementById("lwEditor").value = lwToText(lwState);
+  lwRenderOutline(); lwSave();
+}
+function lwSetGen(on){
+  document.getElementById("lwBtnCont").style.display = on?"none":"inline-block";
+  document.getElementById("lwBtnRew").style.display = on?"none":"inline-block";
+  document.getElementById("lwBtnStop").style.display = on?"inline-block":"none";
+}
+function lwGenerate(prompt, sysText, onChunk, onDone){
+  if(lwAbort){ try{ lwAbort.abort(); }catch(e){} }
+  var ac = new AbortController(); lwAbort = ac;
+  var acc = "";
+  /* 【修复 v0.4.7】长文模式原走 WebView 原生 fetch，手机 file:// 下被跨域拦截（报"网络被拦截"）。
+      改走 fetchTimeout → 原生桥（与生图/聊天同一通道），用 parseSSEStream 解析整段 SSE 体。 */
+  fetchTimeout(apiBase()+"/chat/completions",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    timeout: 240000,
+    body: JSON.stringify({ model:currentModel("text"), stream:true, messages:[{role:"system",content:sysText},{role:"user",content:prompt}] })
+  }).then(function(resp){
+    if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,160)); });
+    return resp.text();
+  }).then(function(fullBody){
+    parseSSEStream(fullBody, function(delta){ acc+=delta; onChunk&&onChunk(delta, acc); });
+    onDone(acc);
+  }).catch(function(err){
+    if(err && (err.name==="AbortError"||/abort/i.test(err.message||""))){ onDone(acc, null, true); return; }
+    onDone(acc, err);
+  });
+}
+function lwContinue(){
+  if(!lwState.chapters.length){ toast("先写点或导入正文"); return; }
+  var ctx = lwState.chapters.slice(-3).map(function(c){return (c.autoTitle?"":c.title+"\n")+c.text;}).join("\n\n");
+  var instr = (document.getElementById("lwInstr").value||"").trim();
+  var sys = "你是一位专业小说续写助手。保持原文文风、人称与时态，紧接上文情节自然推进，不要重复已有内容，不要添加任何解释、标题或前缀，直接输出续写的纯正文。";
+  var prompt = "小说《"+(lwState.title||"未命名")+"》最近内容：\n\n"+ctx+"\n\n"+(instr?("续写要求："+instr+"\n"):"请续写下一章。")+"只输出续写正文。";
+  var st = document.getElementById("lwStatus"); st.textContent = "续写中…"; lwSetGen(true);
+  lwGenerate(prompt, sys, function(d, acc){ st.textContent = "续写中…（"+lwWords(acc)+"字）"; }, function(acc, err, aborted){
+    lwSetGen(false);
+    if(err){ st.textContent = "⚠️ "+friendlyErr(err); return; }
+    var gen = (acc||"").trim();
+    if(!gen){ st.textContent = "未生成内容"; return; }
+    lwState.chapters.push({ id:uid("ch"), title:"（续写）", text:gen, autoTitle:true });
+    document.getElementById("lwEditor").value = lwToText(lwState);
+    lwRenderOutline(); lwSave();
+    st.textContent = "已续写 "+lwWords(gen)+" 字";
+  });
+}
+function lwRewrite(){
+  if(!lwSelId){ toast("先在左侧选中要改写的章节"); return; }
+  var ch = lwState.chapters.filter(function(c){return c.id===lwSelId;})[0];
+  if(!ch){ toast("章节不存在"); return; }
+  var instr = (document.getElementById("lwInstr").value||"").trim() || "润色这段文字，保持原意";
+  var sys = "你是一位专业小说编辑。根据用户要求改写给定章节，保持文风一致，只输出改写后的完整章节正文，不要解释或加标题。";
+  var prompt = "请改写以下章节：\n\n"+(ch.autoTitle?"":ch.title+"\n")+ch.text+"\n\n改写要求："+instr+"\n只输出改写后的完整章节内容。";
+  var st = document.getElementById("lwStatus"); st.textContent = "改写中…"; lwSetGen(true);
+  lwGenerate(prompt, sys, function(d, acc){ st.textContent="改写中…（"+lwWords(acc)+"字）"; }, function(acc, err){
+    lwSetGen(false);
+    if(err){ st.textContent="⚠️ "+friendlyErr(err); return; }
+    var gen=(acc||"").trim();
+    if(!gen){ st.textContent="未生成内容"; return; }
+    ch.text = gen;
+    document.getElementById("lwEditor").value = lwToText(lwState);
+    lwRenderOutline(); lwSave();
+    st.textContent = "已改写 "+lwWords(gen)+" 字";
+  });
+}
+function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; document.getElementById("lwStatus").textContent="已停止"; lwSetGen(false); } }
+
 (async function init(){
   CFG = await loadCfg();   /* F34：异步解密本地配置（含加密 Key） */
   ensureInit();
   applyTheme();
-  applyBg();
   renderConvList(); renderMsgs(); updateTitle();
   updateOnline();          /* F17：离线状态条 */
   window.addEventListener("offline", function(){ updateOnline(); toast("网络已断开，发送可能失败"); });
@@ -5073,5 +5596,57 @@ function sendFeedback(){
   });
 })();
 </script>
+<style id="lwStyle">
+.lw-mask{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:200;display:none}
+.lw-mask.show{display:flex}
+.lw-box{width:100%;height:100%;max-width:1000px;margin:0 auto;background:var(--bg,#0e1420);display:flex;flex-direction:column}
+.lw-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line,#26304a)}
+.lw-title{flex:1;background:var(--bg-elev,#121826);border:1px solid var(--line,#26304a);border-radius:8px;padding:8px 10px;color:var(--text,#e7ecf3);font-size:15px;min-width:0}
+.lw-head-btns{display:flex;gap:6px;flex-shrink:0}
+.lw-head-btns button{padding:7px 12px;border:none;border-radius:8px;background:var(--accent,#3b82f6);color:#fff;font-size:13px}
+.lw-body{flex:1;display:flex;min-height:0}
+.lw-outline{width:42%;max-width:330px;border-right:1px solid var(--line,#26304a);overflow:auto;padding:8px;box-sizing:border-box}
+.lw-main{flex:1;display:flex;flex-direction:column;min-width:0}
+.lw-editor{flex:1;width:100%;border:none;outline:none;resize:none;padding:12px 14px;background:var(--bg,#0e1420);color:var(--text,#e7ecf3);font-size:15px;line-height:1.7;box-sizing:border-box;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
+.lw-tool{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line,#26304a);align-items:center}
+.lw-instr{flex:1;background:var(--bg-elev,#121826);border:1px solid var(--line,#26304a);border-radius:8px;padding:8px;color:var(--text,#e7ecf3);font-size:13px;min-width:0}
+.lw-tool button{padding:7px 12px;border:none;border-radius:8px;background:var(--accent,#3b82f6);color:#fff;font-size:13px;white-space:nowrap}
+.lw-status{padding:4px 14px 10px;font-size:12px;color:var(--text-2,#9aa6bd);min-height:18px}
+.lw-ch{display:flex;align-items:center;gap:6px;padding:8px;border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;color:var(--text,#e7ecf3)}
+.lw-ch:hover{background:var(--bg-elev,#121826)}
+.lw-ch.sel{background:var(--accent,#3b82f6);color:#fff}
+.lw-ch-no{width:20px;text-align:center;opacity:.7;flex-shrink:0}
+.lw-ch-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lw-ch-wc{font-size:11px;opacity:.7;flex-shrink:0}
+.lw-ch-del{opacity:.55;padding:0 4px;flex-shrink:0}
+.lw-empty{color:var(--text-2,#9aa6bd);font-size:13px;padding:16px;text-align:center}
+</style>
+<div id="longWritePanel" class="lw-mask">
+  <div class="lw-box">
+    <div class="lw-head">
+      <input id="lwTitle" class="lw-title" placeholder="书名" oninput="lwOnTitle()">
+      <div class="lw-head-btns">
+        <button onclick="lwNew()">新建</button>
+        <button onclick="lwImport()">导入</button>
+        <button onclick="lwExport()">导出</button>
+        <button onclick="lwClose()">关闭</button>
+      </div>
+    </div>
+    <div class="lw-body">
+      <div class="lw-outline" id="lwOutline"></div>
+      <div class="lw-main">
+        <textarea id="lwEditor" class="lw-editor" placeholder="在此粘贴或撰写全文…&#10;支持「第X章」自动分章；插入单独一行 === 可手动分章。&#10;左侧大纲可拖拽排序、删除、点选改写。" oninput="lwOnEdit()"></textarea>
+        <div class="lw-tool">
+          <input id="lwInstr" class="lw-instr" placeholder="给 AI 的指令（如：续写悬疑转折 / 把这段改口语化）">
+          <button id="lwBtnCont" onclick="lwContinue()">续写下一章</button>
+          <button id="lwBtnRew" onclick="lwRewrite()">改写选中章</button>
+          <button id="lwBtnStop" onclick="lwStop()" style="display:none">停止</button>
+        </div>
+        <div id="lwStatus" class="lw-status"></div>
+      </div>
+    </div>
+    <input type="file" id="lwFile" accept=".txt,.md,.markdown" style="display:none" onchange="lwOnFile(event)">
+  </div>
+</div>
 </body>
 </html>
