@@ -2875,13 +2875,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.16";
+var APP_VERSION = "0.4.17";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.16", date:"2026-07-26", items:[
+var CHANGELOG = [  { v:"0.4.17", date:"2026-07-26", items:[
+    "修复（web）：代码块长按仍弹菜单不弹选词柄——根因是 bindCodeblockLongPress 的 contextmenu handler 还留着 preventDefault()，原生选词虽已使能（0.4.16 APK），但 contextmenu 的 preventDefault 把系统浮动工具栏/选词柄又拦了一次",
+    "机制：bindCodeblockLongPress 的 contextmenu 去掉 preventDefault，只保留 stopPropagation；系统长按代码块 → 原生选词柄出现 → 用户拖选部分文字 → 系统浮动工具栏(复制/全选)正常出现。整块复制仍用代码块顶部「复制」按钮",
+    "纯 web 热更，无需重装 APK；需配合 0.4.16 APK（含原生 setOnLongClickListener{false}）一起生效",
+  ]},
+  { v:"0.4.16", date:"2026-07-26", items:[
     "APK 重打包（原生层修复）：代码块长按无法「局部复制」的根因不在 JS，在原生层——WebViewFileBridge 设置了自定义 WebChromeClient（为 <input type=file>），Android 系统因此在原生层禁用长按选词（bugzilla.wikimedia.org/31484）。JS 怎么修都没用",
     "原生修复：MainActivity.kt 在 fileBridge.attach() 后加 webView.setOnLongClickListener { false }——返回 false 让系统不吞长按事件，原声选词正常触发；用户长按代码块内文字 → 出选词柄 → 拖选部分 → 系统复制",
     "web 修复沿用 v0.4.15：bindCodeblockLongPress 只 stopPropagation 拦消息行菜单，去掉 preventDefault 不拦系统选词，整块复制用代码块顶部「复制」按钮",
@@ -3246,8 +3251,8 @@ function bindCodeblockLongPress(el){
     e.stopPropagation();
   });
   el.addEventListener("contextmenu", function(e){
-    e.preventDefault();
     e.stopPropagation();
+    /* 不 preventDefault —— 让系统托出选词柄 + 浮动工具栏（复制/全选），而不是被 JS 自定义菜单拦截 */
   });
 }
 function onRowLongPress(m){
