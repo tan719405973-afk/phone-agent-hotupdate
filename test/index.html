@@ -2875,13 +2875,21 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.17";
+var APP_VERSION = "0.4.18";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.17", date:"2026-07-26", items:[
+var CHANGELOG = [  { v:"0.4.18", date:"2026-07-26", items:[
+    "修复（web）：整条消息/代码块长按均无法出系统选词柄——根因是 bindLongPress 的 480ms touchstart 定时器抢在 Chromium 原生选词触发前弹出了自定义菜单，且 contextmenu 的 preventDefault 拦截了系统浮动工具栏",
+    "机制（根治）：①bindLongPress 去掉 480ms 定时器，改为只监听 contextmenu（Chromium 检测到长按后触发，约 500ms），文字消息上不 preventDefault → Chromium 原生出选词柄 + 浮动工具栏（复制/全选/分享）",
+    "②onRowLongPress 区分消息类型：文字消息不 preventDefault（选词柄 + 系统工具栏 + App 菜单共存），用户可用系统工具栏复制或 App 的「复制选中/重发/保存/引用/删除」",
+    "③图片/视频/文件消息仍 preventDefault + 弹 App 自定义菜单（保存图片/视频/复制链接）",
+    "④代码块（bindCodeblockLongPress）contextmenu 只 stopPropagation 拦行菜单、不 preventDefault",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.17", date:"2026-07-26", items:[
     "修复（web）：代码块长按仍弹菜单不弹选词柄——根因是 bindCodeblockLongPress 的 contextmenu handler 还留着 preventDefault()，原生选词虽已使能（0.4.16 APK），但 contextmenu 的 preventDefault 把系统浮动工具栏/选词柄又拦了一次",
     "机制：bindCodeblockLongPress 的 contextmenu 去掉 preventDefault，只保留 stopPropagation；系统长按代码块 → 原生选词柄出现 → 用户拖选部分文字 → 系统浮动工具栏(复制/全选)正常出现。整块复制仍用代码块顶部「复制」按钮",
     "纯 web 热更，无需重装 APK；需配合 0.4.16 APK（含原生 setOnLongClickListener{false}）一起生效",
@@ -3228,13 +3236,13 @@ function closeActionSheet(){
   var m = document.getElementById("asMask"); if(m) m.classList.remove("show");
   window._asItems = null;
 }
-/* 长按：触摸 480ms 触发，或桌面右键 */
+/* 长按：不用 480ms 定时器——让 Chromium 原生长按选词先出选词柄，
+   contextmenu 事件由 Chromium 在检测到长按后触发（约 500ms）。
+   回传事件给回调，由回调根据消息类型决定是否 preventDefault。 */
 function bindLongPress(el, cb){
-  var timer = null;
-  el.addEventListener("touchstart", function(){ timer = setTimeout(function(){ timer=null; cb(); }, 480); }, {passive:true});
-  el.addEventListener("touchmove", function(){ if(timer){ clearTimeout(timer); timer=null; } });
-  el.addEventListener("touchend", function(){ if(timer){ clearTimeout(timer); timer=null; } });
-  el.addEventListener("contextmenu", function(e){ e.preventDefault(); cb(); });
+  el.addEventListener("contextmenu", function(e){
+    cb(e);
+  });
 }
 /* F42-fix：代码块长按只阻止冒泡到消息行，不干扰系统原生长按选词。
    用户想要的是「局部复制」——在代码文字上长按 → 系统出选词柄 → 拖选部分文字 → 复制选中的那块。
@@ -3255,22 +3263,27 @@ function bindCodeblockLongPress(el){
     /* 不 preventDefault —— 让系统托出选词柄 + 浮动工具栏（复制/全选），而不是被 JS 自定义菜单拦截 */
   });
 }
-function onRowLongPress(m){
+function onRowLongPress(m, e){
   var items = [];
   if(m.type === "text"){
     var sel = (window.getSelection && window.getSelection().toString) ? window.getSelection().toString() : "";
     if(sel && sel.trim()){
       items.push({label:"复制选中", onclick:function(){ copyText(sel); }});
-    } else {
-      items.push({label:"复制文字", onclick:function(){ copyText(m.text||""); }});
     }
     if(m.role === "user") items.push({label:"重发", onclick:function(){ resendUser(m); }});
     if(m.role === "assistant") items.push({label:"保存为文件", onclick:function(){ downloadMsg(m.id); }});
-  } else if(m.type === "image"){
-    items.push({label:"保存图片", onclick:function(){ downloadUrl(m.media.url, (m.media.caption||"image")+".png"); }});
-    items.push({label:"复制链接", onclick:function(){ copyText(m.media.url); }});
-  } else if(m.type === "video"){
-    items.push({label:"保存视频", onclick:function(){ downloadUrl(m.media.url, "video.mp4"); }});
+    /* 文字消息 不 preventDefault —— Chromium 原生出选词柄 + 浮动复制工具栏，
+       用户可在系统工具栏复制，也可用 App 的「复制选中」（若有选中文字）。
+       不再弹「复制文字」（整条复制），整条复制走系统工具栏的「全选→复制」。 */
+  } else {
+    // 图片/视频/文件：阻止系统菜单，弹 App 自定义菜单
+    if(e && e.preventDefault) e.preventDefault();
+    if(m.type === "image"){
+      items.push({label:"保存图片", onclick:function(){ downloadUrl(m.media.url, (m.media.caption||"image")+".png"); }});
+      items.push({label:"复制链接", onclick:function(){ copyText(m.media.url); }});
+    } else if(m.type === "video"){
+      items.push({label:"保存视频", onclick:function(){ downloadUrl(m.media.url, "video.mp4"); }});
+    }
   }
   if(m.type !== "loading"){
     items.push({label:"引用", onclick:function(){ quoteMsg(m); }});
@@ -3866,7 +3879,7 @@ function renderRow(m){
             (m._cancelable?'<div class="gen-actions"><a onclick="cancelVideoPoll()">停止生成</a></div>':'');
   }
   row.innerHTML = '<div class="avatar">'+av+'</div><div class="bubble">'+inner+'</div>';
-  bindLongPress(row, function(){ onRowLongPress(m); });
+  bindLongPress(row, function(e){ onRowLongPress(m, e); });
   // F42-fix：消息内每个代码块单独绑 longpress，长按代码块不冒泡到 row 的 onRowLongPress
   var cbs = row.querySelectorAll(".codeblock");
   for(var ci=0; ci<cbs.length; ci++) bindCodeblockLongPress(cbs[ci]);

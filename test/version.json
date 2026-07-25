@@ -1,5 +1,5 @@
 {
-  "version": "0.4.17",
-  "note": "v0.4.17（web 热更）：代码块 contextmenu 彻底去掉 preventDefault，让系统选词柄 + 浮动工具栏正常出现；原生层 0.4.16 APK 已含 setOnLongClickListener{false}",
+  "version": "0.4.18",
+  "note": "v0.4.18（web 热更）：去掉整个 480ms 定时器 + 文字消息不 preventDefault——Chromium 原生长按选词柄正常出现；app 菜单仅保留「复制选中/重发/保存引用删除」，不再复用复制功能",
   "url": ""
 }
