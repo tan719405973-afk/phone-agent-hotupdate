@@ -2875,13 +2875,19 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.11";
+var APP_VERSION = "0.4.12";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.11", date:"2026-07-25", items:[
+var CHANGELOG = [  { v:"0.4.12", date:"2026-07-25", items:[
+    "修复：长按 AI 回复里的代码块，被冒泡到消息行 onRowLongPress → 弹「复制文字」复制整条 AI 回复（含代码块外的说明文字），无法只复制代码块",
+    "机制：给 .codeblock 单独绑 longpress，touchstart stopPropagation 阻止冒泡到外层消息行 + 弹「复制这段代码」菜单（复用 showActionSheet + copyText(window._codes[cid])）；右键菜单也走同一路径",
+    "附带：preventDefault 阻止 WebView 默认长按进入选词模式，避免和我们的菜单打架（短按 / 拖选仍走默认选词入口）",
+    "本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.11", date:"2026-07-25", items:[
     "删除：「聊天背景（用图片）」功能——设置页入口、applyBg/pickBg/clearBg 函数、bgFileInput 隐藏 input、init 调用、CELL_ICONS 图标全部移除；旧 CFG.bgImage 数据不再被读取（死数据，不报错）",
     "含 v0.4.10 检查更新缓存修复 + v0.4.9 生图下载入系统相册；本次为 APK 重装更新，覆盖安装保留数据",
   ]},
@@ -3203,6 +3209,39 @@ function bindLongPress(el, cb){
   el.addEventListener("touchmove", function(){ if(timer){ clearTimeout(timer); timer=null; } });
   el.addEventListener("touchend", function(){ if(timer){ clearTimeout(timer); timer=null; } });
   el.addEventListener("contextmenu", function(e){ e.preventDefault(); cb(); });
+}
+/* F42-fix：代码块长按单独处理——stopPropagation 阻止冒泡到外层消息行 onRowLongPress，
+   否则长按代码块会被吞进"复制文字"（整条 AI 回复）。这里弹"复制这段代码"只复制代码块内容。 */
+function bindCodeblockLongPress(el){
+  var cid = el.getAttribute("data-cid");
+  if(!cid) return;
+  var timer = null;
+  el.addEventListener("touchstart", function(e){
+    e.stopPropagation();  // 不让 row 的 longpress timer 启动
+    e.preventDefault();   // 阻止 WebView 默认长按进入选词模式，让我们的菜单接管
+    timer = setTimeout(function(){
+      timer = null;
+      if(window.getSelection){ window.getSelection().removeAllRanges(); }
+      var code = window._codes[cid];
+      if(code == null) return;
+      showActionSheet([{label:"复制这段代码", onclick:function(){ copyText(code); }}]);
+    }, 480);
+  });
+  el.addEventListener("touchmove", function(e){
+    if(timer){ clearTimeout(timer); timer = null; }
+    e.stopPropagation();
+  });
+  el.addEventListener("touchend", function(e){
+    if(timer){ clearTimeout(timer); timer = null; }
+    e.stopPropagation();
+  });
+  el.addEventListener("contextmenu", function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    var code = window._codes[cid];
+    if(code == null) return;
+    showActionSheet([{label:"复制这段代码", onclick:function(){ copyText(code); }}]);
+  });
 }
 function onRowLongPress(m){
   var items = [];
@@ -3816,6 +3855,9 @@ function renderRow(m){
   }
   row.innerHTML = '<div class="avatar">'+av+'</div><div class="bubble">'+inner+'</div>';
   bindLongPress(row, function(){ onRowLongPress(m); });
+  // F42-fix：消息内每个代码块单独绑 longpress，长按代码块不冒泡到 row 的 onRowLongPress
+  var cbs = row.querySelectorAll(".codeblock");
+  for(var ci=0; ci<cbs.length; ci++) bindCodeblockLongPress(cbs[ci]);
   return row;
 }
 function mediaActions(url,label){
@@ -5200,7 +5242,7 @@ function renderRichText(text){
       var code = parts[i].trim();
       var cid = "cb" + (++_codeSeq);
       window._codes[cid] = code;
-      html += '<div class="codeblock"><div class="codebar"><span class="codelang">代码</span>'+
+      html += '<div class="codeblock" data-cid="'+cid+'"><div class="codebar"><span class="codelang">代码</span>'+
               '<button class="copybtn" onclick="copyText(window._codes[\''+cid+'])">复制</button></div>'+
               '<pre><code>'+esc(code)+'</code></pre></div>';
     } else {
