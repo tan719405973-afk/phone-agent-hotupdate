@@ -2875,13 +2875,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.13";
+var APP_VERSION = "0.4.14";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.13", date:"2026-07-25", items:[
+var CHANGELOG = [  { v:"0.4.14", date:"2026-07-25", items:[
+    "根治：检查更新永远显示「已是最新 v0.4.11」——根因是 CFG.updateBase 默认值写死成主通道地址（无 /test），它在 updateBaseUrl() 里优先级高于 DEFAULT_UPDATE_BASE(/test)，导致新装/重置/恢复内置版本后都读主通道(冻结 0.4.11)，永远收不到 /test 的新版",
+    "机制：①CFG.updateBase 默认值改为空字符串，让 updateBaseUrl() 回退到 DEFAULT_UPDATE_BASE(/test)；②updateBaseUrl() 加兜底——若配置值恰为裸主通道地址(无 /test)，视为误配自动纠偏回 /test（主通道是备份、不作更新源）",
+    "含 v0.4.13 覆盖安装自动清旧热更缓存；本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.13", date:"2026-07-25", items:[
     "根治：覆盖安装 APK 后，旧热更网页缓存（files/www/index.html）盖住新版，导致「装完还是旧版本」——启动比对 APK BuildConfig.VERSION_CODE 与本地记录，版本变化即自动删除旧缓存，让新 APK 内置 web 直接生效（游戏客户端「大更新清补丁」标准做法）",
     "纯 web 热更（versionCode 不变）不受影响，缓存照常生效",
     "含 v0.4.12 代码块长按修复；本次为 APK 重装更新，覆盖安装保留数据",
@@ -3128,7 +3133,7 @@ var DEFAULT_CFG = {
   theme: "light",
   saveLocation: "Download/phone-agent",
   bgImage: "",
-  updateBase: "https://tan719405973-afk.github.io/phone-agent-hotupdate",   /* F35：热更新地址（GitHub Pages 为默认值，空=不检查） */
+  updateBase: "",   /* F35：默认空 → 回退 DEFAULT_UPDATE_BASE(/test)；曾误填主通道(无/test)导致永远「已是最新」(v0.4.14 根治) */
   shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
   genParams: { size:"", n:1 },  /* F23 生成参数：尺寸(空=模型默认) / 张数 */
   fontScale: 1                  /* F31 字体大小：0.85 小 / 1 标准 / 1.15 大 / 1.3 特大 */
@@ -4662,7 +4667,11 @@ function cellNav(label, onclick){
 /* 默认热更新地址（GitHub Pages）。CFG.updateBase 为空时回退到此，确保新装/旧装用户都能直接检查更新 */
 var DEFAULT_UPDATE_BASE = "https://tan719405973-afk.github.io/phone-agent-hotupdate/test";
 function updateBaseUrl(){
-  return (CFG.updateBase || DEFAULT_UPDATE_BASE || "").trim().replace(/\/+$/,"");
+  var u = (CFG.updateBase || "").trim().replace(/\/+$/,"");
+  if(!u) u = DEFAULT_UPDATE_BASE;
+  // 兜底：裸主通道（无 /test）视为误配——主通道是备份、不作更新源，回退 /test（v0.4.14 根治「通道错位」复发）
+  if(u === "https://tan719405973-afk.github.io/phone-agent-hotupdate") u = DEFAULT_UPDATE_BASE;
+  return u;
 }
 /* 用 <script> 注入方式加载更新文件，绕过 GitHub Pages 等不返回 CORS 头的限制（fetch 会被跨域拦截） */
 function loadScript(url, ms){
