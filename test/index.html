@@ -2875,7 +2875,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.19";
+var APP_VERSION = "0.4.20";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -3242,25 +3242,6 @@ function closeActionSheet(){
 function bindLongPress(el, cb){
   el.addEventListener("contextmenu", function(e){
     cb(e);
-  });
-}
-/* F42-fix：代码块长按只阻止冒泡到消息行，不干扰系统原生长按选词。
-   用户想要的是「局部复制」——在代码文字上长按 → 系统出选词柄 → 拖选部分文字 → 复制选中的那块。
-   不弹"复制这段代码"菜单（整块复制用代码块顶上的「复制」按钮搞定）。 */
-function bindCodeblockLongPress(el){
-  el.addEventListener("touchstart", function(e){
-    e.stopPropagation();        // 不让消息行的 longpress timer 启动（防弹"复制文字"盖住整条消息）
-    /* 故意不 preventDefault —— 保留 WebView 原生长按选词，让用户能局部选中文字 */
-  });
-  el.addEventListener("touchmove", function(e){
-    e.stopPropagation();
-  });
-  el.addEventListener("touchend", function(e){
-    e.stopPropagation();
-  });
-  el.addEventListener("contextmenu", function(e){
-    e.stopPropagation();
-    /* 不 preventDefault —— 让系统托出选词柄 + 浮动工具栏（复制/全选），而不是被 JS 自定义菜单拦截 */
   });
 }
 function onRowLongPress(m, e){
@@ -3872,9 +3853,6 @@ function renderRow(m){
   }
   row.innerHTML = '<div class="avatar">'+av+'</div><div class="bubble">'+inner+'</div>';
   bindLongPress(row, function(e){ onRowLongPress(m, e); });
-  // F42-fix：消息内每个代码块单独绑 longpress，长按代码块不冒泡到 row 的 onRowLongPress
-  var cbs = row.querySelectorAll(".codeblock");
-  for(var ci=0; ci<cbs.length; ci++) bindCodeblockLongPress(cbs[ci]);
   return row;
 }
 function mediaActions(url,label){
