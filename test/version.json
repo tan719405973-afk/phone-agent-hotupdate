@@ -1,5 +1,5 @@
 {
-  "version": "0.4.15",
-  "note": "v0.4.15：修复代码块长按误用 preventDefault 禁止选词 → 恢复原生长按选词（局部复制），只拦消息行菜单不拦系统选词",
+  "version": "0.4.16",
+  "note": "v0.4.16：APK 重打包——原生层恢复长按选词（setOnLongClickListener { false } 绕开 WebChromeClient 禁选词 bug）+ web 层代码块长按局部复制修复；装完即能在代码块内原生长按拖选部分文本复制",
   "url": ""
 }

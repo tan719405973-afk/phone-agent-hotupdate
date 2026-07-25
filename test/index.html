@@ -2875,13 +2875,19 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.15";
+var APP_VERSION = "0.4.16";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.15", date:"2026-07-26", items:[
+var CHANGELOG = [  { v:"0.4.16", date:"2026-07-26", items:[
+    "APK 重打包（原生层修复）：代码块长按无法「局部复制」的根因不在 JS，在原生层——WebViewFileBridge 设置了自定义 WebChromeClient（为 <input type=file>），Android 系统因此在原生层禁用长按选词（bugzilla.wikimedia.org/31484）。JS 怎么修都没用",
+    "原生修复：MainActivity.kt 在 fileBridge.attach() 后加 webView.setOnLongClickListener { false }——返回 false 让系统不吞长按事件，原声选词正常触发；用户长按代码块内文字 → 出选词柄 → 拖选部分 → 系统复制",
+    "web 修复沿用 v0.4.15：bindCodeblockLongPress 只 stopPropagation 拦消息行菜单，去掉 preventDefault 不拦系统选词，整块复制用代码块顶部「复制」按钮",
+    "本次为 APK 重装更新，覆盖安装保留数据",
+  ]},
+  { v:"0.4.15", date:"2026-07-26", items:[
     "修复：代码块长按「局部复制」——v0.4.12 的 fix 用 preventDefault 拦截了原生长按选词 + 弹「复制这段代码」，用户点复制后只能整块复制、不能拖选部分文本",
     "机制：bindCodeblockLongPress 去掉 preventDefault（恢复 WebView 原生文字选词）和 480ms 弹窗，只 stopPropagation 拦住消息行的「复制文字」菜单不让干扰；用户长按代码块内文字 → 出选词柄 → 拖选部分 → 系统复制。整块复制仍用代码块顶部的「复制」按钮（copybtn）",
     "纯 web 热更，无需重装 APK",
