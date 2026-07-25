@@ -2875,7 +2875,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.20";
+var APP_VERSION = "0.4.21";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -5241,8 +5241,8 @@ function renderRichText(text){
       var code = parts[i].trim();
       var cid = "cb" + (++_codeSeq);
       window._codes[cid] = code;
-      html += '<div class="codeblock" data-cid="'+cid+'"><div class="codebar"><span class="codelang">代码</span>'+
-              '<button class="copybtn" onclick="copyText(window._codes[\''+cid+'])">复制</button></div>'+
+      html += '<div class="codeblock"><div class="codebar"><span class="codelang">代码</span>'+
+              '<button class="copybtn" onclick="var el=this.closest(\'.codeblock\').querySelector(\'code\');copyText(el?el.textContent:\'\')">复制</button></div>'+
               '<pre><code>'+esc(code)+'</code></pre></div>';
     } else {
       var t = parts[i];
