@@ -2875,7 +2875,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.25";
+var APP_VERSION = "0.4.26";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -4132,7 +4132,6 @@ function doChat(text, attachments){
   if(CFG.agentOsMode){
     if(attachments.length){ toast("Agent OS 模式暂不支持附件，只发送文字"); }
     return doAgentOsChat(text);
-  }
   }
   var c = current();
   var allTxt = c.messages.filter(function(m){return m.type==="text";});

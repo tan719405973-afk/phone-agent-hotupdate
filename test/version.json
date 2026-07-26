@@ -1,5 +1,5 @@
 {
-  "version": "0.4.25",
-  "note": "v0.4.25（web 热更）：修复 v0.4.24 阻塞 script 标签导致页面卡死——改为异步加载 agent-os-phone.js",
+  "version": "0.4.26",
+  "note": "v0.4.26（web 热更）：修复 doChat 函数多一个 } 导致 App 全页面卡死——根因是之前改 Agent OS 模式时多写了一个闭合括号",
   "url": ""
 }
