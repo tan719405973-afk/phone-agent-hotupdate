@@ -2875,7 +2875,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.22";
+var APP_VERSION = "0.4.23";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -3160,7 +3160,9 @@ var DEFAULT_CFG = {
   updateBase: "",   /* F35：默认空 → 回退 DEFAULT_UPDATE_BASE(/test)；曾误填主通道(无/test)导致永远「已是最新」(v0.4.14 根治) */
   shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
   genParams: { size:"", n:1 },  /* F23 生成参数：尺寸(空=模型默认) / 张数 */
-  fontScale: 1                  /* F31 字体大小：0.85 小 / 1 标准 / 1.15 大 / 1.3 特大 */
+  fontScale: 1,                  /* F31 字体大小：0.85 小 / 1 标准 / 1.15 大 / 1.3 特大 */
+  agentOsMode: false,            /* 聊天使用 Agent OS 服务（需电脑运行 npm run server） */
+  agentOsUrl: "http://192.168.1.100:3001"  /* Agent OS 服务器地址 */
 };
 var CFG = null;
 
@@ -4055,9 +4057,61 @@ function cleanPrompt(t, intent){
   return t.trim();
 }
 
+/* ---- Agent OS 聊天（走电脑服务器，非流式一次性返回） ---- */
+function doAgentOsChat(text, sessionId){
+  var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
+  renderMsgs();
+  var rowBubble = function(){ return document.querySelector('.row[data-mid="'+aiMsg.id+'"] .bubble'); };
+  var b = rowBubble(); if(b) b.innerHTML='<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+  var url = (CFG.agentOsUrl||"").replace(/\/+$/,"") + "/api/chat";
+  nativeFetch(url, {
+    method:"POST",
+    timeout: 120000,
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ message: text, sessionId: sessionId })
+  }).then(function(resp){
+    if(!resp.ok) throw new Error("Agent OS HTTP "+resp.status);
+    return resp.text();
+  }).then(function(body){
+    var fullText = "", toolLines = [];
+    (body||"").split("\n\n").forEach(function(block){
+      var m = block.match(/^data:\s*(.*)/m);
+      if(!m) return;
+      try{
+        var ev = JSON.parse(m[1]);
+        if(ev.type === "text" && ev.content){
+          fullText += ev.content;
+          var bb = rowBubble();
+          if(bb) bb.innerHTML = esc(fullText).replace(/\n/g,"<br>") + (toolLines.length ? '<div style="margin-top:8px;font-size:12px;color:var(--text-3);border-top:1px solid var(--line);padding-top:6px">'+toolLines.join("<br>")+'</div>' : "");
+          scrollBottom();
+        } else if(ev.type === "tool"){
+          toolLines.push("🔧 调用工具："+(ev.name||ev.id||"未知"));
+        } else if(ev.type === "tool_result"){
+          toolLines.push("✅ "+(ev.isError?"失败":"完成"));
+        } else if(ev.type === "error"){
+          fullText += "\n\n⚠️ " + (ev.message||"Agent OS 执行出错");
+        }
+      }catch(e){}
+    });
+    finalizeChat(aiMsg, fullText || "（Agent OS 返回为空）", []);
+  }).catch(function(err){
+    finalizeChat(aiMsg, "⚠️ Agent OS 连接失败："+(err.message||err), []);
+    aiMsg._err = true;
+  });
+}
+
 /* ---- 线① 文本对话（流式打字机 F22）+ F13/F14 附件处理 ---- */
 function doChat(text, attachments){
   attachments = attachments || [];
+  /* Agent OS 模式：聊天走电脑上跑的 Agent OS 服务 */
+  if(CFG.agentOsMode){
+    var c = current();
+    // Agent OS 按会话区分 session
+    if(!window._agentOsSession) window._agentOsSession = {};
+    var sessionId = window._agentOsSession[c.id] || (window._agentOsSession[c.id] = "pa_" + c.id);
+    if(attachments.length){ toast("Agent OS 模式暂不支持附件，只发送文字"); }
+    return doAgentOsChat(text, sessionId);
+  }
   var c = current();
   var allTxt = c.messages.filter(function(m){return m.type==="text";});
   var summaryMsg = allTxt.filter(function(m){return m.role==="summary";})[0];
@@ -4615,6 +4669,19 @@ function renderSettings(){
   '<div class="group"><div class="gt">账号</div>'+
     cellNav("API 接口管理（当前："+esc(currentApi().name)+"）", "openApiPage()")+
     cellNav("我的记忆", "openMemory()")+
+  '</div>'+
+  '<div class="group"><div class="gt">高级</div>'+
+    '<div class="cell" style="display:block;padding:10px 14px">'+
+      '<label style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">'+
+        '<span class="cl" style="font-size:14px">🤖 使用 Agent OS</span>'+
+        '<input type="checkbox" '+(CFG.agentOsMode?'checked':'')+' onchange="CFG.agentOsMode=this.checked;saveCfg();toast(\'已切换聊天模式：\'+(this.checked?\'Agent OS\':\'直连 API\'))" style="width:20px;height:20px">'+
+      '</label>'+
+      '<div style="font-size:12px;color:var(--text-3);margin-top:4px">开启后聊天走电脑上跑的 Agent OS 服务，支持工具调用和文件操作</div>'+
+    '</div>'+
+    '<div class="cell" style="display:block;padding:10px 14px">'+
+      '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">Agent OS 服务器地址</div>'+
+      '<input type="text" placeholder="http://电脑IP:3001" value="'+esc(CFG.agentOsUrl||"")+'" onchange="CFG.agentOsUrl=this.value.trim();saveCfg();toast(\'已保存 Agent OS 地址\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+
+    '</div>'+
   '</div>'+
   '<div class="group"><div class="gt">关于</div>'+
     '<div class="cell"><span class="cl">版本</span><span class="cr">v'+APP_VERSION+'</span></div>'+
