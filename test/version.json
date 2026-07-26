@@ -1,5 +1,5 @@
 {
-  "version": "0.4.24",
-  "note": "v0.4.23（web 热更）：Agent OS 集成 MVP——设置页加开关/地址，聊天可选走电脑 Agent OS 服务",
+  "version": "0.4.25",
+  "note": "v0.4.25（web 热更）：修复 v0.4.24 阻塞 script 标签导致页面卡死——改为异步加载 agent-os-phone.js",
   "url": ""
 }

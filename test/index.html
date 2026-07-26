@@ -2873,10 +2873,9 @@ var qrcode = function() {
 }));
 
 </script>
-<script src="agent-os-phone.js"></script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.24";
+var APP_VERSION = "0.4.25";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -5724,6 +5723,13 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
   window.addEventListener("online", function(){ updateOnline(); toast("网络已恢复"); });
 
   silentCheckUpdate();       /* F35：启动静默检查热更新 */
+  /* 异步加载 Agent OS（不阻塞页面渲染） */
+  try{
+    var aosUrl = location.href.replace(/[^/]*$/,"") + "agent-os-phone.js";
+    loadScript(aosUrl, 10000).catch(function(e){
+      console.warn("Agent OS 加载失败", e);
+    });
+  }catch(e){}
   if(!localStorage.getItem(GUIDE_KEY)){ try{ showGuide(); }catch(e){} }  /* F38：首次打开弹新手引导 */
   var input=document.getElementById("input");
   input.addEventListener("keydown",function(e){

@@ -1,1 +1,1 @@
-window.__PA_VER__ = {"version": "0.4.24", "note": "v0.4.23\uff08web \u70ed\u66f4\uff09\uff1aAgent OS \u96c6\u6210 MVP\u2014\u2014\u8bbe\u7f6e\u9875\u52a0\u5f00\u5173/\u5730\u5740\uff0c\u804a\u5929\u53ef\u9009\u8d70\u7535\u8111 Agent OS \u670d\u52a1", "url": ""};
+window.__PA_VER__ = {"version": "0.4.25", "note": "v0.4.25\uff08web \u70ed\u66f4\uff09\uff1a\u4fee\u590d v0.4.24 \u963b\u585e script \u6807\u7b7e\u5bfc\u81f4\u9875\u9762\u5361\u6b7b\u2014\u2014\u6539\u4e3a\u5f02\u6b65\u52a0\u8f7d agent-os-phone.js", "url": ""};
