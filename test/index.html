@@ -3797,13 +3797,19 @@ Logger.info("Agent OS for Phone 已加载", { version: "0.1.0", tools: Tools.lis
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.30";
+var APP_VERSION = "0.4.31";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.30", date:"2026-07-26", items:[
+var CHANGELOG = [  { v:"0.4.31", date:"2026-07-27", items:[
+    "重构：长文模式改为 Agent 对话驱动——去掉旧编辑器/续写/改写按钮，替换为聊天界面+写作设定区",
+    "新增：写作设定栏（左栏可折叠），粘贴小说设定/指南后，Agent 自动按规则创作",
+    "新增：Agent 对话写小说——跟 Agent 对话（如'写下一章''修改第三章'），AI 生成后自动写入 .txt 文件并刷新大纲",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.30", date:"2026-07-26", items:[
     "修复：Agent OS 错误提示细化——Failed to fetch 时给出具体排查指引",
     "纯 web 热更，无需重装 APK",
   ]},
@@ -6455,7 +6461,7 @@ var LW_KEY = "pa_longwrite";
 var lwState = { title:"未命名小说", chapters:[], updated:0 };
 var lwSelId = null;
 var lwAbort = null;
-var lwEditTimer = null;
+var lwGuideOpen = false;
 
 function lwLoad(){
   try{ var s = JSON.parse(localStorage.getItem(LW_KEY)||"null"); if(s && s.chapters){ lwState = s; } }catch(e){}
@@ -6523,19 +6529,163 @@ function lwToText(st){
 function openLongWrite(){
   lwLoad();
   document.getElementById("lwTitle").value = lwState.title || "未命名小说";
-  document.getElementById("lwEditor").value = lwToText(lwState);
+  lwLoadGuide();
   lwSelId = null; lwRenderOutline(); show("longWritePanel");
 }
 function lwClose(){ hide("longWritePanel"); }
-function lwOnTitle(){ lwState.title = (document.getElementById("lwTitle").value||"").trim() || "未命名小说"; lwSave(); }
-function lwOnEdit(){
-  clearTimeout(lwEditTimer);
-  lwEditTimer = setTimeout(function(){
-    lwState.chapters = lwSplit(document.getElementById("lwEditor").value, lwState.chapters);
-    if(lwSelId && !lwState.chapters.some(function(c){return c.id===lwSelId;})) lwSelId=null;
-    lwRenderOutline(); lwSave();
-  }, 600);
+
+/* 写作设定 */
+var lwGuideLoaded = false;
+function lwLoadGuide(){
+  if(lwGuideLoaded) return;
+  lwGuideLoaded = true;
+  var ta = document.getElementById("lwGuideText");
+  if(!ta) return;
+  try{
+    var saved = localStorage.getItem("pa_lw_guide") || "";
+    ta.value = saved;
+  }catch(e){}
 }
+function lwSaveGuide(){
+  var ta = document.getElementById("lwGuideText");
+  if(!ta) return;
+  try{ localStorage.setItem("pa_lw_guide", ta.value || ""); }catch(e){}
+}
+var lwGuideOpen = false;
+function lwToggleGuide(){
+  lwGuideOpen = !lwGuideOpen;
+  var bd = document.getElementById("lwGuideBody");
+  var ar = document.getElementById("lwGuideArrow");
+  if(bd) bd.style.display = lwGuideOpen ? "block" : "none";
+  if(ar) ar.textContent = lwGuideOpen ? "▾" : "▸";
+}
+
+/* Agent 聊天写小说 */
+var lwAgentAbort = null;
+function lwAddChatMsg(role, content){
+  var box = document.getElementById("lwChatMsgs");
+  if(!box) return;
+  var d = document.createElement("div");
+  d.className = "msg " + role;
+  d.textContent = content;
+  if(role === "agent" && !content) d.innerHTML = '<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  return d;
+}
+function lwUpdateChatMsg(role, content){
+  var box = document.getElementById("lwChatMsgs");
+  if(!box) return;
+  var last = box.lastElementChild;
+  if(last && last.classList.contains(role)){
+    last.textContent = content;
+    box.scrollTop = box.scrollHeight;
+    return last;
+  }
+  return lwAddChatMsg(role, content);
+}
+function lwAgentStop(){
+  if(lwAgentAbort){
+    try{ lwAgentAbort.abort(); }catch(e){}
+    lwAgentAbort = null;
+  }
+  document.getElementById("lwAgentStop").style.display = "none";
+  document.getElementById("lwAgentSend").style.display = "";
+  lwAddChatMsg("agent", "❌ 已停止生成");
+}
+function lwAgentSend(){
+  var inp = document.getElementById("lwAgentInp");
+  var text = inp.value.trim();
+  if(!text) return;
+  inp.value = "";
+  inp.style.height = "auto";
+  if(!currentApiKey()){
+    toast("请先配置 API Key");
+    return;
+  }
+  lwAddChatMsg("user", text);
+  var aiEl = lwAddChatMsg("agent", "");
+  document.getElementById("lwAgentSend").style.display = "none";
+  document.getElementById("lwAgentStop").style.display = "";
+
+  /* 构建上下文 */
+  var guide = (document.getElementById("lwGuideText")||{}).value || "";
+  var novelText = lwToText(lwState);
+  var recentContent = novelText.slice(-4000); // 最近 4000 字供参考
+  var chapterSummary = (lwState.chapters||[]).map(function(c,i){
+    return (i+1)+". " + c.title + "（"+lwWords(c.text)+"字）";
+  }).join("\n");
+
+  var sysMsg = "";
+  if(guide) sysMsg += "【写作设定/规则】\n" + guide + "\n\n";
+  sysMsg += "【当前小说概况】\n标题：" + lwState.title + "\n章节列表：\n" + (chapterSummary||"（空）") + "\n\n";
+  sysMsg += "【最近正文（供参考，不要重复已有内容）】\n" + recentContent + "\n\n";
+  sysMsg += "【你的职责】\n你是专业小说写作助手。根据写作设定和用户指令创作小说内容。\n";
+  sysMsg += "要求：\n1. 直接输出小说正文，不要加评论、不要加说明\n";
+  sysMsg += "2. 如果你写的是新章节，输出完整的章节内容\n";
+  sysMsg += "3. 如果是改写/修改，只输出修改后的部分\n";
+  sysMsg += "4. 生成完成后，我会帮你自动写入 .txt 文件\n";
+  sysMsg += "5. 遵循写作设定中的去AI味规则和所有要求";
+
+  /* 调 API */
+  lwAgentAbort = new AbortController();
+  var acc = "";
+  var fn = typeof fetchTimeout === 'function' ? fetchTimeout : (typeof nativeFetch === 'function' ? nativeFetch : fetch);
+  var url = (typeof apiBase === 'function' ? apiBase() : "") + "/chat/completions";
+  var key = typeof currentApiKey === 'function' ? currentApiKey() : "";
+  var model = typeof currentModel === 'function' ? currentModel("text") : "agnes-2.0-flash";
+
+  fn(url, {
+    method: "POST",
+    timeout: 180000,
+    headers: { "Content-Type":"application/json", "Authorization":"Bearer " + key },
+    body: JSON.stringify({
+      model: model,
+      stream: true,
+      messages: [
+        { role:"system", content: sysMsg },
+        { role:"user", content: text }
+      ]
+    })
+  }).then(function(r){
+    if(!r.ok) return r.text().then(function(t){ throw new Error("HTTP "+r.status+" "+t.slice(0,120)); });
+    return r.text();
+  }).then(function(body){
+    /* 解析 SSE */
+    body.split("\n").forEach(function(line){
+      var m = line.match(/^data:\s*(.*)/);
+      if(!m) return;
+      var d = m[1].trim();
+      if(!d || d === "[DONE]") return;
+      try{
+        var j = JSON.parse(d);
+        var delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+        if(delta){ acc += delta; lwUpdateChatMsg("agent", acc); }
+      }catch(e){}
+    });
+  }).catch(function(err){
+    if(err && (err.name==="AbortError" || /abort/i.test(err.message||""))) return;
+    acc = "⚠️ 出错了：" + (err.message||err);
+    lwUpdateChatMsg("agent", acc);
+    return;
+  }).then(function(){
+    document.getElementById("lwAgentSend").style.display = "";
+    document.getElementById("lwAgentStop").style.display = "none";
+    lwAgentAbort = null;
+    if(!acc || acc.indexOf("⚠️")===0) return;
+    /* 写入 .txt */
+    var lines = acc.trim().split("\n").filter(function(l){ return !/^(好的|当然|以下|这是|根据|我(已|将)|已为你|正在)/.test(l); });
+    var finalContent = lines.join("\n").trim();
+    if(!finalContent) return;
+    /* 检测是否新章节 */
+    var hasChapterTitle = /^第.+[章节回]/.test(finalContent);
+    var newText = novelText + (novelText ? "\n\n" : "") + finalContent;
+    lwState.chapters = lwSplit(newText);
+    lwRenderOutline(); lwSave();
+    lwAddChatMsg("agent", "✅ 已写入，新增约"+lwWords(finalContent)+"字。大纲已更新。");
+  });
+}
+function lwOnTitle(){ lwState.title = (document.getElementById("lwTitle").value||"").trim() || "未命名小说"; lwSave(); }
 function lwChapterOffset(id){
   var acc = 0;
   for(var i=0;i<lwState.chapters.length;i++){
@@ -6561,22 +6711,17 @@ function lwRenderOutline(){
 }
 function lwSelect(id){
   lwSelId = id;
-  var ta = document.getElementById("lwEditor");
-  var off = lwChapterOffset(id);
-  if(off>=0){ try{ ta.focus(); ta.setSelectionRange(off, off); }catch(e){} }
   lwRenderOutline();
 }
 function lwDel(id){
   lwState.chapters = lwState.chapters.filter(function(c){return c.id!==id;});
   if(lwSelId===id) lwSelId=null;
-  document.getElementById("lwEditor").value = lwToText(lwState);
   lwRenderOutline(); lwSave();
 }
 function lwNew(){
-  if(lwState.chapters.length && !confirm("新建会清空当前未导出的内容，确定？")) return;
+  if(lwState.chapters.length && !confirm("新建会清空当前内容，确定？")) return;
   lwState = { title:"未命名小说", chapters:[], updated:0 };
   document.getElementById("lwTitle").value="未命名小说";
-  document.getElementById("lwEditor").value="";
   lwSelId=null; lwRenderOutline(); lwSave();
 }
 function lwImport(){ document.getElementById("lwFile").click(); }
@@ -6587,7 +6732,6 @@ function lwOnFile(e){
     var txt = String(rd.result||"");
     lwState.title = (f.name||"未命名小说").replace(/\.[^.]+$/,"");
     document.getElementById("lwTitle").value = lwState.title;
-    document.getElementById("lwEditor").value = txt;
     lwState.chapters = lwSplit(txt); lwSelId=null; lwRenderOutline(); lwSave();
     toast("已导入 "+f.name);
   };
@@ -6616,7 +6760,6 @@ function lwDrop(e){
   var idx = lwState.chapters.findIndex(function(c){return c.id===toId;});
   if(idx<0) lwState.chapters.push(from); else lwState.chapters.splice(idx,0,from);
   lwDragId=null;
-  document.getElementById("lwEditor").value = lwToText(lwState);
   lwRenderOutline(); lwSave();
 }
 function lwSetGen(on){
@@ -6659,7 +6802,6 @@ function lwContinue(){
     var gen = (acc||"").trim();
     if(!gen){ st.textContent = "未生成内容"; return; }
     lwState.chapters.push({ id:uid("ch"), title:"（续写）", text:gen, autoTitle:true });
-    document.getElementById("lwEditor").value = lwToText(lwState);
     lwRenderOutline(); lwSave();
     st.textContent = "已续写 "+lwWords(gen)+" 字";
   });
@@ -6678,7 +6820,6 @@ function lwRewrite(){
     var gen=(acc||"").trim();
     if(!gen){ st.textContent="未生成内容"; return; }
     ch.text = gen;
-    document.getElementById("lwEditor").value = lwToText(lwState);
     lwRenderOutline(); lwSave();
     st.textContent = "已改写 "+lwWords(gen)+" 字";
   });
@@ -6717,6 +6858,25 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
 .lw-editor{flex:1;width:100%;border:none;outline:none;resize:none;padding:12px 14px;background:var(--bg,#0e1420);color:var(--text,#e7ecf3);font-size:15px;line-height:1.7;box-sizing:border-box;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
 .lw-tool{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line,#26304a);align-items:center}
 .lw-instr{flex:1;background:var(--bg-elev,#121826);border:1px solid var(--line,#26304a);border-radius:8px;padding:8px;color:var(--text,#e7ecf3);font-size:13px;min-width:0}
+/* 写作设定 */
+.lw-guide{border-bottom:1px solid var(--line,#26304a)}
+.lw-guide-hd{padding:10px 12px;font-size:13px;color:var(--primary,#00E5FF);cursor:pointer;display:flex;justify-content:space-between}
+.lw-guide-bd{padding:0 12px 10px}
+.lw-guide-ta{width:100%;height:200px;border:1px solid var(--line,#26304a);border-radius:8px;padding:8px;background:var(--bg-elev,#121826);color:var(--text,#e7ecf3);font-size:12px;line-height:1.6;resize:vertical;box-sizing:border-box;font-family:monospace}
+/* Agent 对话 */
+.lw-chat{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.lw-chat .msg{max-width:90%;padding:8px 12px;border-radius:12px;font-size:14px;line-height:1.6;word-break:break-word;white-space:pre-wrap}
+.lw-chat .msg.user{background:var(--primary,#00E5FF);color:#000;align-self:flex-end;border-bottom-right-radius:4px}
+.lw-chat .msg.agent{background:var(--bg-elev,#121826);color:var(--text,#e7ecf3);align-self:flex-start;border-bottom-left-radius:4px}
+.lw-chat .msg.agent .typing{display:inline-flex;gap:3px}
+.lw-chat .msg.agent .typing .dot{width:6px;height:6px;border-radius:50%;background:var(--text-3,#6b7280);animation:lwDotPulse 1.2s infinite}
+.lw-chat .msg.agent .typing .dot:nth-child(2){animation-delay:.2s}
+.lw-chat .msg.agent .typing .dot:nth-child(3){animation-delay:.4s}
+@keyframes lwDotPulse{0%,60%,100%{opacity:.3}30%{opacity:1}}
+.lw-chat-foot{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line,#26304a);align-items:flex-end}
+.lw-chat-inp{flex:1;background:var(--bg-elev,#121826);border:1px solid var(--line,#26304a);border-radius:10px;padding:8px 10px;color:var(--text,#e7ecf3);font-size:14px;resize:none;line-height:1.4;min-height:36px;max-height:120px;box-sizing:border-box;font-family:inherit}
+.lw-chat-btn{padding:8px 16px;border:none;border-radius:8px;background:var(--accent,#3b82f6);color:#fff;font-size:14px;cursor:pointer;white-space:nowrap;height:36px}
+.lw-chat-stop{background:var(--danger,#ef4444)}
 .lw-tool button{padding:7px 12px;border:none;border-radius:8px;background:var(--accent,#3b82f6);color:#fff;font-size:13px;white-space:nowrap}
 .lw-status{padding:4px 14px 10px;font-size:12px;color:var(--text-2,#9aa6bd);min-height:18px}
 .lw-ch{display:flex;align-items:center;gap:6px;padding:8px;border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;color:var(--text,#e7ecf3)}
@@ -6740,16 +6900,21 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
       </div>
     </div>
     <div class="lw-body">
-      <div class="lw-outline" id="lwOutline"></div>
-      <div class="lw-main">
-        <textarea id="lwEditor" class="lw-editor" placeholder="在此粘贴或撰写全文…&#10;支持「第X章」自动分章；插入单独一行 === 可手动分章。&#10;左侧大纲可拖拽排序、删除、点选改写。" oninput="lwOnEdit()"></textarea>
-        <div class="lw-tool">
-          <input id="lwInstr" class="lw-instr" placeholder="给 AI 的指令（如：续写悬疑转折 / 把这段改口语化）">
-          <button id="lwBtnCont" onclick="lwContinue()">续写下一章</button>
-          <button id="lwBtnRew" onclick="lwRewrite()">改写选中章</button>
-          <button id="lwBtnStop" onclick="lwStop()" style="display:none">停止</button>
+      <div class="lw-outline" id="lwOutline">
+        <div class="lw-guide">
+          <div class="lw-guide-hd" onclick="lwToggleGuide()">📝 写作设定 <span id="lwGuideArrow">▸</span></div>
+          <div class="lw-guide-bd" id="lwGuideBody" style="display:none">
+            <textarea id="lwGuideText" class="lw-guide-ta" placeholder="粘贴写作指南/框架/设定…" onchange="lwSaveGuide()"></textarea>
+          </div>
         </div>
-        <div id="lwStatus" class="lw-status"></div>
+      </div>
+      <div class="lw-main">
+        <div class="lw-chat" id="lwChatMsgs"></div>
+        <div class="lw-chat-foot">
+          <textarea id="lwAgentInp" class="lw-chat-inp" placeholder="跟 Agent 对话：写下一章、修改第三章、把女主改得强势一些…" rows="2"></textarea>
+          <button class="lw-chat-btn" onclick="lwAgentSend()">发送</button>
+          <button class="lw-chat-btn lw-chat-stop" id="lwAgentStop" style="display:none" onclick="lwAgentStop()">停止</button>
+        </div>
       </div>
     </div>
     <input type="file" id="lwFile" accept=".txt,.md,.markdown" style="display:none" onchange="lwOnFile(event)">

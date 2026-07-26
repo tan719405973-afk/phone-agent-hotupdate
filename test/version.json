@@ -1,5 +1,5 @@
 {
-  "version": "0.4.30",
-  "note": "v0.4.30（web 热更）：Agent OS error 信息细化（Failed to fetch 时给具体排查指引）+ 项目记忆补录 §12",
+  "version": "0.4.31",
+  "note": "v0.4.31（web 热更）：长文模式重构为 Agent 对话驱动——加写作设定/聊天区/AI直接写 .txt 文件",
   "url": ""
 }
