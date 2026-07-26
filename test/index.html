@@ -3803,7 +3803,58 @@ var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.18", date:"2026-07-26", items:[
+var CHANGELOG = [  { v:"0.4.30", date:"2026-07-26", items:[
+    "修复：Agent OS 错误提示细化——Failed to fetch 时给出具体排查指引",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.29", date:"2026-07-26", items:[
+    "修复：Agent OS 外部加载因 CDN 超时/404 始终未定义 → 全部内联进 index.html",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.28", date:"2026-07-26", items:[
+    "修复：设置页文案仍用「电脑上跑的 Agent OS」→ 改为「手机本地 Agent 驱动」，删掉服务器地址字段",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.27", date:"2026-07-26", items:[
+    "修复：API Key 输入框 type=password 在 Android 安全键盘下不能粘贴 → 改 type=text + -webkit-text-security:disc",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.26", date:"2026-07-26", items:[
+    "修复：doChat 函数多一个 } 导致 App 全页面卡死——改 Agent OS 模式时多写了一个闭合括号，后续所有 JS 未解析到",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.25", date:"2026-07-26", items:[
+    "修复：v0.4.24 阻塞 <script> 标签导致页面全卡死——改为 init 中 loadScript 异步加载",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.24", date:"2026-07-26", items:[
+    "新增：Agent OS Phone 本地版——手机端完整 Agent 运行时（~900 行 JS，含规划器/执行器/反思/记忆/工具/安全等模块），不连电脑",
+    "机制：agent-os-phone.js 通过 loadScript 异步加载，chat 设置开关后走本地 Agent 处理",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.23", date:"2026-07-26", items:[
+    "新增：Agent OS 集成 MVP——设置页加开关/地址，聊天可选走电脑上跑的 Agent OS 服务（支持工具调用和文件操作）",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.22", date:"2026-07-26", items:[
+    "修复（web）：MEM 记忆自动总结添加调试 toast——summarizeConv catch 原静默失败，加失败提示方便排查",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.21", date:"2026-07-26", items:[
+    "修复（web）：代码块复制按钮从 DOM 取文本（修复 0.4.20 逻辑），版本统一为 0.4.21",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.20", date:"2026-07-26", items:[
+    "修复（web）：代码块顶部「复制」按钮 onlick 用 window._codes[cid] 不可靠（页面重载后 _codes 重置）",
+    "机制：改为 this.closest('.codeblock').querySelector('code').textContent 直接从 DOM 取文本",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.19", date:"2026-07-26", items:[
+    "修复（web）：去掉 bindCodeblockLongPress 整个函数——行级 480ms 定时器已移除后该函数完全多余，touchstart 未标 passive:true 仍延迟 Chromium 手势检测",
+    "机制：删除 bindCodeblockLongPress，代码块完全交给 Chromium 原生选词，与普通文字消息一致",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.18", date:"2026-07-26", items:[
     "修复（web）：整条消息/代码块长按均无法出系统选词柄——根因是 bindLongPress 的 480ms touchstart 定时器抢在 Chromium 原生选词触发前弹出了自定义菜单，且 contextmenu 的 preventDefault 拦截了系统浮动工具栏",
     "机制（根治）：①bindLongPress 去掉 480ms 定时器，改为只监听 contextmenu（Chromium 检测到长按后触发，约 500ms），文字消息上不 preventDefault → Chromium 原生出选词柄 + 浮动工具栏（复制/全选/分享）",
     "②onRowLongPress 区分消息类型：文字消息不 preventDefault（选词柄 + 系统工具栏 + App 菜单共存），用户可用系统工具栏复制或 App 的「复制选中/重发/保存/引用/删除」",
