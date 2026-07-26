@@ -3797,7 +3797,7 @@ Logger.info("Agent OS for Phone 已加载", { version: "0.1.0", tools: Tools.lis
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.29";
+var APP_VERSION = "0.4.30";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -5028,7 +5028,11 @@ function doAgentOsChat(text){
       scrollBottom();
     },
     onError: function(err){
-      finalizeChat(aiMsg, "⚠️ Agent OS 错误："+(err.message||err), []);
+      var msg = err && err.message ? err.message : String(err);
+      if(msg.indexOf("Failed to fetch") >= 0 || msg.indexOf("NetworkError") >= 0){
+        msg = "API 请求失败（Failed to fetch），请检查：① API Key 是否正确配置 ② 网络是否正常 ③ Agent OS 内调用暂不支持某些 API 接口，可尝试关闭 Agent OS 用直连模式";
+      }
+      finalizeChat(aiMsg, "⚠️ Agent OS 错误：" + msg, []);
       aiMsg._err = true;
     },
     onAsk: function(questions){
