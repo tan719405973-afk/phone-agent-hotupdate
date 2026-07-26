@@ -2875,7 +2875,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.27";
+var APP_VERSION = "0.4.28";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -4697,11 +4697,7 @@ function renderSettings(){
         '<span class="cl" style="font-size:14px">🤖 使用 Agent OS</span>'+
         '<input type="checkbox" '+(CFG.agentOsMode?'checked':'')+' onchange="CFG.agentOsMode=this.checked;saveCfg();toast(\'已切换聊天模式：\'+(this.checked?\'Agent OS\':\'直连 API\'))" style="width:20px;height:20px">'+
       '</label>'+
-      '<div style="font-size:12px;color:var(--text-3);margin-top:4px">开启后聊天走电脑上跑的 Agent OS 服务，支持工具调用和文件操作</div>'+
-    '</div>'+
-    '<div class="cell" style="display:block;padding:10px 14px">'+
-      '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">Agent OS 服务器地址</div>'+
-      '<input type="text" placeholder="http://电脑IP:3001" value="'+esc(CFG.agentOsUrl||"")+'" onchange="CFG.agentOsUrl=this.value.trim();saveCfg();toast(\'已保存 Agent OS 地址\')" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">'+
+      '<div style="font-size:12px;color:var(--text-3);margin-top:4px">开启后聊天由手机本地 Agent 驱动，支持读写文件、搜网页等工具调用</div>'+
     '</div>'+
   '</div>'+
   '<div class="group"><div class="gt">关于</div>'+
