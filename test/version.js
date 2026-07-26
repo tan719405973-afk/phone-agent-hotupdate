@@ -1,1 +1,1 @@
-window.__PA_VER__ = {"version": "0.4.23", "note": "v0.4.23\uff08web \u70ed\u66f4\uff09\uff1aAgent OS \u96c6\u6210 MVP\u2014\u2014\u8bbe\u7f6e\u9875\u52a0\u5f00\u5173/\u5730\u5740\uff0c\u804a\u5929\u53ef\u9009\u8d70\u7535\u8111 Agent OS \u670d\u52a1", "url": ""};
+window.__PA_VER__ = {"version": "0.4.24", "note": "v0.4.23\uff08web \u70ed\u66f4\uff09\uff1aAgent OS \u96c6\u6210 MVP\u2014\u2014\u8bbe\u7f6e\u9875\u52a0\u5f00\u5173/\u5730\u5740\uff0c\u804a\u5929\u53ef\u9009\u8d70\u7535\u8111 Agent OS \u670d\u52a1", "url": ""};

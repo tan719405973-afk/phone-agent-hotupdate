@@ -2873,9 +2873,10 @@ var qrcode = function() {
 }));
 
 </script>
+<script src="agent-os-phone.js"></script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.23";
+var APP_VERSION = "0.4.24";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -4057,60 +4058,82 @@ function cleanPrompt(t, intent){
   return t.trim();
 }
 
-/* ---- Agent OS 聊天（走电脑服务器，非流式一次性返回） ---- */
-function doAgentOsChat(text, sessionId){
+/* ---- Agent OS 手机版（本地运行，不连电脑） ---- */
+function doAgentOsChat(text){
   var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
   renderMsgs();
   var rowBubble = function(){ return document.querySelector('.row[data-mid="'+aiMsg.id+'"] .bubble'); };
   var b = rowBubble(); if(b) b.innerHTML='<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
-  var url = (CFG.agentOsUrl||"").replace(/\/+$/,"") + "/api/chat";
-  nativeFetch(url, {
-    method:"POST",
-    timeout: 120000,
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ message: text, sessionId: sessionId })
-  }).then(function(resp){
-    if(!resp.ok) throw new Error("Agent OS HTTP "+resp.status);
-    return resp.text();
-  }).then(function(body){
-    var fullText = "", toolLines = [];
-    (body||"").split("\n\n").forEach(function(block){
-      var m = block.match(/^data:\s*(.*)/m);
-      if(!m) return;
-      try{
-        var ev = JSON.parse(m[1]);
-        if(ev.type === "text" && ev.content){
-          fullText += ev.content;
-          var bb = rowBubble();
-          if(bb) bb.innerHTML = esc(fullText).replace(/\n/g,"<br>") + (toolLines.length ? '<div style="margin-top:8px;font-size:12px;color:var(--text-3);border-top:1px solid var(--line);padding-top:6px">'+toolLines.join("<br>")+'</div>' : "");
-          scrollBottom();
-        } else if(ev.type === "tool"){
-          toolLines.push("🔧 调用工具："+(ev.name||ev.id||"未知"));
-        } else if(ev.type === "tool_result"){
-          toolLines.push("✅ "+(ev.isError?"失败":"完成"));
-        } else if(ev.type === "error"){
-          fullText += "\n\n⚠️ " + (ev.message||"Agent OS 执行出错");
-        }
-      }catch(e){}
-    });
-    finalizeChat(aiMsg, fullText || "（Agent OS 返回为空）", []);
-  }).catch(function(err){
-    finalizeChat(aiMsg, "⚠️ Agent OS 连接失败："+(err.message||err), []);
+  var fullText = "", toolLines = [];
+
+  if(typeof AgentOS === "undefined" || !AgentOS){
+    finalizeChat(aiMsg, "⚠️ Agent OS 模块未加载，请尝试检查更新或重启 App", []);
     aiMsg._err = true;
+    return;
+  }
+
+  AgentOS.run(text, {
+    onStatus: function(s){ /* 状态变更 */ },
+    onPlan: function(plan){
+      fullText = "📋 我已理解你的目标：" + (plan.goal||"") + "\n\n";
+      var bb = rowBubble();
+      if(bb) bb.innerHTML = esc(fullText) + (toolLines.length ? '<div style="margin-top:8px;font-size:12px;color:var(--text-3)">'+toolLines.join("<br>")+'</div>' : "");
+      scrollBottom();
+    },
+    onProgress: function(idx, total, step){
+      if(step){
+        toolLines.push("📌 步骤 "+(idx+1)+"/"+total+"："+(step.desc||step.tool));
+        var bb = rowBubble();
+        if(bb) bb.innerHTML = esc(fullText) + '<div style="margin-top:8px;font-size:12px;color:var(--text-3)">'+toolLines.join("<br>")+'</div>';
+        scrollBottom();
+      }
+    },
+    onToolStart: function(name, args, stepIdx){
+      toolLines.push("🔧 " + name + "(" + JSON.stringify(args).slice(0,60) + ")");
+      var bb = rowBubble();
+      if(bb) bb.innerHTML = esc(fullText) + '<div style="margin-top:8px;font-size:12px;color:var(--text-3)">'+toolLines.join("<br>")+'</div>';
+      scrollBottom();
+    },
+    onToolEnd: function(name, result){
+      toolLines[toolLines.length-1] += result && result.ok !== false ? " ✅" : " ❌";
+      var bb = rowBubble();
+      if(bb) bb.innerHTML = esc(fullText) + '<div style="margin-top:8px;font-size:12px;color:var(--text-3)">'+toolLines.join("<br>")+'</div>';
+      scrollBottom();
+    },
+    onReply: function(reply){
+      fullText = reply;
+      var bb = rowBubble();
+      if(bb) bb.innerHTML = esc(fullText).replace(/\n/g,"<br>");
+      scrollBottom();
+    },
+    onError: function(err){
+      finalizeChat(aiMsg, "⚠️ Agent OS 错误："+(err.message||err), []);
+      aiMsg._err = true;
+    },
+    onAsk: function(questions){
+      fullText = "📝 我需要你补充信息：\n" + questions.map(function(q,i){ return (i+1)+". "+q; }).join("\n");
+      var bb = rowBubble();
+      if(bb) bb.innerHTML = esc(fullText);
+      scrollBottom();
+    },
+    onSafetyViolation: function(rule){
+      toolLines.push("⚠️ 安全拦截："+rule);
+    }
+  }).then(function(result){
+    if(result && result.ok && result.reply){
+      finalizeChat(aiMsg, result.reply, []);
+    }
   });
 }
 
 /* ---- 线① 文本对话（流式打字机 F22）+ F13/F14 附件处理 ---- */
 function doChat(text, attachments){
   attachments = attachments || [];
-  /* Agent OS 模式：聊天走电脑上跑的 Agent OS 服务 */
+  /* Agent OS 模式：本地 Agent 处理聊天，不走 API */
   if(CFG.agentOsMode){
-    var c = current();
-    // Agent OS 按会话区分 session
-    if(!window._agentOsSession) window._agentOsSession = {};
-    var sessionId = window._agentOsSession[c.id] || (window._agentOsSession[c.id] = "pa_" + c.id);
     if(attachments.length){ toast("Agent OS 模式暂不支持附件，只发送文字"); }
-    return doAgentOsChat(text, sessionId);
+    return doAgentOsChat(text);
+  }
   }
   var c = current();
   var allTxt = c.messages.filter(function(m){return m.type==="text";});
