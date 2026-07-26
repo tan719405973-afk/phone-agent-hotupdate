@@ -2875,7 +2875,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.26";
+var APP_VERSION = "0.4.27";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -5154,7 +5154,7 @@ function renderApiEdit(){
       '<div class="cell field"><span class="cl">名称</span><span class="cr"><input type="text" id="aeName" value="'+esc(a.name)+'"></span></div>'+
       '<div class="cell field"><span class="cl">图标文字</span><span class="cr"><input type="text" id="aeIcon" maxlength="2" value="'+esc(a.icon)+'"></span></div>'+
       '<div class="cell field"><span class="cl">API 请求地址</span><span class="cr"><input type="text" id="aeBase" value="'+esc(a.baseUrl)+'"></span></div>'+
-      '<div class="cell field"><span class="cl">API Key</span><span class="cr"><input type="password" id="aeKey" placeholder="点此输入" value="'+esc(a.key||"")+'"></span></div>'+
+      '<div class="cell field"><span class="cl">API Key</span><span class="cr"><input type="text" id="aeKey" placeholder="点此输入" value="'+esc(a.key||"")+'" style="-webkit-text-security:disc"></span></div>'+
     '</div>'+
     '<div class="group"><div class="gt">模型设置（从上游获取，可自定义）</div>'+
       '<div class="cell" style="display:block">'+
