@@ -3797,7 +3797,7 @@ Logger.info("Agent OS for Phone 已加载", { version: "0.1.0", tools: Tools.lis
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.32";
+var APP_VERSION = "0.4.33";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -6457,18 +6457,39 @@ function sendFeedback(){
 }
 
 /* ================= 长文模式（小说 / 长文）v0.4.4 ================= */
-var LW_KEY = "pa_longwrite";
-var lwState = { title:"未命名小说", chapters:[], updated:0 };
+var LW_PROJ_KEY = "pa_lw_projects";
+var lwProjects = [];
+var lwState = { title:"未命名小说", chapters:[], updated:0, guide:"" };
+var lwCurId = null;
 var lwSelId = null;
 var lwAbort = null;
 var lwGuideOpen = false;
 
-function lwLoad(){
-  try{ var s = JSON.parse(localStorage.getItem(LW_KEY)||"null"); if(s && s.chapters){ lwState = s; } }catch(e){}
+function lwGenId(){ return "proj_" + Date.now() + "_" + Math.random().toString(36).slice(2,6); }
+function lwLoadProjects(){
+  try{ var s = JSON.parse(localStorage.getItem(LW_PROJ_KEY)||"null"); if(s && s.length) lwProjects = s; }catch(e){}
+  if(!lwProjects.length) lwProjects.push({ id:lwGenId(), title:"未命名小说", chapters:[], updated:0, guide:"" });
 }
+function lwSaveProjects(){
+  try{ localStorage.setItem(LW_PROJ_KEY, JSON.stringify(lwProjects)); }catch(e){}
+}
+function lwFindProj(id){ for(var i=0;i<lwProjects.length;i++){ if(lwProjects[i].id===id) return lwProjects[i]; } return null; }
 function lwSave(){
+  if(!lwCurId) return;
   lwState.updated = Date.now();
-  try{ localStorage.setItem(LW_KEY, JSON.stringify(lwState)); }catch(e){ toast("保存失败："+(e&&e.message||e)); }
+  for(var i=0;i<lwProjects.length;i++){
+    if(lwProjects[i].id === lwCurId){ lwProjects[i] = lwState; lwSaveProjects(); return; }
+  }
+}
+function lwLoad(id){
+  var p = lwFindProj(id);
+  if(p){ lwCurId = id; lwState = p; return true; }
+  return false;
+}
+function lwDeleteProj(id){
+  lwProjects = lwProjects.filter(function(p){return p.id!==id;});
+  if(!lwProjects.length) lwProjects.push({ id:lwGenId(), title:"未命名小说", chapters:[], updated:0, guide:"" });
+  lwSaveProjects();
 }
 function lwWords(s){ return String(s||"").replace(/\s/g,"").length; }
 function lwSplit(text, prev){
@@ -6527,29 +6548,67 @@ function lwToText(st){
   }).join("\n\n");
 }
 function openLongWrite(){
-  lwLoad();
+  lwLoadProjects();
+  var list = document.getElementById("lwProjectList");
+  var editor = document.getElementById("lwProjectEditor");
+  if(list && editor){
+    list.style.display = "block";
+    editor.style.display = "none";
+  }
+  lwRenderProjects();
+  show("longWritePanel");
+}
+function lwOpenProject(id){
+  if(!lwLoad(id)) return;
+  document.getElementById("lwProjectList").style.display = "none";
+  document.getElementById("lwProjectEditor").style.display = "flex";
   document.getElementById("lwTitle").value = lwState.title || "未命名小说";
-  lwLoadGuide();
-  lwSelId = null; lwRenderOutline(); show("longWritePanel");
+  /* 加载该小说的写作设定 */
+  var ta = document.getElementById("lwGuideText");
+  if(ta) ta.value = lwState.guide || "";
+  lwSelId = null; lwRenderOutline();
+}
+function lwBackToList(){
+  lwSave();
+  document.getElementById("lwProjectList").style.display = "block";
+  document.getElementById("lwProjectEditor").style.display = "none";
+  lwRenderProjects();
+}
+function lwRenderProjects(){
+  var box = document.getElementById("lwProjBox");
+  if(!box) return;
+  if(!lwProjects.length) lwProjects.push({ id:lwGenId(), title:"未命名小说", chapters:[], updated:0, guide:"" });
+  box.innerHTML = lwProjects.map(function(p, i){
+    var wc = (p.chapters||[]).reduce(function(a,c){ return a + lwWords(c.text); }, 0);
+    var chCnt = (p.chapters||[]).length;
+    return '<div class="lw-proj" onclick="lwOpenProject(\''+p.id+'\')">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<span style="font-size:15px;font-weight:600">📖 '+esc(p.title||"未命名")+'</span>'+
+        '<span style="font-size:12px;color:var(--text-3)">'+chCnt+'章 '+wc+'字</span>'+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--text-3);margin-top:4px">更新于 '+new Date(p.updated||Date.now()).toLocaleDateString()+'</div>'+
+    '</div>';
+  }).join("");
+}
+function lwNewProj(){
+  var p = { id:lwGenId(), title:"未命名小说", chapters:[], updated:Date.now(), guide:"" };
+  lwProjects.push(p);
+  lwSaveProjects();
+  lwOpenProject(p.id);
+}
+function lwDelProj(id){
+  if(!confirm("确定删除该小说？不可恢复。")) return;
+  lwDeleteProj(id);
+  lwRenderProjects();
 }
 function lwClose(){ hide("longWritePanel"); }
 
 /* 写作设定 */
-var lwGuideLoaded = false;
-function lwLoadGuide(){
-  if(lwGuideLoaded) return;
-  lwGuideLoaded = true;
-  var ta = document.getElementById("lwGuideText");
-  if(!ta) return;
-  try{
-    var saved = localStorage.getItem("pa_lw_guide") || "";
-    ta.value = saved;
-  }catch(e){}
-}
 function lwSaveGuide(){
   var ta = document.getElementById("lwGuideText");
-  if(!ta) return;
-  try{ localStorage.setItem("pa_lw_guide", ta.value || ""); }catch(e){}
+  if(!ta || !lwCurId) return;
+  lwState.guide = ta.value || "";
+  lwSave();
 }
 var lwGuideOpen = false;
 function lwToggleGuide(){
@@ -6745,22 +6804,23 @@ function lwDel(id){
   if(lwSelId===id) lwSelId=null;
   lwRenderOutline(); lwSave();
 }
-function lwNew(){
-  if(lwState.chapters.length && !confirm("新建会清空当前内容，确定？")) return;
-  lwState = { title:"未命名小说", chapters:[], updated:0 };
-  document.getElementById("lwTitle").value="未命名小说";
-  lwSelId=null; lwRenderOutline(); lwSave();
-}
+function lwNew(){ lwNewProj(); }
 function lwImport(){ document.getElementById("lwFile").click(); }
 function lwOnFile(e){
   var f = e.target.files && e.target.files[0]; if(!f) return;
   var rd = new FileReader();
   rd.onload = function(){
     var txt = String(rd.result||"");
-    lwState.title = (f.name||"未命名小说").replace(/\.[^.]+$/,"");
-    document.getElementById("lwTitle").value = lwState.title;
-    lwState.chapters = lwSplit(txt); lwSelId=null; lwRenderOutline(); lwSave();
+    var title = (f.name||"未命名小说").replace(/\.[^.]+$/,"");
+    /* 创建新项目 */
+    var p = { id:lwGenId(), title:title, chapters:lwSplit(txt), updated:Date.now(), guide:"" };
+    lwProjects.push(p);
+    lwSaveProjects();
     toast("已导入 "+f.name);
+    /* 如果是项目列表页面，刷新列表；如果在编辑器里，回到列表 */
+    var list = document.getElementById("lwProjectList");
+    if(list && list.style.display !== "none"){ lwRenderProjects(); }
+    else { lwBackToList(); }
   };
   rd.readAsText(f); e.target.value="";
 }
@@ -6913,15 +6973,32 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
 .lw-ch-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lw-ch-wc{font-size:11px;opacity:.7;flex-shrink:0}
 .lw-ch-del{opacity:.55;padding:0 4px;flex-shrink:0}
+/* 项目列表 */
+.lw-proj{padding:14px;border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--line,#26304a)}
+.lw-proj:hover{background:var(--bg-elev,#121826)}
 .lw-empty{color:var(--text-2,#9aa6bd);font-size:13px;padding:16px;text-align:center}
 </style>
 <div id="longWritePanel" class="lw-mask">
-  <div class="lw-box">
+  <div class="lw-box" id="lwProjectList" style="display:block">
     <div class="lw-head">
+      <span style="font-size:16px;font-weight:600;padding:0 10px;color:var(--text-1)">📖 小说列表</span>
+      <div class="lw-head-btns">
+        <button onclick="lwNewProj()">+ 新建小说</button>
+        <button onclick="lwImport()">导入 .txt</button>
+        <button onclick="lwClose()">关闭</button>
+      </div>
+    </div>
+    <div class="lw-body" style="padding:12px;overflow-y:auto;flex-direction:column">
+      <div id="lwProjBox"></div>
+    </div>
+  </div>
+  <div class="lw-box" id="lwProjectEditor" style="display:none">
+    <div class="lw-head">
+      <button class="back" onclick="lwBackToList()" style="background:none;border:none;padding:6px 10px;cursor:pointer">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
       <input id="lwTitle" class="lw-title" placeholder="书名" oninput="lwOnTitle()">
       <div class="lw-head-btns">
-        <button onclick="lwNew()">新建</button>
-        <button onclick="lwImport()">导入</button>
         <button onclick="lwExport()">导出</button>
         <button onclick="lwClose()">关闭</button>
       </div>
