@@ -3797,7 +3797,7 @@ Logger.info("Agent OS for Phone 已加载", { version: "0.1.0", tools: Tools.lis
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.33";
+var APP_VERSION = "0.4.34";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -6570,10 +6570,7 @@ function lwOpenProject(id){
   if(!lwLoad(id)) return;
   document.getElementById("lwProjectList").style.display = "none";
   document.getElementById("lwProjectEditor").style.display = "flex";
-  document.getElementById("lwTitle").value = lwState.title || "未命名小说";
-  /* 加载该小说的写作设定 */
-  var ta = document.getElementById("lwGuideText");
-  if(ta) ta.value = lwState.guide || "";
+  document.getElementById("lwTitleDisplay").textContent = lwState.title || "未命名小说";
   lwSelId = null; lwRenderOutline();
 }
 function lwBackToList(){
@@ -6613,18 +6610,15 @@ function lwClose(){ hide("longWritePanel"); }
 
 /* 写作设定 */
 function lwSaveGuide(){
-  var ta = document.getElementById("lwGuideText");
+  var ta = document.getElementById("lwGuideTextPage");
   if(!ta || !lwCurId) return;
   lwState.guide = ta.value || "";
   lwSave();
 }
-var lwGuideOpen = false;
-function lwToggleGuide(){
-  lwGuideOpen = !lwGuideOpen;
-  var bd = document.getElementById("lwGuideBody");
-  var ar = document.getElementById("lwGuideArrow");
-  if(bd) bd.style.display = lwGuideOpen ? "block" : "none";
-  if(ar) ar.textContent = lwGuideOpen ? "▾" : "▸";
+function lwOpenGuide(){
+  var ta = document.getElementById("lwGuideTextPage");
+  if(ta) ta.value = lwState.guide || "";
+  show("lwGuidePage");
 }
 
 /* Agent 聊天写小说 */
@@ -6676,7 +6670,7 @@ function lwAgentSend(){
   document.getElementById("lwAgentStop").style.display = "";
 
   /* 构建上下文 */
-  var guide = (document.getElementById("lwGuideText")||{}).value || "";
+  var guide = (document.getElementById("lwGuideTextPage")||{}).value || "";
   var novelText = lwToText(lwState);
   var recentContent = novelText.slice(-4000); // 最近 4000 字供参考
   var chapterSummary = (lwState.chapters||[]).map(function(c,i){
@@ -6791,11 +6785,12 @@ function lwChapterOffset(id){
   return -1;
 }
 function lwRenderOutline(){
-  var box = document.getElementById("lwOutline");
-  if(!lwState.chapters.length){ box.innerHTML = '<div class="lw-empty">还没有内容。粘贴全文，或点「新建」后撰写。</div>'; return; }
+  var box = document.getElementById("lwOutlineFull");
+  if(!box) return;
+  if(!lwState.chapters.length){ box.innerHTML = '<div class="lw-empty">还没有内容。</div>'; return; }
   box.innerHTML = lwState.chapters.map(function(c, i){
     var sel = (c.id===lwSelId)? " sel":"";
-    return '<div class="lw-ch'+sel+'" draggable="true" data-id="'+c.id+'" onclick="lwSelect(\''+c.id+'\')" ondragstart="lwDragStart(event)" ondragover="lwDragOver(event)" ondrop="lwDrop(event)">'+
+    return '<div class="lw-ch'+sel+'" data-id="'+c.id+'" onclick="lwSelect(\''+c.id+'\')">'+
       '<span class="lw-ch-no">'+(i+1)+'</span>'+
       '<span class="lw-ch-title">'+esc(c.title||"（无标题）")+'</span>'+
       '<span class="lw-ch-wc">'+lwWords(c.text)+'字</span>'+
@@ -6803,6 +6798,7 @@ function lwRenderOutline(){
     '</div>';
   }).join("");
 }
+function lwOpenOutline(){ lwRenderOutline(); show("lwOutlinePage"); }
 function lwSelect(id){
   lwSelId = id;
   lwRenderOutline();
@@ -6985,6 +6981,8 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
 .lw-proj{padding:14px;border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--line,#26304a)}
 .lw-proj:hover{background:var(--bg-elev,#121826)}
 .lw-empty{color:var(--text-2,#9aa6bd);font-size:13px;padding:16px;text-align:center}
+.lw-qb{width:32px;height:32px;border:none;border-radius:8px;background:var(--bg-elev,#121826);color:var(--text-2);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.lw-qb:hover{background:var(--line,#26304a)}
 </style>
 <div id="longWritePanel" class="lw-mask">
   <div class="lw-box" id="lwProjectList" style="display:block">
@@ -7005,31 +7003,54 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
       <button class="back" onclick="lwBackToList()" style="background:none;border:none;padding:6px 10px;cursor:pointer">
         <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
-      <input id="lwTitle" class="lw-title" placeholder="书名" oninput="lwOnTitle()">
+      <span id="lwTitleDisplay" style="flex:1;font-size:15px;font-weight:600;padding:0 6px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
       <div class="lw-head-btns">
-        <button onclick="lwExport()">导出</button>
-        <button onclick="lwClose()">关闭</button>
+        <button onclick="lwOpenOutline()" style="font-size:13px">📖 大纲</button>
+        <button onclick="lwOpenGuide()" style="font-size:13px">📝 设定</button>
+        <button onclick="lwExport()" style="font-size:13px">导出</button>
+        <button onclick="lwClose()" style="font-size:13px">关闭</button>
       </div>
     </div>
-    <div class="lw-body">
-      <div class="lw-outline" id="lwOutline">
-        <div class="lw-guide">
-          <div class="lw-guide-hd" onclick="lwToggleGuide()">📝 写作设定 <span id="lwGuideArrow">▸</span></div>
-          <div class="lw-guide-bd" id="lwGuideBody" style="display:none">
-            <textarea id="lwGuideText" class="lw-guide-ta" placeholder="粘贴写作指南/框架/设定…" onchange="lwSaveGuide()"></textarea>
-          </div>
-        </div>
-      </div>
-      <div class="lw-main">
-        <div class="lw-chat" id="lwChatMsgs"></div>
-        <div class="lw-chat-foot">
-          <textarea id="lwAgentInp" class="lw-chat-inp" placeholder="跟 Agent 对话：写下一章、修改第三章、把女主改得强势一些…" rows="2"></textarea>
-          <button class="lw-chat-btn" onclick="lwAgentSend()">发送</button>
-          <button class="lw-chat-btn lw-chat-stop" id="lwAgentStop" style="display:none" onclick="lwAgentStop()">停止</button>
-        </div>
+    <div class="lw-main" style="flex:1;display:flex;flex-direction:column;min-height:0">
+      <div class="lw-chat" id="lwChatMsgs"></div>
+      <div class="lw-chat-foot">
+        <button class="lw-qb" onclick="lwOpenOutline()" title="大纲">📖</button>
+        <button class="lw-qb" onclick="lwOpenGuide()" title="写作设定">📝</button>
+        <textarea id="lwAgentInp" class="lw-chat-inp" placeholder="跟 Agent 对话…写下一章、修改第三章" rows="1"></textarea>
+        <button class="lw-chat-btn" onclick="lwAgentSend()">发送</button>
+        <button class="lw-chat-btn lw-chat-stop" id="lwAgentStop" style="display:none" onclick="lwAgentStop()">停止</button>
       </div>
     </div>
-    <input type="file" id="lwFile" accept=".txt,.md,.markdown" style="display:none" onchange="lwOnFile(event)">
+  </div>
+</div>
+
+<!-- 大纲弹窗 -->
+<div class="page" id="lwOutlinePage">
+  <div class="page-head">
+    <button class="back" onclick="hide('lwOutlinePage');lwSave()">
+      <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="pt">📖 大纲</div>
+    <div class="lw-head-btns" style="display:flex;gap:4px;padding:0 4px">
+      <button onclick="lwNew()" style="padding:6px 10px;font-size:12px">新建章</button>
+    </div>
+  </div>
+  <div class="page-body" style="padding:12px;overflow-y:auto">
+    <div id="lwOutlineFull"></div>
+  </div>
+</div>
+
+<!-- 写作设定弹窗 -->
+<div class="page" id="lwGuidePage">
+  <div class="page-head">
+    <button class="back" onclick="hide('lwGuidePage');lwSaveGuide()">
+      <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="pt">📝 写作设定</div>
+  </div>
+  <div class="page-body" style="padding:12px;overflow-y:auto">
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:8px">粘贴你的小说写作规则、设定、指南。Agent 写小说时会自动遵守。</div>
+    <textarea id="lwGuideTextPage" class="lw-guide-ta" style="height:calc(100vh - 180px)" placeholder="粘贴写作指南/框架/设定…"></textarea>
   </div>
 </div>
 </body>
