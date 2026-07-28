@@ -2883,13 +2883,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.38";
+var APP_VERSION = "0.4.39";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.38", date:"2026-07-29", items:[
+var CHANGELOG = [  { v:"0.4.39", date:"2026-07-29", items:[
+    "修复(改文件)：放宽 TOOL_CAPS 触发条件——用户问「能不能改/你来改/本体改」等疑问句也视为要改，AI 不再回复「无法直接修改」",
+    "修复(状态条)：去掉 emoji 防止 11px 字号下视觉粘连，改为「耗时 X · 调用 X · 约 X token · 错误 X」纯文本",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.38", date:"2026-07-29", items:[
     "修复(改文件)：AI 现在能改文件了——doChat 系统提示词告诉 AI 有 wsRead/wsWrite 等工具；AI 主动按 [FILE_WRITE]path:/content:[/FILE_WRITE] 格式输出 → JS 自动调 wsWrite 写入；用户主动指令才生效，不擅自写",
     "修复(改文件)：要改某文件时 AI 可先输出 [FILE_READ]path:[/FILE_READ] → JS 调 wsRead 把原文插回对话，AI 在下一轮基于原文改写",
     "新增(工作区 C)：文件编辑页头部加「AI 改写」按钮——输入指令（润色/改口语/加一段…）→ AI 生成预览 → 确认「替换原文」或「替换并保存」",
@@ -3612,7 +3617,8 @@ function toolLog(type, msg){ runLog(type, msg); }
 var SESSION_STATS = { tokens:0, ms:0, errors:0, calls:0 };
 function estTokens(s){ if(!s) return 0; return Math.max(1, Math.ceil(String(s).length/1.6)); }
 function fmtStats(){
-  return "⏱ "+(SESSION_STATS.ms/1000).toFixed(1)+"s · 📊 ~"+SESSION_STATS.tokens+" token · ❌ "+SESSION_STATS.errors+" · 🔁 "+SESSION_STATS.calls+" 调用";
+  /* v0.4.39：去掉 emoji 防止 11px 下视觉粘连；字段顺序：耗时/调用/Token/错误 */
+  return "耗时 "+(SESSION_STATS.ms/1000).toFixed(1)+"s · 调用 "+SESSION_STATS.calls+" · 约 "+SESSION_STATS.tokens+" token · 错误 "+SESSION_STATS.errors;
 }
 function renderStats(){
   var el = document.getElementById("chatStats"); if(!el) return;
@@ -3888,7 +3894,18 @@ var TOOL_CAPS =
 "\n"+
 "【长期记忆】上方「长期记忆」段落是跨会话自动注入的，你可参考它，无需自行存储任何记忆。\n"+
 "\n"+
-"【约束】普通问答、闲聊、解释建议时，禁止使用任何工具格式，直接文字回复。只在用户明确说「写/改/覆盖/创建 + 文件名」时才输出 [FILE_WRITE]/[FILE_READ]。";
+"【触发条件（重要）】以下任一情况都视为「用户要改/写文件」，应直接输出 [FILE_WRITE] 块而非纯文字建议：\n"+
+"  ① 用户明确说「写/改/覆盖/创建/更新/重写 + 文件路径或文件名」\n"+
+"  ② 用户问「你能改么？/能不能改？/本体改？/你来改？/帮我改？/帮我写？」——这是要求你改，不是闲聊\n"+
+"  ③ 用户说「全文润色/重写/改口语/改正式/翻译」+ 提到文件\n"+
+"  ④ 用户上传了文件并问「能改这个么/整理/优化」\n"+
+"\n"+
+"【禁止触发】以下情况才是纯问答/闲聊，直接文字回答：\n"+
+"  · 用户问理论、问建议、问计划但没要求落地到文件\n"+
+"  · 用户只是「想看个示例/听个方案」\n"+
+"  · 用户没提到任何文件，或当前没有打开/上传的文件\n"+
+"\n"+
+"如触发改写但不知文件路径，先问一句「请告诉我要改的文件名（相对于工作区根目录）」再等用户回复。";
 var MEM = null;
 function loadMem(){
   if(MEM) return MEM;
