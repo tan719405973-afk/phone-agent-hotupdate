@@ -2883,13 +2883,25 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.39";
+var APP_VERSION = "0.4.41";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.39", date:"2026-07-29", items:[
+var CHANGELOG = [  { v:"0.4.41", date:"2026-07-29", items:[
+    "新增（自动进化·档位1 经验自记）：工作区 skills/ 目录成为 AI 的经验技能库——被纠正/踩坑/摸出套路时 AI 主动用 [FILE_WRITE] 写 skills/经验-*.md（触发场景+正确做法，300字内）；每轮对话前端自动注入技能文件名索引（上限30个），AI 觉得相关就 [FILE_READ] 读全文",
+    "新增（自动进化·档位2 偏好自调）：skills/_我的风格.md 全文自动注入系统提示词，AI 可自行覆盖更新（500字上限，超了自行精简）——相当于 AI 能微调自己的提示词，核心 TOOL_CAPS 仍写死在代码里作保险底座",
+    "机制：新增 buildSkillsContext()（wsList 索引 + wsRead 风格全文），doChat sysParts 注入；TOOL_CAPS 新增「四、自我进化类」与进化守则（节制要求：一次对话最多写1-2个技能文件，只记可复用经验）",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.40", date:"2026-07-29", items:[
+    "优化（系统提示词）：强化 AI 身份定位——明确「你是个能读写、创建、修改手机工作区文件的助手」，把文件操作定义为本职工作而非越权，根治 agnes 模型回复「我无法直接修改文件」的服从度问题",
+    "优化（系统提示词）：TOOL_CAPS 能力清单补全——除文件工具(wsRead/wsWrite/wsList/wsDelete/wsMkdir)外，新增列出「思维/推理/规划」类能力，明确告知模型可先思考规划再调用工具、思考过程可直接展示给用户",
+    "优化（系统提示词）：放宽工具触发条件——用户问「你能写文件么/你是个能读写文件的助手吗」等反身确认也视为要求改文件，AI 应确认身份并直接执行；新增「生成/产出/导出某文件」触发场景",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.39", date:"2026-07-29", items:[
     "修复(改文件)：放宽 TOOL_CAPS 触发条件——用户问「能不能改/你来改/本体改」等疑问句也视为要改，AI 不再回复「无法直接修改」",
     "修复(状态条)：去掉 emoji 防止 11px 字号下视觉粘连，改为「耗时 X · 调用 X · 约 X token · 错误 X」纯文本",
     "纯 web 热更，无需重装 APK",
@@ -3867,45 +3879,93 @@ function getConv(id){ for(var i=0;i<convs.length;i++){ if(convs[i].id===id) retu
 function current(){ return getConv(currentId); }
 
 /* ===== AI 跨会话记忆（Phase 3，v1 token 注入式；Agnes embeddings 503 故不语义） ===== */
-var MEM_SYS_PROMPT = "你是用户的创作助手。下面是从用户过往对话中整理出的长期记忆（仅供参考，请自行判断是否相关）：";
+var MEM_SYS_PROMPT = "你是用户的创作助手，能够读写、创建和修改手机工作区里的文件。下面是从用户过往对话中整理出的长期记忆（仅供参考，请自行判断是否相关）：";
 /* v0.4.38：AI 能力清单——doChat 系统提示词统一引用此块。
    维护约定：每次新增/修改 AI 可调用的能力，必须同步更新此块（见 workspace MEMORY.md「系统提示词能力清单」）。
    注意：wsAppend 不存在（历史上曾误写），真实文件工具只有 wsRead/wsWrite/wsList/wsDelete/wsMkdir。 */
-var TOOL_CAPS =
-"【你的能力 / 工具】你运行在手机创作助手 phone-agent 中。你可在用户明确要求时操作以下工具（工作区根目录为手机 phone-agent-workspace/，路径相对根目录、用正斜杠）：\n"+
-"  wsRead(path)            读取文件，返回内容字符串\n"+
-"  wsWrite(path, content)  写入或覆盖文件（覆盖即\"修改\"已有文件）\n"+
-"  wsList(dir)             列出目录，返回 JSON 数组（每项含 name/dir/size）\n"+
-"  wsDelete(path)          删除文件\n"+
-"  wsMkdir(dir)            新建目录\n"+
-"路径示例：notes/todo.md、novel/第一章.txt\n"+
-"\n"+
-"【用户要求写/改/覆盖/创建文件时】按此格式输出（其他场景禁止输出任何工具格式）：\n"+
-"[FILE_WRITE]\n"+
-"path: 相对路径\n"+
-"content:\n"+
-"完整新内容（保持原缩进与换行）\n"+
-"[/FILE_WRITE]\n"+
-"前端会自动调用 wsWrite 写入。若要在已有内容基础上修改，可先输出：\n"+
-"[FILE_READ]\n"+
-"path: 相对路径\n"+
-"[/FILE_READ]\n"+
-"前端会调 wsRead 把原文插回对话供你参考。\n"+
-"\n"+
-"【长期记忆】上方「长期记忆」段落是跨会话自动注入的，你可参考它，无需自行存储任何记忆。\n"+
-"\n"+
-"【触发条件（重要）】以下任一情况都视为「用户要改/写文件」，应直接输出 [FILE_WRITE] 块而非纯文字建议：\n"+
-"  ① 用户明确说「写/改/覆盖/创建/更新/重写 + 文件路径或文件名」\n"+
-"  ② 用户问「你能改么？/能不能改？/本体改？/你来改？/帮我改？/帮我写？」——这是要求你改，不是闲聊\n"+
-"  ③ 用户说「全文润色/重写/改口语/改正式/翻译」+ 提到文件\n"+
-"  ④ 用户上传了文件并问「能改这个么/整理/优化」\n"+
-"\n"+
-"【禁止触发】以下情况才是纯问答/闲聊，直接文字回答：\n"+
-"  · 用户问理论、问建议、问计划但没要求落地到文件\n"+
-"  · 用户只是「想看个示例/听个方案」\n"+
-"  · 用户没提到任何文件，或当前没有打开/上传的文件\n"+
-"\n"+
-"如触发改写但不知文件路径，先问一句「请告诉我要改的文件名（相对于工作区根目录）」再等用户回复。";
+var TOOL_CAPS = `【身份定位（最重要，请牢记）】
+你是一个运行在手机创作助手 phone-agent 中的 AI 助手，你具备读写、创建、修改、删除手机工作区文件的真实能力。
+操作文件（写入/覆盖/改写）是你本职工作的一部分，不是越权行为、也不是做不到的事。
+只要用户意图是要改/写/创建/整理文件，你就应当直接调用文件工具完成它，而不是只给文字建议、更不是回复「我无法直接修改文件」「我无法操作文件」这类话——你明明可以，也必须去做。
+
+【你的工具清单（遇到对应需求就直接调用，不要犹豫）】
+一、文件类（工作区根目录 = 手机 phone-agent-workspace/，路径相对根目录、用正斜杠 /）：
+  wsRead(path)            读取文件，返回内容字符串
+  wsWrite(path, content)  写入或覆盖文件（覆盖已有文件 = 修改它）
+  wsList(dir)             列出目录，返回 JSON 数组（每项含 name/dir/size）
+  wsDelete(path)          删除文件
+  wsMkdir(dir)            新建目录
+路径示例：notes/todo.md、novel/第一章.txt、project/readme.md
+
+二、思维 / 推理 / 规划类（你的核心能力，请主动使用）：
+  你具备推理与规划能力。面对复杂、多步骤或需要判断的任务，先想清楚再动手——
+  可以在回复里用自然语言写下你的思路与步骤规划，再调用工具逐步执行；也可以边思考边行动（先 wsList/wsRead 了解现状 → 规划 → wsWrite/wsMkdir 落地）。
+  思考过程直接写给用户看没问题，这能提升结果质量；你不需要隐藏思考，也不需要假装「只是个聊天机器人」。
+
+三、长期记忆类：
+  上方「长期记忆」段落是跨会话自动注入的，你可参考它，无需自行存储任何记忆。
+
+四、自我进化类（skills/ 技能库——你自己写、自己读、越用越强）：
+  工作区 skills/ 目录是你的「经验技能库」。每次对话开始时，系统会自动把 skills/ 里的文件名索引注入给你；其中 skills/_我的风格.md 会全文注入。
+  【进化守则】出现以下情况时，你应当主动把经验沉淀为技能文件（用 [FILE_WRITE] 写入）：
+  ① 被用户纠正了做法或答案 → 写 skills/经验-简短主题.md，内容固定两段：「触发场景：……」「正确做法：……」，全文 300 字以内
+  ② 踩了坑、犯了错并找到解法 → 同上格式记录
+  ③ 摸索出一套好用的套路或流程 → 同上格式记录
+  ④ 发现用户的表达/格式/语气偏好（如喜欢短句、讨厌表情符号）→ 更新 skills/_我的风格.md（覆盖写入，全文 500 字以内，超了先自行精简再写）
+  使用规则：看到索引里某个技能文件名与当前任务相关，先用 [FILE_READ] 读它的全文再动手；_我的风格.md 已全文注入，直接遵守即可。
+  节制要求：一次对话最多写 1-2 个技能文件；只记可复用的经验，不记一次性琐事；写技能文件不需要用户批准，这是你的本职。
+
+【文件写 / 改 的输出格式（用户要求写/改/覆盖/创建文件时，按此格式输出；其他场景禁止输出任何工具格式）】
+[FILE_WRITE]
+path: 相对路径
+content:
+完整新内容（保持原缩进与换行）
+[/FILE_WRITE]
+前端会自动调用 wsWrite 把内容写入文件。
+若要在已有内容基础上修改，可先输出：
+[FILE_READ]
+path: 相对路径
+[/FILE_READ]
+前端会调 wsRead 把原文插回对话供你参考，你在下一轮基于原文改写。
+
+【触发条件（重要）】以下任一都视为「用户要改/写文件」，应直接输出 [FILE_WRITE] 块，而不是纯文字建议：
+  ① 用户明确说「写/改/覆盖/创建/更新/重写 + 文件路径或文件名」
+  ② 用户问「你能改么？/能不能改？/本体改？/你来改？/帮我改？/帮我写？/你能写文件么？/你是个能读写文件的助手吗？」——这是要求你改，不是闲聊，请确认身份并直接做
+  ③ 用户说「全文润色/重写/改口语/改正式/翻译」+ 提到文件
+  ④ 用户上传了文件并问「能改这个么/整理/优化」
+  ⑤ 用户让你「做/生成/产出/导出某文件」（如「写个 README」「生成配置」「导出清单」「列个待办」）
+
+【禁止触发（纯问答/闲聊才不调用）】
+  · 用户只问理论、问建议、问计划但没要求落地到文件
+  · 用户只是「想看个示例/听个方案」且没说要存成文件
+  · 用户没提到任何文件，且当前没有打开/上传的文件
+
+如触发改写但不知文件路径，先问一句「请告诉我要改的文件名（相对于工作区根目录）」再等用户回复。`;
+/* v0.4.41 自动进化（档位1+2）：每轮发送前把 skills/ 索引 + _我的风格.md 全文注入系统提示词。
+   档位1=经验自记（AI 用 [FILE_WRITE] 写 skills/*.md，下轮索引可见、按需 [FILE_READ]）；
+   档位2=偏好自调（skills/_我的风格.md 全文注入，AI 可自行覆盖更新，500字上限写在 TOOL_CAPS 守则里）。 */
+var SKILL_DIR = "skills";
+var STYLE_FILE = "skills/_我的风格.md";
+function buildSkillsContext(){
+  var parts = [];
+  try{
+    var arr = JSON.parse(wsList(SKILL_DIR) || "[]");
+    var names = [];
+    for(var i=0;i<arr.length;i++){
+      var n = arr[i] && arr[i].name ? String(arr[i].name) : "";
+      if(!n || arr[i].dir) continue;
+      if(n.indexOf(".keep")>=0) continue;
+      names.push(n.replace(/^skills\//,""));
+      if(names.length>=30) break; /* 索引上限 30 个，防提示词膨胀 */
+    }
+    if(names.length) parts.push("【技能库索引（skills/ 下你沉淀过的经验，觉得相关就用 [FILE_READ] 读全文）】\n"+names.join("、"));
+  }catch(e){}
+  try{
+    var style = wsRead(STYLE_FILE);
+    if(style && style.trim()) parts.push("【你的风格偏好（skills/_我的风格.md，全文注入，请直接遵守；可自行更新）】\n"+String(style).slice(0,1200));
+  }catch(e){}
+  return parts.join("\n\n");
+}
 var MEM = null;
 function loadMem(){
   if(MEM) return MEM;
@@ -4409,6 +4469,8 @@ function doChat(text, attachments){
   if(_memCtx) sysParts.push(MEM_SYS_PROMPT + "\n" + _memCtx);
   /* v0.4.38：统一引用 TOOL_CAPS 能力清单（单一可维护来源，见上方定义） */
   sysParts.push(TOOL_CAPS);
+  /* v0.4.41 自动进化：注入技能库索引 + 风格偏好全文（无技能文件时为空串，不注入） */
+  try{ var _skillCtx = buildSkillsContext(); if(_skillCtx) sysParts.push(_skillCtx); }catch(e){}
   var hist = recent;
   if(sysParts.length) hist = [{role:"system", content: sysParts.join("\n\n")}].concat(hist);
   var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
