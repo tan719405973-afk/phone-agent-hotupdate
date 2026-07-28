@@ -398,7 +398,6 @@
       <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
     </button>
     <button class="ib-btn" onclick="phoneASR(function(t){var el=document.getElementById('input'); if(el){ el.value=(el.value?el.value+' ':'')+t; autoGrow(el);} })" aria-label="语音输入">🎤</button>
-    <button class="ib-btn" onclick="paReadLast()" aria-label="朗读回复">🔊</button>
     <textarea id="input" rows="1" maxlength="4000" oninput="autoGrow(this)" placeholder=""></textarea>
     <button class="send guide" id="guideBtn" style="display:none" onclick="onGuideInput()">引导</button>
     <button class="send" id="sendBtn" onclick="onSend()">发送</button>
@@ -2883,936 +2882,27 @@ var qrcode = function() {
 
 </script>
 <script>
-/* ====================================================================
-    Agent OS Phone — 手机端完整 Agent 运行时
-    架构：20 模块成熟 Agent 清单（Core / Memory / Tool / Planner / Executor
-          / Workflow / Reflection / State / Task / Log / Config / Safety…）
-    依赖：NativeBridge（文件操作）、fetchTimeout（API 调用）
-    集成：phone-agent 加载后 window.AgentOS 全局对象，doChat 拦截调用
-   ==================================================================== */
-(function(){
-
-'use strict';
-
-/* ======================= 1. 配置中心 ======================= */
-var CONFIG = {
-  // 模型
-  model: "agnes",           // 当前模型标识
-  modelConfig: {
-    agnes: { apiKey: "", baseUrl: "", model: "agnes-2.0-flash" }
-  },
-  // 工作区
-  workspace: "phone-agent-workspace",
-  // 安全
-  safety: {
-    maxFileSize: 10 * 1024 * 1024,       // 10MB
-    allowedExts: [],                      // 空=允许所有
-    blockedExts: [".exe",".dll",".bat",".cmd",".ps1",".vbs",".jar",".apk"],
-    confirmDanger: true,                  // 危险操作需确认
-    dangerPatterns: [/rm\s+-rf/i, /format\s+\w/i, /del\s+\/f/i]
-  },
-  // 日志
-  logLevel: "info",         // debug / info / warn / error
-  maxLogEntries: 200,
-  // 对话
-  maxHistoryTokens: 8000,
-  maxToolRetries: 2,
-  // 成本
-  costLimit: { dailyTokens: 0, monthlyCost: 0 },  // 0 = 不限
-  // 规则（宪法）
-  constitution: {
-    agentId: "agent-os-phone-" + Date.now(),
-    agentName: "智能助手",
-    intent: "长期可靠地在手机上帮助用户完成工作",
-    standingConstraints: [
-      "用中文回复",
-      "尊重用户隐私，不泄漏个人信息",
-      "重要操作（删除/格式化/覆盖文件）前必须向用户确认"
-    ],
-    redLines: [
-      "rm -rf", "format", "del /f", "shutdown", "reboot",
-      "修改系统文件", "读取隐私文件（如相册/通讯录）除非用户明确要求"
-    ],
-    userPreferences: {}       // 从学习系统动态更新
-  }
-};
-
-/* ======================= 2. 日志系统 ======================= */
-var Logger = {
-  _entries: [],
-  _max: CONFIG.maxLogEntries,
-  _onNew: null,  // 回调：新日志通知 UI
-  _level: { debug:0, info:1, warn:2, error:3 },
-
-  debug: function(msg, data){ this._log("debug", msg, data); },
-  info: function(msg, data){ this._log("info", msg, data); },
-  warn: function(msg, data){ this._log("warn", msg, data); },
-  error: function(msg, data){ this._log("error", msg, data); },
-
-  _log: function(level, msg, data){
-    if(this._level[level] < this._level[CONFIG.logLevel]) return;
-    var entry = { ts: Date.now(), level: level, msg: msg, data: data };
-    this._entries.unshift(entry);
-    if(this._entries.length > this._max) this._entries.pop();
-    if(this._onNew) this._onNew(entry);
-  },
-  getLogs: function(level){ return level ? this._entries.filter(function(e){ return e.level===level; }) : this._entries; },
-  clear: function(){ this._entries = []; },
-  setCallback: function(fn){ this._onNew = fn; }
-};
-
-/* ======================= 3. 模型适配器 ======================= */
-var ModelAdapter = {
-  /* 使用 phone-agent 现有的 API 配置 */
-  chat: function(messages, opts){
-    opts = opts || {};
-    return new Promise(function(resolve, reject){
-      var apiKey = typeof currentApiKey === 'function' ? currentApiKey() : "";
-      var apiBase = typeof apiBase === 'function' ? apiBase() : "";
-      var model = opts.model || (typeof currentModel === 'function' ? currentModel("text") : "agnes-2.0-flash");
-      if(!apiKey){ reject(new Error("API Key 未配置")); return; }
-      var body = { model: model, messages: messages, stream: false };
-      if(opts.tools) body.tools = opts.tools;
-      if(opts.tool_choice) body.tool_choice = opts.tool_choice;
-      if(opts.max_tokens) body.max_tokens = opts.max_tokens;
-      if(opts.temperature != null) body.temperature = opts.temperature;
-      var fetchFn = typeof fetchTimeout === 'function' ? fetchTimeout : (typeof nativeFetch === 'function' ? nativeFetch : fetch);
-      fetchFn(apiBase + "/chat/completions", {
-        method: "POST",
-        timeout: opts.timeout || 120000,
-        headers: { "Content-Type":"application/json", "Authorization":"Bearer " + apiKey },
-        body: JSON.stringify(body)
-      }).then(function(r){
-        if(!r.ok) return r.text().then(function(t){ throw new Error("HTTP " + r.status + " " + t.slice(0,200)); });
-        return r.json();
-      }).then(function(j){
-        var choice = j.choices && j.choices[0];
-        if(!choice){ reject(new Error("API 返回异常")); return; }
-        resolve({
-          message: choice.message || { role:"assistant", content:"" },
-          finish_reason: choice.finish_reason || "stop",
-          usage: j.usage || { prompt_tokens:0, completion_tokens:0 }
-        });
-      }).catch(function(err){ reject(err); });
-    });
-  }
-};
-
-/* ======================= 4. 记忆系统 ======================= */
-var Memory = {
-  _session: { entries: [] },
-  _project: null,
-  _user: null,
-  _scratchpad: {},
-  _loaded: false,
-
-  /* 从 NativeBridge / localStorage 加载持久化记忆 */
-  load: function(){
-    if(this._loaded) return;
-    try{
-      var raw = typeof nLoad === 'function' ? nLoad("agent_memory") : localStorage.getItem("pa_agent_memory");
-      if(raw){
-        var d = JSON.parse(raw);
-        this._project = d.project || null;
-        this._user = d.user || null;
-        this._scratchpad = d.scratchpad || {};
-        this._loaded = true;
-      }
-    }catch(e){ Logger.warn("记忆加载失败", e); }
-    if(!this._project) this._project = { convs:{}, facts:[] };
-    if(!this._user) this._user = { profile:"", preferences:{}, history:[] };
-    this._loaded = true;
-  },
-  save: function(){
-    try{
-      var data = JSON.stringify({ project: this._project, user: this._user, scratchpad: this._scratchpad });
-      if(typeof nSave === 'function') nSave("agent_memory", data);
-      else localStorage.setItem("pa_agent_memory", data);
-    }catch(e){ Logger.error("记忆保存失败", e); }
-  },
-
-  /* 会话记忆 */
-  sessionPush: function(role, content){
-    this._session.entries.push({ role: role, content: content, ts: Date.now() });
-    if(this._session.entries.length > 100) this._session.entries.splice(0, 20);
-  },
-  sessionGet: function(n){
-    return this._session.entries.slice(-(n||50));
-  },
-  sessionClear: function(){
-    // 保留最后 2 轮以便上下文连贯
-    this._session.entries = this._session.entries.slice(-4);
-  },
-
-  /* 用户记忆 */
-  getUserProfile: function(){ return this._user; },
-  updateUserProfile: function(profile){
-    this._user.profile = profile;
-    this.save();
-  },
-  learnFact: function(fact){
-    if(!fact || fact.length < 5) return;
-    this._user.history.push({ text: fact, ts: Date.now() });
-    if(this._user.history.length > 100) this._user.history = this._user.history.slice(-100);
-    this.save();
-  },
-
-  /* 项目记忆 */
-  updateConvSummary: function(convId, summary){
-    this._project.convs[convId] = { summary: summary, ts: Date.now() };
-    this.save();
-  },
-
-  /* 草稿本（中间结果、临时缓存） */
-  scratchSet: function(key, val){ this._scratchpad[key] = val; },
-  scratchGet: function(key){ return this._scratchpad[key]; },
-  scratchClear: function(key){ if(key) delete this._scratchpad[key]; else this._scratchpad = {}; },
-
-  /* 构建记忆上下文 */
-  buildContext: function(input){
-    this.load();
-    var parts = [];
-    if(this._user.profile) parts.push("【用户画像】\n" + this._user.profile);
-    if(this._user.history.length){
-      var recent = this._user.history.slice(-5);
-      parts.push("【历史经验】\n" + recent.map(function(f){ return "- " + f.text; }).join("\n"));
-    }
-    var convKeys = Object.keys(this._project.convs || {}).slice(-3);
-    if(convKeys.length){
-      parts.push("【最近项目/对话要点】\n" + convKeys.map(function(k){
-        return "- " + (this._project.convs[k] ? this._project.convs[k].summary : "");
-      }, this).join("\n"));
-    }
-    return parts.join("\n\n");
-  }
-};
-
-/* ======================= 5. 安全系统 ======================= */
-var Safety = {
-  /* 检查文件操作是否允许 */
-  checkFileOp: function(op, path, content){
-    var cfg = CONFIG.safety;
-    // 禁止操作系统敏感路径
-    var blockedPaths = [/^\/system\b/i, /^C:\\Windows\b/i, /^C:\\Program Files\b/i, /\/proc\b/, /\/sys\b/];
-    for(var i=0; i<blockedPaths.length; i++){
-      if(blockedPaths[i].test(path)) return { allowed: false, reason: "禁止操作系统文件" };
-    }
-    // 检查扩展名
-    var ext = path.lastIndexOf(".") >= 0 ? path.slice(path.lastIndexOf(".")).toLowerCase() : "";
-    if(cfg.blockedExts.indexOf(ext) >= 0) return { allowed: false, reason: "禁止操作 " + ext + " 文件" };
-    return { allowed: true };
-  },
-
-  /* 检查是否有危险模式 */
-  isDangerAction: function(action, params){
-    var d = CONFIG.safety.dangerPatterns;
-    var text = action + " " + JSON.stringify(params);
-    for(var i=0; i<d.length; i++){
-      if(d[i].test(text)) return true;
-    }
-    return false;
-  },
-
-  /* 需要用户确认的危险操作 */
-  confirmAction: function(action, description){
-    return new Promise(function(resolve){
-      if(typeof showConfirm === 'function'){
-        showConfirm("⚠️ " + action, description + "\n\n确定执行吗？", function(yes){ resolve(yes); });
-      } else {
-        resolve(confirm(action + "\n" + description));
-      }
-    });
-  },
-
-  /* 检查宪法红线 */
-  checkConstitution: function(text){
-    var redLines = CONFIG.constitution.redLines;
-    for(var i=0; i<redLines.length; i++){
-      if(text.indexOf(redLines[i]) >= 0) return { violated: true, rule: redLines[i] };
-    }
-    return { violated: false };
-  }
-};
-
-/* ======================= 6. 工具系统 ======================= */
-var ToolRegistry = {};
-
-var Tools = {
-  registry: {},
-
-  register: function(name, manifest){
-    this.registry[name] = manifest;
-    Logger.info("工具注册: " + name);
-  },
-
-  get: function(name){ return this.registry[name]; },
-
-  list: function(){ return Object.keys(this.registry).map(function(k){ return { name:k, desc:this.registry[k].description }; }, this); },
-
-  /* 工具定义（OpenAI function calling 格式） */
-  getDefinitions: function(){
-    return Object.keys(this.registry).map(function(k){
-      var t = this.registry[k];
-      return {
-        type: "function",
-        function: {
-          name: k,
-          description: t.description,
-          parameters: t.parameters || {}
-        }
-      };
-    }, this);
-  },
-
-  /* 执行工具 */
-  execute: function(name, args, context){
-    var t = this.registry[name];
-    if(!t) return Promise.reject(new Error("未知工具: " + name));
-    // 安全检查
-    if(t.safetyCheck && t.safetyCheck(args)){
-      var chk = t.safetyCheck(args);
-      if(!chk.allowed) return Promise.resolve({ error: chk.reason, ok: false });
-    }
-    Logger.info("工具调用: " + name, args);
-    context && context.onToolStart && context.onToolStart(name, args);
-    return Promise.resolve().then(function(){ return t.handler(args, context); }).then(function(result){
-      Logger.info("工具完成: " + name, result);
-      context && context.onToolEnd && context.onToolEnd(name, result);
-      return result;
-    }).catch(function(err){
-      Logger.error("工具失败: " + name, err);
-      context && context.onToolError && context.onToolError(name, err);
-      return { error: err.message || String(err), ok: false };
-    });
-  }
-};
-
-/* ---- 文件工具 ---- */
-Tools.register("read_file", {
-  description: "读取工作区内的文件内容。支持 txt / md / json / js / html / css / py 等文本格式。",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "相对于工作区的文件路径，如 project/notes.md" }
-    },
-    required: ["path"]
-  },
-  handler: function(args, ctx){
-    var path = args.path;
-    if(!path) return { error: "缺少 path 参数" };
-    var check = CONFIG.safety.allowedExts.length;
-    if(check){
-      var ext = path.lastIndexOf(".") >= 0 ? path.slice(path.lastIndexOf(".")).toLowerCase() : "";
-      if(Safety.checkFileOp("read", path).allowed === false) return { error: "不允许读取该文件" };
-    }
-    return phoneFileRead(path);
-  },
-  safetyCheck: function(args){ return Safety.checkFileOp("read", args.path); }
-});
-
-Tools.register("write_file", {
-  description: "写入内容到工作区内的文件。文件不存在则创建，存在则覆盖。",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "相对于工作区的文件路径" },
-      content: { type: "string", description: "文件内容" }
-    },
-    required: ["path", "content"]
-  },
-  handler: function(args){
-    if(!args.path || args.content == null) return { error: "缺少参数" };
-    var chk = Safety.checkFileOp("write", args.path);
-    if(!chk.allowed) return { error: chk.reason };
-    return phoneFileWrite(args.path, args.content);
-  },
-  safetyCheck: function(args){ return Safety.checkFileOp("write", args.path); }
-});
-
-Tools.register("append_file", {
-  description: "追加内容到工作区内的文件末尾。",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "相对于工作区的文件路径" },
-      content: { type: "string", description: "要追加的内容" }
-    },
-    required: ["path", "content"]
-  },
-  handler: function(args){
-    return phoneFileAppend(args.path, args.content);
-  }
-});
-
-Tools.register("list_directory", {
-  description: "列出工作区目录下的文件和文件夹。",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "目录路径，空=工作区根目录" }
-    },
-    required: []
-  },
-  handler: function(args){
-    return phoneFileList(args.path || "");
-  }
-});
-
-Tools.register("delete_file", {
-  description: "删除工作区内的文件（需确认）。",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "相对于工作区的文件路径" }
-    },
-    required: ["path"]
-  },
-  handler: function(args){
-    return Safety.confirmAction("删除文件", "确定删除 " + args.path + " 吗？").then(function(ok){
-      if(!ok) return { ok: false, error: "用户取消" };
-      return phoneFileDelete(args.path);
-    });
-  }
-});
-
-/* ---- 网络工具 ---- */
-Tools.register("web_fetch", {
-  description: "抓取指定 URL 的网页内容。",
-  parameters: {
-    type: "object",
-    properties: {
-      url: { type: "string", description: "完整 URL" }
-    },
-    required: ["url"]
-  },
-  handler: function(args){
-    if(!args.url) return { error: "缺少 URL" };
-    var fetchFn = typeof nativeFetch === 'function' ? nativeFetch : fetch;
-    return fetchFn(args.url, { timeout: 30000 }).then(function(r){
-      if(!r.ok) throw new Error("HTTP " + r.status);
-      return r.text();
-    }).then(function(body){
-      return { ok: true, content: body.slice(0, 50000) };
-    });
-  }
-});
-
-Tools.register("web_search", {
-  description: "在百度搜索关键词，返回搜索结果摘要。",
-  parameters: {
-    type: "object",
-    properties: {
-      query: { type: "string", description: "搜索关键词" }
-    },
-    required: ["query"]
-  },
-  handler: function(args){
-    if(!args.query) return { error: "缺少搜索词" };
-    // 使用原生 HTTP 请求绕过 CORS
-    var q = encodeURIComponent(args.query);
-    var url = "https://www.baidu.com/s?wd=" + q;
-    return phoneFileFetch(url).then(function(body){
-      var results = [];
-      var re = /<h3[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h3>/g;
-      var m;
-      while((m = re.exec(body)) !== null && results.length < 8){
-        results.push({ title: m[2].replace(/<[^>]+>/g,"").trim(), url: m[1] });
-      }
-      return { ok: true, results: results, count: results.length };
-    }).catch(function(err){
-      return { ok: false, error: "搜索失败: " + (err.message||"") };
-    });
-  }
-});
-
-/* ---- AI 工具（调用其他 AI 模型） ---- */
-Tools.register("translate", {
-  description: "翻译文本到目标语言。",
-  parameters: {
-    type: "object",
-    properties: {
-      text: { type: "string", description: "要翻译的文本" },
-      target: { type: "string", description: "目标语言，如 '英语'、'日语'", default: "中文" }
-    },
-    required: ["text"]
-  },
-  handler: function(args){
-    return ModelAdapter.chat([
-      { role:"system", content:"你是一个翻译助手。只输出译文，不要解释。" },
-      { role:"user", content:"把以下文本翻译成" + (args.target||"中文") + "：\n" + args.text }
-    ], { max_tokens: 2000, temperature: 0.3 }).then(function(r){
-      return { ok: true, result: r.message.content };
-    });
-  }
-});
-
-/* ---- 手机原生文件操作桥接 ---- */
-/* 这些函数使用 NativeBridge 或备用方案 */
-function phoneFileRead(path){
-  return new Promise(function(resolve, reject){
-    if(typeof NativeBridge !== "undefined" && NativeBridge.readFile){
-      var r = NativeBridge.readFile(path);
-      if(r && r.indexOf("err:")!==0) resolve({ ok:true, content: r });
-      else reject(new Error(r || "读取失败"));
-    } else if(typeof nLoad === 'function'){
-      var r = nLoad("workspace/" + path);
-      resolve({ ok:true, content: r || "" });
-    } else {
-      reject(new Error("文件读取不可用"));
-    }
-  });
-}
-function phoneFileWrite(path, content){
-  return new Promise(function(resolve, reject){
-    if(typeof NativeBridge !== "undefined" && NativeBridge.writeFile){
-      var r = NativeBridge.writeFile(path, content);
-      if(r === "ok" || !r) resolve({ ok:true });
-      else reject(new Error(r));
-    } else if(typeof nSave === 'function'){
-      nSave("workspace/" + path, content);
-      resolve({ ok:true });
-    } else {
-      reject(new Error("文件写入不可用"));
-    }
-  });
-}
-function phoneFileAppend(path, content){
-  /* 先读再写（简陋版，后续可加原生 append） */
-  return phoneFileRead(path).then(function(existing){
-    var newContent = (existing.ok ? existing.content : "") + "\n" + content;
-    return phoneFileWrite(path, newContent);
-  });
-}
-function phoneFileList(dir){
-  return new Promise(function(resolve, reject){
-    if(typeof NativeBridge !== "undefined" && NativeBridge.listDir){
-      var r = NativeBridge.listDir(dir);
-      resolve({ ok:true, files: r || [] });
-    } else {
-      resolve({ ok:true, files: [], note: "列目录不可用" });
-    }
-  });
-}
-function phoneFileDelete(path){
-  return new Promise(function(resolve, reject){
-    if(typeof NativeBridge !== "undefined" && NativeBridge.deleteFile){
-      var r = NativeBridge.deleteFile(path);
-      if(r === "ok" || !r) resolve({ ok:true });
-      else reject(new Error(r));
-    } else {
-      reject(new Error("删除不可用"));
-    }
-  });
-}
-function phoneFileFetch(url){
-  return new Promise(function(resolve, reject){
-    if(typeof nativeFetch === 'function'){
-      nativeFetch(url, { timeout: 30000 }).then(function(r){
-        if(!r.ok) throw new Error("HTTP " + r.status);
-        return r.text();
-      }).then(resolve).catch(reject);
-    } else {
-      fetch(url, { signal: AbortSignal.timeout(30000) }).then(function(r){
-        if(!r.ok) throw new Error("HTTP " + r.status);
-        return r.text();
-      }).then(resolve).catch(reject);
-    }
-  });
-}
-
-/* ======================= 7. 状态管理 ======================= */
-var State = {
-  _states: {
-    IDLE: "空闲", PLANNING: "规划中", EXECUTING: "执行中",
-    WAITING: "等待用户", CHECKING: "检查中", REFLECTING: "反思中",
-    DONE: "完成", FAILED: "失败", CANCELLED: "已取消"
-  },
-  _current: "IDLE",
-  _history: [],
-  _listeners: [],
-
-  get: function(){ return this._current; },
-  getName: function(){ return this._states[this._current] || this._current; },
-
-  set: function(s){
-    var from = this._current;
-    this._current = s;
-    this._history.push({ from: from, to: s, ts: Date.now() });
-    Logger.info("状态: " + this._states[from] + " → " + (this._states[s]||s));
-    this._listeners.forEach(function(fn){ fn(s, from); });
-  },
-
-  onChange: function(fn){ this._listeners.push(fn); },
-
-  can: function(s){ /* 仅用于扩展 */ return true; },
-
-  reset: function(){ this._current = "IDLE"; }
-};
-
-/* ======================= 8. 任务管理 ======================= */
-var TaskManager = {
-  _tasks: {},
-  _seq: 0,
-
-  create: function(desc, parentId){
-    this._seq++;
-    var task = {
-      id: "t" + this._seq,
-      desc: desc,
-      status: "pending",  // pending / running / done / failed / cancelled
-      parentId: parentId || null,
-      subTasks: [],
-      priority: 0,
-      createdAt: Date.now(),
-      startedAt: null,
-      finishedAt: null,
-      result: null,
-      error: null,
-      logs: []
-    };
-    this._tasks[task.id] = task;
-    if(parentId && this._tasks[parentId]) this._tasks[parentId].subTasks.push(task.id);
-    return task;
-  },
-
-  get: function(id){ return this._tasks[id]; },
-
-  update: function(id, updates){
-    var t = this._tasks[id];
-    if(!t) return;
-    for(var k in updates) t[k] = updates[k];
-    if(updates.status === "running" && !t.startedAt) t.startedAt = Date.now();
-    if(updates.status === "done" || updates.status === "failed") t.finishedAt = Date.now();
-  },
-
-  getPending: function(){ return Object.keys(this._tasks).filter(function(k){ return this._tasks[k].status === "pending"; }, this); },
-
-  getActive: function(){ return Object.keys(this._tasks).filter(function(k){ return this._tasks[k].status === "running"; }, this); }
-};
-
-/* ======================= 9. 规划器 ======================= */
-var Planner = {
-  /* 分析用户输入，生成执行计划 */
-  plan: function(userInput, context){
-    Logger.info("规划器: 分析任务", userInput.slice(0,100));
-    State.set("PLANNING");
-    var conv = context.conversation;
-    var memCtx = Memory.buildContext(userInput);
-    var sysPrompt = [
-      CONFIG.constitution.intent,
-      "你是 " + CONFIG.constitution.agentName + "，一个在手机上运行的智能助手。",
-      "你的核心原则：",
-      CONFIG.constitution.standingConstraints.join("\n"),
-      "",
-      "【可用的工具】",
-      Object.keys(Tools.registry).map(function(k){
-        return "- " + k + "：" + Tools.registry[k].description;
-      }).join("\n"),
-      "",
-      memCtx ? "【用户背景记忆】\n" + memCtx : "",
-      "",
-      "【响应格式】",
-      "不要直接回答用户。先分析用户的目标，然后返回 JSON 格式的执行计划：",
-      '{"goal":"用户目标的简短描述","steps":[{"tool":"工具名","args":{"参数名":"值"},"desc":"这一步要做什么的说明"}],"needInfo":["如果需要用户补充信息就在这里列出"]}',
-      "如果不需要任何工具，直接回答用户，则返回：",
-      '{"directReply":"你的回复内容"}',
-      "如果不能解析用户意图，返回：",
-      '{"needInfo":["你的疑问列表"]}'
-    ].join("\n");
-
-    return ModelAdapter.chat([
-      { role:"system", content: sysPrompt },
-      { role:"user", content: userInput }
-    ], { temperature: 0.3, max_tokens: 2000 }).then(function(r){
-      var text = r.message.content || "";
-      Logger.debug("规划器响应", text.slice(0,200));
-      try {
-        // 尝试解析 JSON
-        var jsonStart = text.indexOf("{");
-        var jsonEnd = text.lastIndexOf("}");
-        if(jsonStart >= 0 && jsonEnd > jsonStart){
-          var plan = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
-          if(plan.directReply) return { type: "direct", reply: plan.directReply };
-          if(plan.goal && plan.steps) return { type: "plan", goal: plan.goal, steps: plan.steps, needInfo: plan.needInfo };
-          if(plan.needInfo) return { type: "ask", questions: plan.needInfo };
-        }
-      } catch(e){ Logger.warn("规划器解析失败", e); }
-      // 解析失败，当 direct 处理
-      return { type: "direct", reply: text };
-    });
-  }
-};
-
-/* ======================= 10. 执行器 ======================= */
-var Executor = {
-  executePlan: function(plan, context){
-    State.set("EXECUTING");
-    var results = [];
-    var stepIdx = 0;
-
-    function nextStep(){
-      if(stepIdx >= plan.steps.length){ State.set("DONE"); return Promise.resolve(results); }
-      var step = plan.steps[stepIdx];
-      var taskId = "exec_" + (stepIdx + 1);
-
-      Logger.info("执行步骤 " + (stepIdx+1) + "/" + plan.steps.length + ": " + (step.desc||step.tool));
-      context.onProgress && context.onProgress(stepIdx, plan.steps.length, step);
-
-      return Tools.execute(step.tool, step.args || {}, {
-        onToolStart: function(name, args){
-          context.onToolStart && context.onToolStart(name, args, stepIdx);
-        },
-        onToolEnd: function(name, result){
-          context.onToolEnd && context.onToolEnd(name, result, stepIdx);
-        }
-      }).then(function(result){
-        results.push({ step: step, result: result, idx: stepIdx });
-        if(result && result.ok === false && CONFIG.maxToolRetries > 0){
-          // 失败重试（暂不实现自动重试）
-        }
-        stepIdx++;
-        return nextStep();
-      });
-    }
-    return nextStep();
-  }
-};
-
-/* ======================= 11. 反思系统 ======================= */
-var Reflection = {
-  reflect: function(userInput, planResult, execResults, context){
-    State.set("REFLECTING");
-    var execSummary = execResults.map(function(r, i){
-      return "步骤" + (i+1) + "(" + r.step.tool + "): " + (r.result.ok !== false ? "成功" : "失败: " + (r.result.error||""));
-    }).join("\n");
-
-    // 如果所有步骤都成功了，不需要反思
-    var allOk = execResults.every(function(r){ return r.result.ok !== false; });
-    if(allOk){ State.set("DONE"); return Promise.resolve(null); }
-
-    var prompt = [
-      "用户目标：" + userInput,
-      "执行计划：",
-      planResult.steps.map(function(s,i){ return (i+1)+". "+s.tool+"("+JSON.stringify(s.args)+") - "+s.desc; }).join("\n"),
-      "执行结果：",
-      execSummary,
-      "",
-      "部分步骤失败了。请分析失败原因，给出修正后的新计划（同样格式的 JSON）。",
-      "如果不需要修正，返回：{\"done\":true}"
-    ].join("\n");
-
-    return ModelAdapter.chat([
-      { role:"system", content: "你是反思者，分析执行结果、找出失败根因、输出修正方案。输出 JSON。" },
-      { role:"user", content: prompt }
-    ], { temperature: 0.3 }).then(function(r){
-      var text = r.message.content || "";
-      try {
-        var j = text.indexOf("{"); var k = text.lastIndexOf("}");
-        if(j >= 0 && k > j) return JSON.parse(text.slice(j, k+1));
-      } catch(e){}
-      return { done: true };
-    });
-  }
-};
-
-/* ======================= 12. 上下文管理 ======================= */
-var Context = {
-  _tokenBudget: 8000,
-  _cache: {},
-
-  buildPrompt: function(userInput, memoryCtx, systemRules){
-    var parts = [];
-    // 系统角色
-    parts.push({ role:"system", content: [
-      "你是 " + CONFIG.constitution.agentName + "，一个在手机上运行的智能助手。",
-      systemRules || CONFIG.constitution.standingConstraints.join("\n"),
-      "【能力和限制】",
-      "- 你可以读写手机工作区（" + CONFIG.workspace + "）内的文件",
-      "- 你可以抓取网页、搜索百度",
-      "- 你不能执行 shell 命令",
-      "- 重要操作会先向你确认",
-      memoryCtx ? "\n" + memoryCtx : ""
-    ].filter(Boolean).join("\n") });
-    // 会话历史
-    var session = Memory.sessionGet(20);
-    session.forEach(function(e){
-      parts.push({ role: e.role, content: e.content });
-    });
-    // 当前输入
-    parts.push({ role:"user", content: userInput });
-    return parts;
-  }
-};
-
-/* ======================= 13. 学习系统 ======================= */
-var Learning = {
-  learnFromInteraction: function(userInput, response, plan, results){
-    Memory.load();
-    // 提取可能值得记住的用户偏好
-    var prefPatterns = [
-      /我喜欢(\w+)/, /我习惯(\w+)/, /我常用(\w+)/,
-      /我住在(\w+)/, /我在(\w+)工作/, /我是(\w+)/
-    ];
-    for(var i=0; i<prefPatterns.length; i++){
-      var m = prefPatterns[i].exec(userInput);
-      if(m) Memory.learnFact(m[0]);
-    }
-  }
-};
-
-/* ======================= 14. 主控制循环（Orchestrator） ======================= */
-var AgentOS = {
-  _running: false,
-  _cancelled: false,
-
-  /* 主入口：用户发来消息，Agent 处理并返回结果 */
-  run: function(userInput, context){
-    var self = this;
-    context = context || {};
-    Logger.info("Agent OS 开始处理", userInput.slice(0,100));
-    this._running = true;
-    this._cancelled = false;
-    Memory.load();
-
-    // 记录到会话记忆
-    Memory.sessionPush("user", userInput);
-
-    State.set("PLANNING");
-    context.onStatus && context.onStatus("planning");
-
-    return Planner.plan(userInput, { conversation: true }).then(function(plan){
-      if(self._cancelled){ State.set("CANCELLED"); return { cancelled: true }; }
-
-      // 检查安全红线
-      var conchk = Safety.checkConstitution(userInput);
-      if(conchk.violated){
-        context.onSafetyViolation && context.onSafetyViolation(conchk.rule);
-        return { ok: false, error: "⚠️ 此操作被安全规则拦截：" + conchk.rule };
-      }
-
-      if(plan.type === "direct"){
-        // 直接回复
-        State.set("DONE");
-        context.onReply && context.onReply(plan.reply);
-        Memory.sessionPush("assistant", plan.reply);
-        Learning.learnFromInteraction(userInput, plan.reply, null, null);
-        return { ok: true, reply: plan.reply };
-      }
-
-      if(plan.type === "ask"){
-        // 需要用户补充信息
-        State.set("WAITING");
-        context.onAsk && context.onAsk(plan.questions);
-        return { ok: true, ask: plan.questions };
-      }
-
-      if(plan.type === "plan"){
-        // 有执行计划
-        context.onPlan && context.onPlan(plan);
-        context.onProgress && context.onProgress(0, plan.steps.length, null);
-
-        return Executor.executePlan(plan, context).then(function(results){
-          if(self._cancelled){ State.set("CANCELLED"); return { cancelled: true }; }
-
-          State.set("CHECKING");
-          context.onStatus && context.onStatus("checking");
-
-          // 反思：检查失败步骤
-          return Reflection.reflect(userInput, plan, results, context).then(function(fixPlan){
-            if(fixPlan && fixPlan.done !== true && fixPlan.steps){
-              // 有修正方案，重新执行
-              Logger.info("反思后重新规划", fixPlan);
-              context.onReflection && context.onReflection(fixPlan);
-              return Executor.executePlan({ steps: fixPlan.steps, goal: plan.goal }, context);
-            }
-            return results;
-          }).then(function(finalResults){
-            var allResults = Array.isArray(finalResults) ? finalResults : results;
-            // 汇总结果给模型生成最终回复
-            var summary = allResults.map(function(r,i){
-              var s = r.step ? "步骤" + (i+1) + "(" + r.step.tool + ")" : "步骤" + (i+1);
-              var res = r.result ? (r.result.ok !== false ? JSON.stringify(r.result).slice(0,300) : "失败: " + r.result.error) : "";
-              return s + " → " + res;
-            }).join("\n");
-
-            return ModelAdapter.chat([
-              { role:"system", content: "你是" + CONFIG.constitution.agentName + "。根据以下执行结果，给用户一个清晰、友好的总结回复。如果执行成功就说完成了什么，如果部分失败就说明哪里出了问题。" },
-              { role:"user", content: "用户说：" + userInput + "\n\n执行结果：\n" + summary + "\n\n请回复用户。" }
-            ], { temperature: 0.7 }).then(function(r){
-              var reply = r.message.content || "";
-              State.set("DONE");
-              Memory.sessionPush("assistant", reply);
-              Learning.learnFromInteraction(userInput, reply, plan, allResults);
-              context.onReply && context.onReply(reply);
-              return { ok: true, reply: reply, results: allResults };
-            });
-          });
-        });
-      }
-
-      State.set("DONE");
-      return { ok: true, reply: "好的，已收到。有什么需要帮忙的吗？" };
-    }).catch(function(err){
-      State.set("FAILED");
-      Logger.error("Agent OS 异常", err);
-      context.onError && context.onError(err);
-      return { ok: false, error: err.message || String(err) };
-    }).then(function(result){
-      self._running = false;
-      return result;
-    });
-  },
-
-  cancel: function(){
-    this._cancelled = true;
-    State.set("CANCELLED");
-    Logger.info("Agent OS 已取消");
-  },
-
-  isRunning: function(){ return this._running; },
-
-  reset: function(){
-    this._running = false;
-    this._cancelled = false;
-    Memory.sessionClear();
-    State.reset();
-  },
-
-  /* 获取当前状态摘要 */
-  getStatus: function(){
-    return {
-      state: State.get(),
-      stateName: State.getName(),
-      running: this._running,
-      tasks: Object.keys(TaskManager._tasks).length,
-      tools: Tools.list().length,
-      memoryEntries: (Memory._user && Memory._user.history ? Memory._user.history.length : 0) + Object.keys(Memory._project.convs || {}).length
-    };
-  }
-};
-
-/* ======================= 暴露全局接口 ======================= */
-window.AgentOS = AgentOS;
-window._AgentTools = Tools;   // 内部调试用
-window._AgentMem = Memory;
-window._AgentLog = Logger;
-window._AgentState = State;
-
-Logger.info("Agent OS for Phone 已加载", { version: "0.1.0", tools: Tools.list().length });
-
-})();
-
-</script>
-</script>
-<script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.36";
+var APP_VERSION = "0.4.38";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.36", date:"2026-07-28", items:[
+var CHANGELOG = [  { v:"0.4.38", date:"2026-07-29", items:[
+    "修复(改文件)：AI 现在能改文件了——doChat 系统提示词告诉 AI 有 wsRead/wsWrite 等工具；AI 主动按 [FILE_WRITE]path:/content:[/FILE_WRITE] 格式输出 → JS 自动调 wsWrite 写入；用户主动指令才生效，不擅自写",
+    "修复(改文件)：要改某文件时 AI 可先输出 [FILE_READ]path:[/FILE_READ] → JS 调 wsRead 把原文插回对话，AI 在下一轮基于原文改写",
+    "新增(工作区 C)：文件编辑页头部加「AI 改写」按钮——输入指令（润色/改口语/加一段…）→ AI 生成预览 → 确认「替换原文」或「替换并保存」",
+    "修复(语音)：🎤 改用 ACTION_RECOGNIZE_SPEECH Intent 拉起系统自带语音输入面板（小爱/小艺/小 V），国产 ROM 100% 可用；不再走不可靠的 SpeechRecognizer",
+    "移除(朗读)：TTS 整体去掉（国产 ROM 不可靠）——删除 phoneTTS/paReadLast/lwReadCurrent 函数与输入栏/长文页两处 🔊 按钮；原生 ttsSpeak 留着不删",
+    "需重装 APK：语音输入 Intent + AI 改写按钮（纯 web 改动，但搭配新 APK 体验最完整）",
+  ]},
+  { v:"0.4.37", date:"2026-07-29", items:[
+    "移除：agent-os 内联块整体删除（~1000 行）——含 AgentOS 运行时、doAgentOsChat、设置页「使用 Agent OS」开关、agentOsMode/agentOsUrl 配置；聊天一律走直连 API（doChat 成熟链路）",
+    "清理：顺带删除历史遗留的重复 script 结束标签与过时注释",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.36", date:"2026-07-28", items:[
     "大改造（对照 20 模块成熟 Agent 手机子集）①Provider 抽象——API 接口可标「供应商类型」（Agnes 默认 Provider，可插拔切其他 OpenAI 兼容源），设置→API 接口管理可切换",
     "②工具执行可视化——文件读写/列目录接入运行日志；聊天/工具调用/错误实时记录，设置→运行日志可查",
     "③监控——主对话底部状态条显示本轮耗时/≈Token/错误数/调用数；运行日志记录对话完成统计",
@@ -4175,8 +3265,6 @@ var DEFAULT_CFG = {
   shareUrl: "",                /* 分享给亲友的链接（二维码内容），空=默认指向 updateBase */
   genParams: { size:"", n:1 },  /* F23 生成参数：尺寸(空=模型默认) / 张数 */
   fontScale: 1,                  /* F31 字体大小：0.85 小 / 1 标准 / 1.15 大 / 1.3 特大 */
-  agentOsMode: false,            /* 聊天使用 Agent OS 服务（需电脑运行 npm run server） */
-  agentOsUrl: "http://192.168.1.100:3001"  /* Agent OS 服务器地址 */
 };
 var CFG = null;
 
@@ -4565,6 +3653,112 @@ function persistPickedImage(base64, ext){
   try{ var uri = NativeBridge.saveMedia(base64, ext||"jpg"); if(uri && uri.indexOf("err:")!==0) return uri; }catch(e){}
   return base64;
 }
+/* v0.4.38 B：AI 回复里的 [FILE_WRITE]/[FILE_READ] 块解析，自动调 wsWrite/wsRead */
+/* 返回清理掉标记块后的文本（喂回聊天区展示）。无标记块时返回原文本。 */
+function parseFileWriteBlocks(text){
+  if(!text) return text;
+  var out = text;
+  /* —— FILE_READ：调 wsRead，把原文以"系统补充"形式插回对话（让下一轮 AI 看到） —— */
+  out = out.replace(/\[FILE_READ\]([\s\S]*?)\[\/FILE_READ\]/g, function(block, inner){
+    var m = inner.match(/^\s*path:\s*([^\n]+)/);
+    if(!m) return block;
+    var path = m[1].trim();
+    var content = wsRead(path);
+    if(content && content.indexOf("err:")!==0){
+      runLog("file","读取 "+path+"（"+content.length+" 字）");
+      var truncated = content.length>8000 ? content.slice(0,8000)+"\n…（截断）" : content;
+      return "\n\n【已读取 "+path+"（"+content.length+" 字）】\n```\n"+truncated+"\n```\n";
+    }
+    return "\n\n⚠️ 读 "+path+" 失败："+(content||"")+"\n";
+  });
+  /* —— FILE_WRITE：调 wsWrite，覆盖写文件并把标记块从聊天区移除 —— */
+  if(out.indexOf("[FILE_WRITE]")!==-1){
+    var okCount = 0;
+    out = out.replace(/\[FILE_WRITE\]([\s\S]*?)\[\/FILE_WRITE\]/g, function(block, inner){
+      var m = inner.match(/^\s*path:\s*([^\n]+)\s*content:\s*([\s\S]*?)\s*$/);
+      if(!m){
+        return "\n\n⚠️ FILE_WRITE 格式不对（需 path: + content: 两行）\n";
+      }
+      var path = m[1].trim();
+      var content = m[2].replace(/^\n+/,"").replace(/\n+$/,"");
+      var r = wsWrite(path, content);
+      if(r === "ok"){
+        okCount++;
+        runLog("file","改写 "+path+"（"+content.length+" 字）");
+        return "\n\n✅ 已写入 "+path+"（"+content.length+" 字）\n";
+      }
+      return "\n\n⚠️ 写入 "+path+" 失败："+r+"\n";
+    });
+    if(okCount>0) toast("已写入 "+okCount+" 个文件");
+  }
+  return out;
+}
+/* 工作区编辑页 C：AI 改写当前文件 */
+var _aiRewritePendingFile = "";
+var _aiRewritePendingText = "";
+function wsAiRewrite(){
+  var ta = document.getElementById("wsFileTa");
+  if(!ta || !wsCurFile){ toast("请先打开文件"); return; }
+  var content = ta.value || "";
+  if(!content.trim()){ toast("文件为空，没法改写"); return; }
+  /* 弹自定义输入对话框（带 textarea + 取消/开始） */
+  var box = document.getElementById("dlgBox");
+  box.innerHTML = '<div class="dh">AI 改写</div><div class="db">请输入改写指令：润色 / 改口语 / 改正式 / 加一段 / 删一段…</div>'+
+    '<textarea id="wsRewriteInp" style="width:100%;min-height:70px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg-2);color:var(--text-1);margin-top:6px"></textarea>'+
+    '<div class="df"><button class="cancel" onclick="closeDlg()">取消</button>'+
+    '<button class="ok" id="wsRewriteOk">开始改写</button></div>';
+  document.getElementById("dlgMask").classList.add("show");
+  document.getElementById("wsRewriteInp").focus();
+  document.getElementById("wsRewriteOk").onclick = function(){
+    var instr = (document.getElementById("wsRewriteInp").value || "").trim();
+    if(!instr){ toast("指令不能为空"); return; }
+    closeDlg();
+    runAiRewrite(content, instr);
+  };
+}
+function runAiRewrite(content, instr){
+  if(_aiRewritePendingFile === wsCurFile && _aiRewritePendingText){
+    content = _aiRewritePendingText;   /* 二次改写基于上次结果 */
+  }
+  toast("AI 改写中…");
+  runLog("file","AI 改写 "+wsCurFile+" · 指令："+instr);
+  var prompt = "请按以下指令改写文本，只输出改写后的完整内容（不要任何解释、不要 markdown 代码块、不要标题前缀）：\n\n指令："+instr+"\n\n原文：\n"+content;
+  fetchTimeout(apiBase()+"/chat/completions",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+    timeout: 120000,
+    body: JSON.stringify({ model:currentModel("text"), stream:false, messages:[{role:"user", content:prompt}] })
+  }).then(function(r){
+    if(!r.ok) return r.text().then(function(t){ throw new Error("HTTP "+r.status+" "+t.slice(0,120)); });
+    return r.text();
+  }).then(function(body){
+    var j = JSON.parse(body);
+    var out = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+    out = String(out).trim();
+    if(!out){ throw new Error("AI 返回为空"); }
+    var box = document.getElementById("dlgBox");
+    box.innerHTML = '<div class="dh">AI 改写预览</div>'+
+      '<div class="db" style="max-height:50vh;overflow:auto;white-space:pre-wrap;background:var(--bg-2);padding:10px;border-radius:8px;font-size:13px">'+esc(out)+'</div>'+
+      '<div class="df"><button class="cancel" onclick="wsRewriteCancel()">取消</button>'+
+      '<button class="ok" onclick="wsRewriteApply(false)">替换原文</button>'+
+      '<button class="ok" onclick="wsRewriteApply(true)" style="background:var(--green,#37d67a);margin-left:6px">替换并保存</button></div>';
+    document.getElementById("dlgMask").classList.add("show");
+    _aiRewritePendingFile = wsCurFile;
+    _aiRewritePendingText = out;
+  }).catch(function(err){
+    runLog("err","AI 改写失败："+friendlyErr(err));
+    toast("改写失败："+friendlyErr(err));
+  });
+}
+function wsRewriteCancel(){ _aiRewritePendingFile=""; _aiRewritePendingText=""; closeDlg(); }
+function wsRewriteApply(autoSave){
+  var ta = document.getElementById("wsFileTa");
+  if(ta) ta.value = _aiRewritePendingText || "";
+  _aiRewritePendingFile=""; _aiRewritePendingText="";
+  closeDlg();
+  if(autoSave){ wsSaveFile(); }
+  else { toast("已替换，点保存生效"); }
+}
 /* 把图片 URL（content://、http(s)://、data:）转成 base64 dataURL，供 AI API 使用 */
 function localImageToBase64(url){
   return new Promise(function(resolve, reject){
@@ -4668,6 +3862,33 @@ function current(){ return getConv(currentId); }
 
 /* ===== AI 跨会话记忆（Phase 3，v1 token 注入式；Agnes embeddings 503 故不语义） ===== */
 var MEM_SYS_PROMPT = "你是用户的创作助手。下面是从用户过往对话中整理出的长期记忆（仅供参考，请自行判断是否相关）：";
+/* v0.4.38：AI 能力清单——doChat 系统提示词统一引用此块。
+   维护约定：每次新增/修改 AI 可调用的能力，必须同步更新此块（见 workspace MEMORY.md「系统提示词能力清单」）。
+   注意：wsAppend 不存在（历史上曾误写），真实文件工具只有 wsRead/wsWrite/wsList/wsDelete/wsMkdir。 */
+var TOOL_CAPS =
+"【你的能力 / 工具】你运行在手机创作助手 phone-agent 中。你可在用户明确要求时操作以下工具（工作区根目录为手机 phone-agent-workspace/，路径相对根目录、用正斜杠）：\n"+
+"  wsRead(path)            读取文件，返回内容字符串\n"+
+"  wsWrite(path, content)  写入或覆盖文件（覆盖即\"修改\"已有文件）\n"+
+"  wsList(dir)             列出目录，返回 JSON 数组（每项含 name/dir/size）\n"+
+"  wsDelete(path)          删除文件\n"+
+"  wsMkdir(dir)            新建目录\n"+
+"路径示例：notes/todo.md、novel/第一章.txt\n"+
+"\n"+
+"【用户要求写/改/覆盖/创建文件时】按此格式输出（其他场景禁止输出任何工具格式）：\n"+
+"[FILE_WRITE]\n"+
+"path: 相对路径\n"+
+"content:\n"+
+"完整新内容（保持原缩进与换行）\n"+
+"[/FILE_WRITE]\n"+
+"前端会自动调用 wsWrite 写入。若要在已有内容基础上修改，可先输出：\n"+
+"[FILE_READ]\n"+
+"path: 相对路径\n"+
+"[/FILE_READ]\n"+
+"前端会调 wsRead 把原文插回对话供你参考。\n"+
+"\n"+
+"【长期记忆】上方「长期记忆」段落是跨会话自动注入的，你可参考它，无需自行存储任何记忆。\n"+
+"\n"+
+"【约束】普通问答、闲聊、解释建议时，禁止使用任何工具格式，直接文字回复。只在用户明确说「写/改/覆盖/创建 + 文件名」时才输出 [FILE_WRITE]/[FILE_READ]。";
 var MEM = null;
 function loadMem(){
   if(MEM) return MEM;
@@ -5138,86 +4359,10 @@ function cleanPrompt(t, intent){
   return t.trim();
 }
 
-/* ---- Agent OS 手机版（本地运行，不连电脑） ---- */
-function doAgentOsChat(text){
-  var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
-  renderMsgs();
-  var rowBubble = function(){ return document.querySelector('.row[data-mid="'+aiMsg.id+'"] .bubble'); };
-  var b = rowBubble(); if(b) b.innerHTML='<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
-  var fullText = "", toolLines = [];
-
-  if(typeof AgentOS === "undefined" || !AgentOS){
-    finalizeChat(aiMsg, "⚠️ Agent OS 模块未加载，请尝试检查更新或重启 App", []);
-    aiMsg._err = true;
-    return;
-  }
-
-  AgentOS.run(text, {
-    onStatus: function(s){ /* 状态变更 */ },
-    onPlan: function(plan){
-      fullText = "📋 我已理解你的目标：" + (plan.goal||"") + "\n\n";
-      var bb = rowBubble();
-      if(bb) bb.innerHTML = esc(fullText) + (toolLines.length ? '<div style="margin-top:8px;font-size:12px;color:var(--text-3)">'+toolLines.join("<br>")+'</div>' : "");
-      scrollBottom();
-    },
-    onProgress: function(idx, total, step){
-      if(step){
-        toolLines.push("📌 步骤 "+(idx+1)+"/"+total+"："+(step.desc||step.tool));
-        var bb = rowBubble();
-        if(bb) bb.innerHTML = esc(fullText) + '<div style="margin-top:8px;font-size:12px;color:var(--text-3)">'+toolLines.join("<br>")+'</div>';
-        scrollBottom();
-      }
-    },
-    onToolStart: function(name, args, stepIdx){
-      toolLines.push("🔧 " + name + "(" + JSON.stringify(args).slice(0,60) + ")");
-      var bb = rowBubble();
-      if(bb) bb.innerHTML = esc(fullText) + '<div style="margin-top:8px;font-size:12px;color:var(--text-3)">'+toolLines.join("<br>")+'</div>';
-      scrollBottom();
-    },
-    onToolEnd: function(name, result){
-      toolLines[toolLines.length-1] += result && result.ok !== false ? " ✅" : " ❌";
-      var bb = rowBubble();
-      if(bb) bb.innerHTML = esc(fullText) + '<div style="margin-top:8px;font-size:12px;color:var(--text-3)">'+toolLines.join("<br>")+'</div>';
-      scrollBottom();
-    },
-    onReply: function(reply){
-      fullText = reply;
-      var bb = rowBubble();
-      if(bb) bb.innerHTML = esc(fullText).replace(/\n/g,"<br>");
-      scrollBottom();
-    },
-    onError: function(err){
-      var msg = err && err.message ? err.message : String(err);
-      if(msg.indexOf("Failed to fetch") >= 0 || msg.indexOf("NetworkError") >= 0){
-        msg = "API 请求失败（Failed to fetch），请检查：① API Key 是否正确配置 ② 网络是否正常 ③ Agent OS 内调用暂不支持某些 API 接口，可尝试关闭 Agent OS 用直连模式";
-      }
-      finalizeChat(aiMsg, "⚠️ Agent OS 错误：" + msg, []);
-      aiMsg._err = true;
-    },
-    onAsk: function(questions){
-      fullText = "📝 我需要你补充信息：\n" + questions.map(function(q,i){ return (i+1)+". "+q; }).join("\n");
-      var bb = rowBubble();
-      if(bb) bb.innerHTML = esc(fullText);
-      scrollBottom();
-    },
-    onSafetyViolation: function(rule){
-      toolLines.push("⚠️ 安全拦截："+rule);
-    }
-  }).then(function(result){
-    if(result && result.ok && result.reply){
-      finalizeChat(aiMsg, result.reply, []);
-    }
-  });
-}
 
 /* ---- 线① 文本对话（流式打字机 F22）+ F13/F14 附件处理 ---- */
 function doChat(text, attachments){
   attachments = attachments || [];
-  /* Agent OS 模式：本地 Agent 处理聊天，不走 API */
-  if(CFG.agentOsMode){
-    if(attachments.length){ toast("Agent OS 模式暂不支持附件，只发送文字"); }
-    return doAgentOsChat(text);
-  }
   var c = current();
   var allTxt = c.messages.filter(function(m){return m.type==="text";});
   var summaryMsg = allTxt.filter(function(m){return m.role==="summary";})[0];
@@ -5245,6 +4390,8 @@ function doChat(text, attachments){
   if(summaryMsg) sysParts.push("【对话更早部分摘要，供参考】\n"+summaryMsg.text);
   var _memCtx = buildMemoryContext(text);
   if(_memCtx) sysParts.push(MEM_SYS_PROMPT + "\n" + _memCtx);
+  /* v0.4.38：统一引用 TOOL_CAPS 能力清单（单一可维护来源，见上方定义） */
+  sysParts.push(TOOL_CAPS);
   var hist = recent;
   if(sysParts.length) hist = [{role:"system", content: sysParts.join("\n\n")}].concat(hist);
   var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
@@ -5308,6 +4455,9 @@ function doChat(text, attachments){
       });
       SESSION_STATS.ms += (Date.now()-_t0); SESSION_STATS.tokens += estTokens(chatAcc);
       runLog("chat","对话完成 · ~"+estTokens(chatAcc)+" token · "+((Date.now()-_t0)/1000).toFixed(1)+"s"); renderStats();
+      /* v0.4.38 B：解析 AI 回复里的 [FILE_WRITE] 块，自动调 wsWrite */
+      var writeApplied = parseFileWriteBlocks(chatAcc);
+      if(writeApplied) chatAcc = writeApplied;   // 把标记块从聊天里清掉，避免污染显示
       finalizeChat(aiMsg, chatAcc, attachments);
     }).then(function(){
       clearTimeout(chatTimer); clearRetry(aiMsg.id);
@@ -5781,15 +4931,6 @@ function renderSettings(){
     cellNav("我的记忆", "openMemory()")+
     cellNav("运行日志", "openRunLog()")+
     cellNav("工作区（手机文件）", "openWorkspace()")+
-  '</div>'+
-  '<div class="group"><div class="gt">高级</div>'+
-    '<div class="cell" style="display:block;padding:10px 14px">'+
-      '<label style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">'+
-        '<span class="cl" style="font-size:14px">🤖 使用 Agent OS</span>'+
-        '<input type="checkbox" '+(CFG.agentOsMode?'checked':'')+' onchange="CFG.agentOsMode=this.checked;saveCfg();toast(\'已切换聊天模式：\'+(this.checked?\'Agent OS\':\'直连 API\'))" style="width:20px;height:20px">'+
-      '</label>'+
-      '<div style="font-size:12px;color:var(--text-3);margin-top:4px">开启后聊天由手机本地 Agent 驱动，支持读写文件、搜网页等工具调用</div>'+
-    '</div>'+
   '</div>'+
   '<div class="group"><div class="gt">关于</div>'+
     '<div class="cell"><span class="cl">版本</span><span class="cr">v'+APP_VERSION+'</span></div>'+
@@ -6410,30 +5551,14 @@ function showConfirm(title, msg, cb, danger){
   document.getElementById("dlgOk").onclick=function(){ closeDlg(); cb&&cb(); };
 }
 function closeDlg(){ document.getElementById("dlgMask").classList.remove("show"); }
-/* ===== 端侧能力（手机组成·大改造 C 阶段）：朗读/语音/分享/通知，无原生时回退 Web API ===== */
-function phoneTTS(text){
-  text = (text||"").trim(); if(!text) return;
-  if(hasNative() && typeof NativeBridge.ttsSpeak==="function"){
-    var r = NativeBridge.ttsSpeak(text);
-    if(r && r.indexOf("err:")!==0){ toolLog("tts","朗读 "+text.length+" 字"); return; }
-    if(r==="err:NOT_READY"){ toast("语音引擎初始化中，请稍后再试"); return; }
-    if(r && r.indexOf("err:")===0){ toast("端侧朗读不可用："+r.slice(4)); }
-  }
-  try{
-    if(window.speechSynthesis){
-      var u = new SpeechSynthesisUtterance(text); u.lang="zh-CN"; u.rate=1.0;
-      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
-      toolLog("tts","朗读（Web Speech 回退）"); return;
-    }
-  }catch(e){}
-  toast("当前环境不支持朗读");
-}
+/* ===== 端侧能力（手机组成·大改造 C 阶段）：语音输入/分享/通知，无原生时回退 Web API ===== */
+/* v0.4.38：TTS 移除（国产 ROM 不可靠，按用户要求去掉） */
 function phoneASR(cb){
-  if(hasNative() && typeof NativeBridge.speechToText==="function"){
+  if(hasNative() && typeof NativeBridge.voiceInputIntent==="function"){
     window.__onAsrResult = function(t){
-      if(typeof cb==="function") cb(t);
+      if(typeof cb==="function") cb(t || "");
     };
-    var r = NativeBridge.speechToText();
+    var r = NativeBridge.voiceInputIntent();
     if(r && r.indexOf("err:")===0){ toast("语音输入不可用："+r.slice(4)); }
     return;
   }
@@ -6463,17 +5588,6 @@ function phoneNotify(title, body){
     if(r && r.indexOf("err:")!==0){ toolLog("notify","通知："+(title||"")); return; }
   }
   try{ if("Notification" in window){ new Notification(title||"通知", {body:body||""}); } }catch(e){}
-}
-function paReadLast(){
-  var c = current(); if(!c) return;
-  for(var i=c.messages.length-1;i>=0;i--){ var m=c.messages[i]; if(m.role==="assistant" && m.text){ phoneTTS(m.text); return; } }
-  toast("没有可朗读的回复");
-}
-function lwReadCurrent(){
-  var el = document.getElementById("lwChatMsgs"); if(!el) return;
-  var bubbles = el.querySelectorAll(".bubble");
-  if(!bubbles.length){ toast("没有可朗读内容"); return; }
-  phoneTTS((bubbles[bubbles.length-1].innerText||"").replace(/^✅\s*/,""));
 }
 /* 运行日志页（大改造 B2） */
 function openRunLog(){
@@ -7177,7 +6291,6 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
   window.addEventListener("online", function(){ updateOnline(); toast("网络已恢复"); });
 
   silentCheckUpdate();       /* F35：启动静默检查热更新 */
-  /* Agent OS 模块已内联在下方 script 块中 */
   if(!localStorage.getItem(GUIDE_KEY)){ try{ showGuide(); }catch(e){} }  /* F38：首次打开弹新手引导 */
   var input=document.getElementById("input");
   input.addEventListener("keydown",function(e){
@@ -7264,7 +6377,6 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
     <div class="lw-main" style="flex:1;display:flex;flex-direction:column;min-height:0">
       <div class="lw-chat" id="lwChatMsgs"></div>
       <div class="lw-chat-foot">
-        <button class="lw-qb" onclick="lwReadCurrent()" title="朗读当前">🔊</button>
         <button class="lw-qb" onclick="lwOpenOutline()" title="大纲">📖</button>
         <button class="lw-qb" onclick="lwOpenGuide()" title="写作设定">📝</button>
         <textarea id="lwAgentInp" class="lw-chat-inp" placeholder="跟 Agent 对话…写下一章、修改第三章" rows="1"></textarea>
@@ -7339,6 +6451,7 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
     </button>
     <div class="pt" id="wsFileName" style="font-size:14px">文件</div>
     <div class="lw-head-btns" style="display:flex;gap:4px">
+      <button onclick="wsAiRewrite()" style="padding:6px 10px;font-size:12px">AI 改写</button>
       <button onclick="wsExportFile()" style="padding:6px 10px;font-size:12px">导出</button>
       <button onclick="phoneShare((document.getElementById('wsFileTa')||{}).value||'', document.getElementById('wsFileName').textContent||'文件')" style="padding:6px 10px;font-size:12px">分享</button>
       <button onclick="wsSaveFile()" style="padding:6px 10px;font-size:12px">保存</button>
