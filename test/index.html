@@ -2883,13 +2883,19 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.44";
+var APP_VERSION = "0.4.45";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.44", date:"2026-07-29", items:[
+var CHANGELOG = [  { v:"0.4.45", date:"2026-07-29", items:[
+    "修复（永久防“装同版”系统弹窗）：下载下来的 APK 即使 versionCode 与已装相同（或更低），App 内会自动识别并跳过安装提示原因，不再调起系统安装器——根治“已安装相同版本 0.4.38”之类的系统弹窗",
+    "根因：apkUrl 此前走 GitHub Pages（*.github.io）域名，Pages CDN 缓存命中旧版 APK 的概率高；改走 raw.githubusercontent.com（实时服务 main 分支 tree、无 CDN 缓存、ETag/If-Modified-Since 正常）",
+    "实现：NativeBridge.downloadAndInstallApk 下载完成后用 PackageManager.getPackageArchiveInfo 读下载包的 versionCode，与当前已装对比，同/旧版删文件 + toast 跳过；只有真正更高版本才调起安装器",
+    "需重装 APK：versionCode 20260752→20260753；新版 APK 同时含“已装跳过”校验逻辑",
+  ]},
+  { v:"0.4.44", date:"2026-07-29", items:[
     "修复（工作区子目录）：进入子文件夹后没有任何返回入口、容易“进得去出不来”——现在子目录内第一行固定显示「⬆️ 返回上级」，面包屑点一下也仍可直接回根目录",
     "修复（浏览器/旧包回退模式）：子目录里的文件被拍平显示成带斜杠的假文件名、文件夹永远不显示——重写回退列表逻辑，子目录正常显示为 📁 可点击进入",
     "修复（点击失效）：文件名含引号、括号等特殊字符时点击无反应——列表点击改为索引寻址，任何文件名都能打开",
