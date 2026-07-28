@@ -358,6 +358,10 @@
   .studio-steps .st{ flex:1;text-align:center;font-size:11px;color:var(--text-3);padding:8px 2px;border-radius:8px;
     border:1px solid var(--line);background:var(--bg-2); }
   .studio-steps .st .n{ display:block;font-size:15px;font-weight:700;margin-bottom:3px; }
+  .mem-tabs{ display:flex;gap:6px;padding:8px 12px;overflow-x:auto;border-bottom:1px solid var(--line,#26304a) }
+  .mem-tab{ flex:0 0 auto;font-size:12px;color:var(--text-3);padding:5px 10px;border-radius:14px;background:var(--bg-2);border:1px solid var(--line,#26304a);cursor:pointer }
+  .mem-tab.on{ color:#fff;background:var(--accent);border-color:var(--accent) }
+  .page-head .head-btn{ margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer }
 </style>
 </head>
 <body>
@@ -393,10 +397,13 @@
     <button class="ib-btn" onclick="pickFile()" aria-label="上传文件">
       <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
     </button>
+    <button class="ib-btn" onclick="phoneASR(function(t){var el=document.getElementById('input'); if(el){ el.value=(el.value?el.value+' ':'')+t; autoGrow(el);} })" aria-label="语音输入">🎤</button>
+    <button class="ib-btn" onclick="paReadLast()" aria-label="朗读回复">🔊</button>
     <textarea id="input" rows="1" maxlength="4000" oninput="autoGrow(this)" placeholder=""></textarea>
     <button class="send guide" id="guideBtn" style="display:none" onclick="onGuideInput()">引导</button>
     <button class="send" id="sendBtn" onclick="onSend()">发送</button>
   </div>
+  <div id="chatStats" style="font-size:11px;color:var(--text-3);padding:2px 14px 6px;min-height:14px"></div>
 
   <!-- 抽屉遮罩 -->
   <div class="mask" id="drawerMask" onclick="closeDrawer()"></div>
@@ -465,14 +472,16 @@
     <div class="page-body" id="apiEditBody"></div>
   </div>
 
-  <!-- 我的记忆页（Phase 3 跨会话记忆） -->
+  <!-- 我的记忆页（分层记忆：Session/Project/User/Knowledge/Scratchpad） -->
   <div class="page" id="memoryPage">
     <div class="page-head">
       <button class="back" onclick="hide('memoryPage')">
         <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
       <div class="pt">我的记忆</div>
+      <button class="head-btn" onclick="addMemPrompt()">+ 添加</button>
     </div>
+    <div class="mem-tabs" id="memTabs"></div>
     <div class="page-body" id="memoryBody"></div>
   </div>
 
@@ -3797,13 +3806,31 @@ Logger.info("Agent OS for Phone 已加载", { version: "0.1.0", tools: Tools.lis
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.34";
+var APP_VERSION = "0.4.36";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.33", date:"2026-07-27", items:[
+var CHANGELOG = [  { v:"0.4.36", date:"2026-07-28", items:[
+    "大改造（对照 20 模块成熟 Agent 手机子集）①Provider 抽象——API 接口可标「供应商类型」（Agnes 默认 Provider，可插拔切其他 OpenAI 兼容源），设置→API 接口管理可切换",
+    "②工具执行可视化——文件读写/列目录接入运行日志；聊天/工具调用/错误实时记录，设置→运行日志可查",
+    "③监控——主对话底部状态条显示本轮耗时/≈Token/错误数/调用数；运行日志记录对话完成统计",
+    "④分层记忆——「我的记忆」改为 5 类（会话/项目/用户/知识/草稿）分类页签，自动总结归「会话」，手动添加可指定分类",
+    "⑤端侧能力（手机组成）：朗读(🔊)/语音输入(🎤)接系统 TTS/ASR（无原生回退 Web Speech）；文件可系统分享；长任务完成发系统通知",
+    "⑥安全——删文件/清空记忆弹危险确认。注：纯 web 热更已生效；端侧能力(⑤)需重打包 APK 落地（原生桥已补 ttsSpeak/speechToText/shareText/notify，当前热更先回退 Web Speech/复制）",
+  ]},
+  { v:"0.4.35", date:"2026-07-28", items:[
+    "新增：工作区（真实文件夹）——原生桥补 wsRead/wsWrite/wsAppend/wsList/wsDelete/wsMkdir（根目录 phone-agent-workspace/，带路径防穿越）；设置→工作区可浏览/新建文件与文件夹/打开编辑/删除/导出",
+    "修复：长文模式 Agent 不回话——流式调用对齐 doChat 成熟写法（fetchTimeout + parseSSEStream），生成后自动写回真实文件夹「小说名.txt」，多本小说各自独立 .txt",
+    "按 20 模块成熟 Agent 清单挑出手机可用子集（砍终端/数据库/插件/多Agent/本地模型/MCP/Webhook 等手机不支持项），文件工具按你要求落地为真实文件夹",
+    "纯 web 热更；真实文件夹需重打包 APK 生效（原生桥已补，当前热更先用 KV 回退，重装 APK 后自动切真实文件夹）",
+  ]},
+  { v:"0.4.34", date:"2026-07-27", items:[
+    "重构：长文模式 UI 全改——去左栏，全屏 Agent 对话+底部输入框，大纲/写作设定改为弹窗按钮",
+    "纯 web 热更，无需重装 APK",
+  ]},
+  { v:"0.4.33", date:"2026-07-27", items:[
     "重构：长文模式支持多本小说——进入时显示项目列表，每本独立章节/设定，可新建/切换/导入 .txt 自动创建新项目",
     "纯 web 热更，无需重装 APK",
   ]},
@@ -4070,7 +4097,7 @@ function makeDefaultApi(id){
   return { id:id||"agnes-default", name:"Agnes", icon:"A", baseUrl:"https://apihub.agnes-ai.com/v1", key:"",
            models:{text:"agnes-2.0-flash", image:"agnes-image-2.1-flash", imageEdit:"agnes-image-2.0-flash", video:"agnes-video-v2.0"},
            modelsList:["agnes-2.0-flash","agnes-2.5-flash","agnes-image-2.0-flash","agnes-image-2.1-flash","agnes-video-v2.0"],
-           routable:true, parseFiles:false };
+           routable:true, parseFiles:false, type:"agnes" };
 }
 /* 图像/视频生成始终走「可路由」的供应商（默认 Agnes），避免切到只做对话的 BigModel 时生图崩 */
 function mediaApi(){
@@ -4488,6 +4515,50 @@ function hasNative(){ try{ return (typeof NativeBridge!=="undefined") && NativeB
 function nLoad(key){ try{ return NativeBridge.load(key); }catch(e){ return ""; } }
 function nSave(key, val){ try{ return NativeBridge.save(key, val); }catch(e){ return "err"; } }
 function nExist(key){ try{ return NativeBridge.exist(key)==="1"; }catch(e){ return false; } }
+/* ===== 运行日志 / 监控（大改造 A/B 阶段） ===== */
+var RUN_LOG = [];
+function runLog(type, msg){
+  try{ RUN_LOG.unshift({ts:Date.now(), type:String(type||"info"), msg:String(msg||"")}); if(RUN_LOG.length>300) RUN_LOG=RUN_LOG.slice(0,300); }catch(e){}
+}
+function toolLog(type, msg){ runLog(type, msg); }
+var SESSION_STATS = { tokens:0, ms:0, errors:0, calls:0 };
+function estTokens(s){ if(!s) return 0; return Math.max(1, Math.ceil(String(s).length/1.6)); }
+function fmtStats(){
+  return "⏱ "+(SESSION_STATS.ms/1000).toFixed(1)+"s · 📊 ~"+SESSION_STATS.tokens+" token · ❌ "+SESSION_STATS.errors+" · 🔁 "+SESSION_STATS.calls+" 调用";
+}
+function renderStats(){
+  var el = document.getElementById("chatStats"); if(!el) return;
+  el.textContent = fmtStats();
+}
+/* ===== 工作区真实文件夹（手机子集·文件工具）：优先原生 NativeBridge.ws*，无则 KV 回退（浏览器预览/未重打包时） ===== */
+var WS_KEY = "ws:";   // KV 回退前缀：路径用 :: 编码避免子目录创建失败
+function wsKeyEncode(p){ return WS_KEY + String(p||"").replace(/\//g, "::").replace(/\\/g, "::"); }
+function hasWsNative(){ try{ return hasNative() && NativeBridge && typeof NativeBridge.wsRead==="function"; }catch(e){ return false; } }
+function wsWrite(path, content){ toolLog("file","写入 "+path);
+  if(hasWsNative()){ try{ var r = NativeBridge.wsWrite(path, content||""); if(r && r.indexOf("err:")!==0) return "ok"; }catch(e){} }
+  try{ nSave(wsKeyEncode(path), content||""); return "ok"; }catch(e){ return "err:"+(e.message||e); }
+}
+function wsRead(path){ toolLog("file","读取 "+path);
+  if(hasWsNative()){ try{ var r = NativeBridge.wsRead(path); if(r && r.indexOf("err:")!==0) return r; }catch(e){} }
+  try{ return nLoad(wsKeyEncode(path)); }catch(e){ return ""; }
+}
+function wsDelete(path){ toolLog("file","删除 "+path);
+  if(hasWsNative()){ try{ NativeBridge.wsDelete(path); }catch(e){} }
+  try{ if(typeof nRemove==="function") nRemove(wsKeyEncode(path)); else localStorage.removeItem(WS_KEY+path); }catch(e){}
+  return "ok";
+}
+function wsMkdir(dir){
+  if(hasWsNative()){ try{ var r = NativeBridge.wsWrite((dir||"__dir__")+"/.keep", ""); if(r && r.indexOf("err:")!==0) return "ok"; }catch(e){} }
+  return "ok";
+}
+function wsList(dir){ toolLog("file","列出 "+(dir||"根目录"));
+  if(hasWsNative()){ try{ var r = NativeBridge.wsList(dir||""); if(r && r.indexOf("err:")!==0) return r; }catch(e){} }
+  try{   // KV 回退：列 ws: 前缀全部 key 并按目录过滤
+    var out = []; var prefix = wsKeyEncode(dir||"");
+    for(var i=0;i<localStorage.length;i++){ var k = localStorage.key(i); if(k && k.indexOf(prefix)===0){ out.push({ name:k.slice(WS_KEY.length).replace(/::/g,"/"), dir:false, size:(localStorage.getItem(k)||"").length }); } }
+    return JSON.stringify(out);
+  }catch(e){ return "[]"; }
+}
 /* 选中图片 base64 → 落本地（APK），浏览器保留 base64（5MB 风险仅预览期） */
 function persistPickedImage(base64, ext){
   if(!hasNative()) return base64;
@@ -4623,7 +4694,7 @@ function summarizeConv(conv, done){
   }, 60000).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
     var s = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
     if(s){ s = String(s).trim(); loadMem();
-      MEM.entries.unshift({ id: uid("mem"), ts: Date.now(), conv: conv.name||"对话", convId: conv.id, summary: s });
+      MEM.entries.unshift({ id: uid("mem"), ts: Date.now(), conv: conv.name||"对话", convId: conv.id, cat:"session", summary: s });
       if(MEM.entries.length > 50) MEM.entries = MEM.entries.slice(0,50);
       saveMem();
     }
@@ -4650,22 +4721,43 @@ function buildMemoryContext(input){
   }
   return parts.join("\n");
 }
-function openMemory(){
-  loadMem();
-  var list = MEM.entries.map(function(e, i){
+var MEM_CATS = [{k:"all",n:"全部"},{k:"session",n:"会话"},{k:"project",n:"项目"},{k:"user",n:"用户"},{k:"knowledge",n:"知识"},{k:"scratchpad",n:"草稿"}];
+var MEM_CUR_TAB = "all";
+function openMemory(){ loadMem(); MEM_CUR_TAB = "all"; renderMemory(); show('memoryPage'); }
+function switchMemTab(k){ MEM_CUR_TAB = k; renderMemory(); }
+function renderMemory(){
+  var box = document.getElementById("memoryBody"); if(!box) return;
+  var tabs = document.getElementById("memTabs");
+  if(tabs) tabs.innerHTML = MEM_CATS.map(function(c){
+    return '<span class="mem-tab'+(MEM_CUR_TAB===c.k?' on':'')+'" onclick="switchMemTab(\''+c.k+'\')">'+c.n+'</span>';
+  }).join("");
+  var list = MEM.entries.filter(function(e){ return MEM_CUR_TAB==="all" || (e.cat||"session")===MEM_CUR_TAB; });
+  var html = list.map(function(e){
+    var realIdx = MEM.entries.indexOf(e);
+    var catN = (MEM_CATS.filter(function(c){return c.k===(e.cat||"session");})[0]||{n:""}).n;
     return '<div class="cell" style="display:block"><div style="font-size:13px;color:var(--text-2);line-height:1.5">'+esc(e.summary)+
       '</div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'+
-      '<span style="font-size:11px;color:var(--text-3)">'+(e.conv||"")+' · '+new Date(e.ts).toLocaleDateString()+'</span>'+
-      '<b style="color:var(--danger);font-size:13px" onclick="delMem('+i+')">删除</b></div></div>';
-  }).join("") || '<div style="padding:20px;text-align:center;color:var(--text-3)">还没有记忆。多聊几句，切到别的对话时会自动总结。</div>';
-  document.getElementById("memoryBody").innerHTML =
+      '<span style="font-size:11px;color:var(--text-3)">'+catN+' · '+(e.conv||"")+' · '+new Date(e.ts).toLocaleDateString()+'</span>'+
+      '<b style="color:var(--danger);font-size:13px" onclick="delMem('+realIdx+')">删除</b></div></div>';
+  }).join("") || '<div style="padding:20px;text-align:center;color:var(--text-3)">这个分类还没有记忆。多聊几句会自动总结到「会话」；点右上「+ 添加」手动记录用户/项目/知识等。</div>';
+  box.innerHTML =
     '<div class="group"><div class="gt">用户画像（AI 会参考，可手动编辑）</div>'+
       '<div class="cell" style="display:block"><textarea id="memProfile" rows="4" style="width:100%;border:none;outline:none;font-size:14px;font-family:inherit;resize:none">'+esc(MEM.profile||"")+'</textarea></div>'+
       '<div style="padding:10px 16px"><button style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer" onclick="saveMemProfile()">保存画像</button></div>'+
     '</div>'+
-    '<div class="group"><div class="gt">对话要点（'+MEM.entries.length+' 条）</div>'+ list +'</div>'+
+    '<div class="group"><div class="gt">记忆（'+list.length+' 条）</div>'+ html +'</div>'+
     '<div style="padding:16px"><button style="width:100%;background:transparent;color:var(--danger);border:1px solid rgba(248,113,113,0.4);border-radius:8px;padding:11px;font-size:14px;cursor:pointer" onclick="clearMem()">清空所有记忆</button></div>';
-  show('memoryPage');
+}
+function addMemPrompt(){
+  showPrompt("添加记忆（将归入「"+(MEM_CUR_TAB!=="all"?MEM_CUR_TAB:"用户")+"」）", "", function(v){
+    v = (v||"").trim(); if(!v) return;
+    var cat = (MEM_CUR_TAB && MEM_CUR_TAB!=="all") ? MEM_CUR_TAB : "user";
+    loadMem();
+    MEM.entries.unshift({ id: uid("mem"), ts: Date.now(), conv:"手动", cat:cat, summary: v });
+    if(MEM.entries.length > 80) MEM.entries = MEM.entries.slice(0,80);
+    saveMem(); renderMemory();
+    toast("已添加到「"+(MEM_CATS.filter(function(c){return c.k===cat;})[0]||{n:""}).n+"」");
+  });
 }
 function saveMemProfile(){
   loadMem();
@@ -4674,9 +4766,11 @@ function saveMemProfile(){
 }
 function delMem(i){ loadMem(); MEM.entries.splice(i,1); saveMem(); openMemory(); }
 function clearMem(){
-  MEM = {profile:"", entries:[]}; saveMem();
-  try{ if(hasNative()) nSave("memory", JSON.stringify(MEM)); else localStorage.removeItem("pa_memory"); }catch(e){}
-  openMemory(); toast("记忆已清空");
+  showConfirm("清空记忆", "确定清空全部记忆（用户画像 + 所有对话要点）？此操作不可恢复", function(){
+    MEM = {profile:"", entries:[]}; saveMem();
+    try{ if(hasNative()) nSave("memory", JSON.stringify(MEM)); else localStorage.removeItem("pa_memory"); }catch(e){}
+    openMemory(); toast("记忆已清空");
+  }, true);
 }
 
 function newConversation(){
@@ -5194,6 +5288,7 @@ function doChat(text, attachments){
     var ac = new AbortController();
     activeAbort = ac; setGenState(true);
     var chatAcc = "";
+    var _t0 = Date.now(); SESSION_STATS.calls++;
     var chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 240000);
 
     /* 【修复 v0.4.7】聊天原走 WebView 原生 fetch，在手机 file:// 环境下被跨域拦截（报"网络被拦截"）。
@@ -5211,6 +5306,8 @@ function doChat(text, attachments){
       parseSSEStream(fullBody, function(delta){
         chatAcc+=delta; var bb=rowBubble(); if(bb) bb.textContent=chatAcc.replace(/^\s+/,""); scrollBottom();
       });
+      SESSION_STATS.ms += (Date.now()-_t0); SESSION_STATS.tokens += estTokens(chatAcc);
+      runLog("chat","对话完成 · ~"+estTokens(chatAcc)+" token · "+((Date.now()-_t0)/1000).toFixed(1)+"s"); renderStats();
       finalizeChat(aiMsg, chatAcc, attachments);
     }).then(function(){
       clearTimeout(chatTimer); clearRetry(aiMsg.id);
@@ -5225,6 +5322,7 @@ function doChat(text, attachments){
       }
       attachRetry(aiMsg.id, function(){ doChat(text, attachments); });
       aiMsg._err = true;
+      SESSION_STATS.errors++; runLog("err", friendlyErr(err)); renderStats();
       finalizeChat(aiMsg, "⚠️ 出错了："+friendlyErr(err), attachments);
     }).then(function(){
       activeAbort = null; abortReason = null;
@@ -5681,6 +5779,8 @@ function renderSettings(){
   '<div class="group"><div class="gt">账号</div>'+
     cellNav("API 接口管理（当前："+esc(currentApi().name)+"）", "openApiPage()")+
     cellNav("我的记忆", "openMemory()")+
+    cellNav("运行日志", "openRunLog()")+
+    cellNav("工作区（手机文件）", "openWorkspace()")+
   '</div>'+
   '<div class="group"><div class="gt">高级</div>'+
     '<div class="cell" style="display:block;padding:10px 14px">'+
@@ -6125,7 +6225,7 @@ function bigmodelDefault(){
   return { id:genId(), name:"智谱 BigModel", icon:"B", baseUrl:"https://open.bigmodel.cn/api/paas/v4", key:"",
            models:{text:"glm-4-flash", image:"", imageEdit:"", video:""},
            modelsList:["glm-4-flash","glm-4-plus","glm-4-long","cogview-3-flash","cogview-3-plus"],
-           routable:false, parseFiles:true };
+           routable:false, parseFiles:true, type:"bigmodel" };
 }
 function renderApiEdit(){
   var a;
@@ -6142,6 +6242,7 @@ function renderApiEdit(){
       '<div class="cell field"><span class="cl">图标文字</span><span class="cr"><input type="text" id="aeIcon" maxlength="2" value="'+esc(a.icon)+'"></span></div>'+
       '<div class="cell field"><span class="cl">API 请求地址</span><span class="cr"><input type="text" id="aeBase" value="'+esc(a.baseUrl)+'"></span></div>'+
       '<div class="cell field"><span class="cl">API Key</span><span class="cr"><input type="text" id="aeKey" placeholder="点此输入" value="'+esc(a.key||"")+'" style="-webkit-text-security:disc"></span></div>'+
+      '<div class="cell field"><span class="cl">供应商类型</span><span class="cr"><select id="aeType">'+providerOpts(a.type)+'</select></span><span class="cr" style="font-size:11px;color:#9A9A9A">可插拔：Agnes 为默认 Provider，可换其他 OpenAI 兼容源</span></div>'+
     '</div>'+
     '<div class="group"><div class="gt">模型设置（从上游获取，可自定义）</div>'+
       '<div class="cell" style="display:block">'+
@@ -6173,6 +6274,10 @@ function modelOptsFromList(list, val){
   var opts = (list||[]).map(function(m){ return '<option value="'+esc(m)+'"'+(val===m?' selected':'')+'>'+esc(m)+'</option>'; }).join('');
   opts += '<option value=""'+(list&&list.indexOf(val)<0&&val?'':' selected')+'>自定义</option>';
   return opts;
+}
+function providerOpts(t){
+  var list=[["agnes","Agnes（默认 Provider）"],["openai","OpenAI 兼容"],["bigmodel","智谱 BigModel"]];
+  return list.map(function(x){ return '<option value="'+x[0]+'"'+(t===x[0]?' selected':'')+'>'+x[1]+'</option>'; }).join('');
 }
 function fetchUpstreamModels(){
   var rawBase = (document.getElementById("aeBase").value.trim()||"https://apihub.agnes-ai.com/v1");
@@ -6240,11 +6345,12 @@ function saveApi(){
   };
   var routable = document.getElementById("aeRoutable").checked;
   var parseFiles = document.getElementById("aeParseFiles").checked;
+  var ptype = (document.getElementById("aeType")||{}).value || "agnes";
   if(API_EDITING_ID){
     var idx = CFG.apis.findIndex(function(x){return x.id===API_EDITING_ID;});
-    if(idx>=0) CFG.apis[idx] = { id:API_EDITING_ID, name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable, parseFiles:parseFiles };
+    if(idx>=0) CFG.apis[idx] = { id:API_EDITING_ID, name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable, parseFiles:parseFiles, type:ptype };
   }else{
-    CFG.apis.push({ id:genId(), name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable, parseFiles:parseFiles });
+    CFG.apis.push({ id:genId(), name:name, icon:icon, baseUrl:baseUrl, key:key, models:models, modelsList:API_EDIT_FETCHED.slice(), routable:routable, parseFiles:parseFiles, type:ptype });
   }
   saveCfg(); closeApiEdit(); renderApiList(); toast("已保存");
 }
@@ -6304,6 +6410,87 @@ function showConfirm(title, msg, cb, danger){
   document.getElementById("dlgOk").onclick=function(){ closeDlg(); cb&&cb(); };
 }
 function closeDlg(){ document.getElementById("dlgMask").classList.remove("show"); }
+/* ===== 端侧能力（手机组成·大改造 C 阶段）：朗读/语音/分享/通知，无原生时回退 Web API ===== */
+function phoneTTS(text){
+  text = (text||"").trim(); if(!text) return;
+  if(hasNative() && typeof NativeBridge.ttsSpeak==="function"){
+    var r = NativeBridge.ttsSpeak(text);
+    if(r && r.indexOf("err:")!==0){ toolLog("tts","朗读 "+text.length+" 字"); return; }
+    if(r==="err:NOT_READY"){ toast("语音引擎初始化中，请稍后再试"); return; }
+    if(r && r.indexOf("err:")===0){ toast("端侧朗读不可用："+r.slice(4)); }
+  }
+  try{
+    if(window.speechSynthesis){
+      var u = new SpeechSynthesisUtterance(text); u.lang="zh-CN"; u.rate=1.0;
+      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+      toolLog("tts","朗读（Web Speech 回退）"); return;
+    }
+  }catch(e){}
+  toast("当前环境不支持朗读");
+}
+function phoneASR(cb){
+  if(hasNative() && typeof NativeBridge.speechToText==="function"){
+    window.__onAsrResult = function(t){
+      if(typeof cb==="function") cb(t);
+    };
+    var r = NativeBridge.speechToText();
+    if(r && r.indexOf("err:")===0){ toast("语音输入不可用："+r.slice(4)); }
+    return;
+  }
+  try{
+    if(window.webkitSpeechRecognition || window.SpeechRecognition){
+      var R = window.SpeechRecognition || window.webkitSpeechRecognition;
+      var rec = new R(); rec.lang="zh-CN"; rec.interimResults=false; rec.maxAlternatives=1;
+      rec.onresult = function(ev){ var t = ev.results[0][0].transcript; if(typeof cb==="function") cb(t); };
+      rec.onerror = function(){ toast("语音识别失败"); };
+      rec.start(); toolLog("asr","语音输入（Web Speech 回退）"); return;
+    }
+  }catch(e){}
+  toast("当前环境不支持语音输入");
+}
+function phoneShare(text, title){
+  text = text||"";
+  if(hasNative() && typeof NativeBridge.shareText==="function"){
+    var r = NativeBridge.shareText(text, title||"分享");
+    if(r && r.indexOf("err:")!==0){ toolLog("share","分享"); return; }
+  }
+  if(navigator.share){ navigator.share({text:text, title:title||""}).then(function(){}).catch(function(){}); return; }
+  copyText(text); toast("已复制，可手动粘贴分享");
+}
+function phoneNotify(title, body){
+  if(hasNative() && typeof NativeBridge.notify==="function"){
+    var r = NativeBridge.notify(title||"通知", body||"");
+    if(r && r.indexOf("err:")!==0){ toolLog("notify","通知："+(title||"")); return; }
+  }
+  try{ if("Notification" in window){ new Notification(title||"通知", {body:body||""}); } }catch(e){}
+}
+function paReadLast(){
+  var c = current(); if(!c) return;
+  for(var i=c.messages.length-1;i>=0;i--){ var m=c.messages[i]; if(m.role==="assistant" && m.text){ phoneTTS(m.text); return; } }
+  toast("没有可朗读的回复");
+}
+function lwReadCurrent(){
+  var el = document.getElementById("lwChatMsgs"); if(!el) return;
+  var bubbles = el.querySelectorAll(".bubble");
+  if(!bubbles.length){ toast("没有可朗读内容"); return; }
+  phoneTTS((bubbles[bubbles.length-1].innerText||"").replace(/^✅\s*/,""));
+}
+/* 运行日志页（大改造 B2） */
+function openRunLog(){
+  var box = document.getElementById("runLogBody"); if(!box) return;
+  if(!RUN_LOG.length){ box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-3)">暂无运行日志。对话、工具调用、错误都会记录在这里。</div>'; }
+  else {
+    var cmap = {chat:"#6ea8fe", file:"#37d67a", err:"#f87171", info:"#9A9A9A"};
+    box.innerHTML = RUN_LOG.map(function(e){
+      var c = cmap[e.type] || "#9A9A9A";
+      return '<div style="padding:8px 14px;border-bottom:1px solid var(--line,#26304a);font-size:12px">'+
+        '<span style="color:'+c+'">●</span> '+
+        '<span style="color:var(--text-3)">'+new Date(e.ts).toLocaleTimeString()+'</span> '+
+        esc(e.msg)+'</div>';
+    }).join("");
+  }
+  show('runLogPage');
+}
 
 /* ================= 工具 ================= */
 function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
@@ -6699,20 +6886,16 @@ function lwAgentSend(){
   sysMsg += "4. 生成完成后我会自动写入文件，已存在的章节目录会被替换\n";
   sysMsg += "5. 遵循写作设定中的去AI味规则和所有要求";
 
-  /* 调 API */
+  /* 调 API（对齐 doChat 成熟流式写法，手机原生桥下更稳） */
   lwAgentAbort = new AbortController();
   var acc = "";
-  var fn = typeof fetchTimeout === 'function' ? fetchTimeout : (typeof nativeFetch === 'function' ? nativeFetch : fetch);
-  var url = (typeof apiBase === 'function' ? apiBase() : "") + "/chat/completions";
-  var key = typeof currentApiKey === 'function' ? currentApiKey() : "";
-  var model = typeof currentModel === 'function' ? currentModel("text") : "agnes-2.0-flash";
 
-  fn(url, {
+  fetchTimeout((typeof apiBase==='function'?apiBase():"") + "/chat/completions", {
     method: "POST",
     timeout: 180000,
-    headers: { "Content-Type":"application/json", "Authorization":"Bearer " + key },
+    headers: { "Content-Type":"application/json", "Authorization":"Bearer " + (typeof currentApiKey==='function'?currentApiKey():"") },
     body: JSON.stringify({
-      model: model,
+      model: (typeof currentModel==='function'?currentModel("text"):"agnes-2.0-flash"),
       stream: true,
       messages: [
         { role:"system", content: sysMsg },
@@ -6722,19 +6905,8 @@ function lwAgentSend(){
   }).then(function(r){
     if(!r.ok) return r.text().then(function(t){ throw new Error("HTTP "+r.status+" "+t.slice(0,120)); });
     return r.text();
-  }).then(function(body){
-    /* 解析 SSE */
-    body.split("\n").forEach(function(line){
-      var m = line.match(/^data:\s*(.*)/);
-      if(!m) return;
-      var d = m[1].trim();
-      if(!d || d === "[DONE]") return;
-      try{
-        var j = JSON.parse(d);
-        var delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
-        if(delta){ acc += delta; lwUpdateChatMsg("agent", acc); }
-      }catch(e){}
-    });
+  }).then(function(fullBody){
+    parseSSEStream(fullBody, function(delta){ acc += delta; lwUpdateChatMsg("agent", acc); });
   }).catch(function(err){
     if(err && (err.name==="AbortError" || /abort/i.test(err.message||""))) return;
     acc = "⚠️ 出错了：" + (err.message||err);
@@ -6770,7 +6942,13 @@ function lwAgentSend(){
       lwState.chapters = lwSplit(newText, lwState.chapters);
     }
     lwRenderOutline(); lwSave();
-    lwAddChatMsg("agent", "✅ " + (replaced ? "已替换已有章节" : "已写入，新增约"+lwWords(finalContent)+"字") + "。大纲已更新。");
+    /* 同步真实文件夹（手机子集·文件工具）：每本小说一个 .txt */
+    try{
+      var _fname = (lwState.title||"未命名小说").replace(/[\\/:*?"<>|]/g, "_") + ".txt";
+      wsWrite(_fname, lwToText(lwState));
+    }catch(e){}
+    lwAddChatMsg("agent", "✅ " + (replaced ? "已替换已有章节" : "已写入，新增约"+lwWords(finalContent)+"字") + "。大纲已更新，并已存到手机工作区。");
+    phoneNotify("长文模式", "《"+(lwState.title||"未命名")+"》已写入新章节");
   });
 }
 function lwOnTitle(){ lwState.title = (document.getElementById("lwTitle").value||"").trim() || "未命名小说"; lwSave(); }
@@ -6834,6 +7012,78 @@ function lwExport(){
   var name = (lwState.title||"未命名小说")+".txt";
   var a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([txt], {type:"text/plain;charset=utf-8"}));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 1000);
+  toast("已导出 "+name);
+}
+
+/* ============ 工作区（真实文件夹）UI ============ */
+var wsCurDir = "";
+var wsCurFile = "";
+var wsNewMode = "file";
+function openWorkspace(){ wsCurDir=""; wsGo(""); }
+function wsGo(dir){ wsCurDir = dir||""; renderWorkspace(); }
+function renderWorkspace(){
+  var box = document.getElementById("wsListBox");
+  if(!box) return;
+  var crumb = document.getElementById("wsCrumb");
+  if(crumb) crumb.textContent = "📂 " + (wsCurDir ? "根目录 / "+wsCurDir : "根目录");
+  var raw = wsList(wsCurDir);
+  var items; try{ items = JSON.parse(raw); }catch(e){ items = []; }
+  if(!items.length){
+    box.innerHTML = '<div class="lw-empty">这个文件夹是空的。点右上「+文件」新建一个试试。</div>';
+    return;
+  }
+  items.sort(function(a,b){ if(a.dir!==b.dir) return a.dir?-1:1; return a.name.localeCompare(b.name); });
+  box.innerHTML = items.map(function(it){
+    if(it.dir){
+      return '<div class="ws-item" onclick="wsGo(\''+(wsCurDir?wsCurDir+"/":"")+it.name+'\')">'+
+        '<span class="ws-ic">📁</span><span class="ws-nm">'+esc(it.name)+'</span></div>';
+    }
+    var dot = (it.name.lastIndexOf(".")>=0)? it.name.slice(it.name.lastIndexOf(".")+1).toLowerCase() : "";
+    return '<div class="ws-item" onclick="wsOpenFile(\''+esc(it.name)+'\')">'+
+      '<span class="ws-ic">'+(dot==="txt"||dot==="md"?"📄":"📃")+'</span>'+
+      '<span class="ws-nm">'+esc(it.name)+'</span>'+
+      '<span class="ws-del" onclick="event.stopPropagation();wsDeleteFile(\''+esc(it.name)+'\')">✕</span></div>';
+  }).join("");
+}
+function wsPathOf(name){ return (wsCurDir? wsCurDir+"/":"") + name; }
+function wsNewFile(){ wsNewMode="file"; var i=document.getElementById("wsNewInput"); if(i){ i.value=""; document.getElementById("wsNewBox").style.display="block"; try{i.focus();}catch(e){} } }
+function wsNewDir(){ wsNewMode="dir"; var i=document.getElementById("wsNewInput"); if(i){ i.value=""; document.getElementById("wsNewBox").style.display="block"; try{i.focus();}catch(e){} } }
+function wsNewCancel(){ document.getElementById("wsNewBox").style.display="none"; }
+function wsNewConfirm(){
+  var name = (document.getElementById("wsNewInput").value||"").trim();
+  document.getElementById("wsNewBox").style.display="none";
+  if(!name) return;
+  if(wsNewMode==="dir"){ wsMkdir(wsPathOf(name)); }
+  else { wsWrite(wsPathOf(name), ""); wsOpenFile(name); }
+  renderWorkspace();
+}
+function wsOpenFile(name){
+  var content = wsRead(wsPathOf(name));
+  var fe = document.getElementById("wsFileName"); if(fe) fe.textContent = wsPathOf(name);
+  var ta = document.getElementById("wsFileTa"); if(ta) ta.value = content || "";
+  wsCurFile = wsPathOf(name);
+  show("wsFilePage");
+}
+function wsSaveFile(){
+  var ta = document.getElementById("wsFileTa");
+  if(!wsCurFile) return;
+  wsWrite(wsCurFile, ta.value||"");
+  toast("已保存 "+wsCurFile);
+}
+function wsDeleteFile(name){
+  showConfirm("删除文件", "确定删除 "+wsPathOf(name)+"？此操作不可恢复", function(){
+    wsDelete(wsPathOf(name));
+    renderWorkspace();
+  }, true);
+}
+function wsExportFile(){
+  var ta = document.getElementById("wsFileTa");
+  if(!wsCurFile) return;
+  var name = wsCurFile.split("/").pop();
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([ta.value||""], {type:"text/plain;charset=utf-8"}));
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 1000);
   toast("已导出 "+name);
@@ -7014,6 +7264,7 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
     <div class="lw-main" style="flex:1;display:flex;flex-direction:column;min-height:0">
       <div class="lw-chat" id="lwChatMsgs"></div>
       <div class="lw-chat-foot">
+        <button class="lw-qb" onclick="lwReadCurrent()" title="朗读当前">🔊</button>
         <button class="lw-qb" onclick="lwOpenOutline()" title="大纲">📖</button>
         <button class="lw-qb" onclick="lwOpenGuide()" title="写作设定">📝</button>
         <textarea id="lwAgentInp" class="lw-chat-inp" placeholder="跟 Agent 对话…写下一章、修改第三章" rows="1"></textarea>
@@ -7052,6 +7303,61 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
     <div style="font-size:12px;color:var(--text-3);margin-bottom:8px">粘贴你的小说写作规则、设定、指南。Agent 写小说时会自动遵守。</div>
     <textarea id="lwGuideTextPage" class="lw-guide-ta" style="height:calc(100vh - 180px)" placeholder="粘贴写作指南/框架/设定…"></textarea>
   </div>
+</div>
+<!-- 工作区（真实文件夹） -->
+<div class="page" id="workspacePage">
+  <div class="page-head">
+    <button class="back" onclick="hide('workspacePage')">
+      <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="pt">📂 工作区</div>
+    <div class="lw-head-btns" style="display:flex;gap:4px">
+      <button onclick="wsNewDir()" style="padding:6px 10px;font-size:12px">+文件夹</button>
+      <button onclick="wsNewFile()" style="padding:6px 10px;font-size:12px">+文件</button>
+    </div>
+  </div>
+  <div style="padding:8px 12px;font-size:12px;color:var(--text-3)">
+    <span id="wsCrumb" style="cursor:pointer" onclick="wsGo('')">📂 根目录</span>
+  </div>
+  <div class="page-body" style="padding:0 12px 12px;overflow-y:auto">
+    <div id="wsListBox"></div>
+  </div>
+  <div id="wsNewBox" style="display:none;padding:10px 12px;border-top:1px solid var(--border)">
+    <input id="wsNewInput" placeholder="名称（如 notes.txt）" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg-2);color:var(--text-1)">
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button onclick="wsNewConfirm()" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px">确定</button>
+      <button onclick="wsNewCancel()" style="flex:1;background:transparent;border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text-2)">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 文件编辑 -->
+<div class="page" id="wsFilePage">
+  <div class="page-head">
+    <button class="back" onclick="hide('wsFilePage');openWorkspace()">
+      <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="pt" id="wsFileName" style="font-size:14px">文件</div>
+    <div class="lw-head-btns" style="display:flex;gap:4px">
+      <button onclick="wsExportFile()" style="padding:6px 10px;font-size:12px">导出</button>
+      <button onclick="phoneShare((document.getElementById('wsFileTa')||{}).value||'', document.getElementById('wsFileName').textContent||'文件')" style="padding:6px 10px;font-size:12px">分享</button>
+      <button onclick="wsSaveFile()" style="padding:6px 10px;font-size:12px">保存</button>
+    </div>
+  </div>
+  <div class="page-body" style="padding:8px 12px;overflow-y:auto">
+    <textarea id="wsFileTa" style="width:100%;height:calc(100vh - 140px);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:14px;font-family:inherit;line-height:1.6;background:var(--bg-2);color:var(--text-1);resize:none"></textarea>
+  </div>
+</div>
+
+<!-- 运行日志 -->
+<div class="page" id="runLogPage">
+  <div class="page-head">
+    <button class="back" onclick="hide('runLogPage');show('settingsPage')">
+      <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="pt">运行日志</div>
+  </div>
+  <div class="page-body" id="runLogBody" style="overflow-y:auto"></div>
 </div>
 </body>
 </html>
