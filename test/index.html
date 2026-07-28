@@ -2883,13 +2883,20 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.43";
+var APP_VERSION = "0.4.44";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.43", date:"2026-07-29", items:[
+var CHANGELOG = [  { v:"0.4.44", date:"2026-07-29", items:[
+    "修复（工作区子目录）：进入子文件夹后没有任何返回入口、容易“进得去出不来”——现在子目录内第一行固定显示「⬆️ 返回上级」，面包屑点一下也仍可直接回根目录",
+    "修复（浏览器/旧包回退模式）：子目录里的文件被拍平显示成带斜杠的假文件名、文件夹永远不显示——重写回退列表逻辑，子目录正常显示为 📁 可点击进入",
+    "修复（点击失效）：文件名含引号、括号等特殊字符时点击无反应——列表点击改为索引寻址，任何文件名都能打开",
+    "修复（防误清空）：点开文件如果读取失败，以前会打开一个空白编辑框（一点保存就把原文件清空）——现在读取失败直接提示原因、不进编辑页",
+    "优化：目录占位文件 .keep 不再出现在列表里；文件夹行加 › 指示可进入",
+  ]},
+  { v:"0.4.43", date:"2026-07-29", items:[
     "修复（版本混淆根治）：版本号此前只显示一个数字，分不清「网页热更版本」和「安装包(APK)版本」——数字一样内容却不一样，导致更新弹窗看起来像「让我重装同一个版本」",
     "设置 → 关于：版本拆成两行分别显示「网页版本（热更）」与「安装包版本（APK）」，一眼看清各自到哪了",
     "APK 更新弹窗改为「安装包更新：v旧 → v新」，并明确说明与网页热更版本不是一回事、为什么必须重装；网页热更弹窗同样标明「网页热更：v旧 → v新」",
@@ -3696,9 +3703,20 @@ function wsSysOpen(path){
 }
 function wsList(dir){ toolLog("file","列出 "+(dir||"根目录"));
   if(hasWsNative()){ try{ var r = NativeBridge.wsList(dir||""); if(r && r.indexOf("err:")!==0) return r; }catch(e){} }
-  try{   // KV 回退：列 ws: 前缀全部 key 并按目录过滤
-    var out = []; var prefix = wsKeyEncode(dir||"");
-    for(var i=0;i<localStorage.length;i++){ var k = localStorage.key(i); if(k && k.indexOf(prefix)===0){ out.push({ name:k.slice(WS_KEY.length).replace(/::/g,"/"), dir:false, size:(localStorage.getItem(k)||"").length }); } }
+  try{   /* KV 回退（v0.4.44 重写）：把 :: 编码的完整路径切成"当前层"视图——子目录合成 📁 条目，文件只显示相对名 */
+    var base = String(dir||"").replace(/\\/g,"/").replace(/^\/+|\/+$/g,"");
+    var basePfx = base ? base+"/" : "";
+    var out = [], dirSeen = {};
+    for(var i=0;i<localStorage.length;i++){
+      var k = localStorage.key(i); if(!k || k.indexOf(WS_KEY)!==0) continue;
+      var p = k.slice(WS_KEY.length).replace(/::/g,"/");
+      if(basePfx && p.indexOf(basePfx)!==0) continue;
+      var rest = basePfx ? p.slice(basePfx.length) : p;
+      if(!rest) continue;
+      var slash = rest.indexOf("/");
+      if(slash>=0){ var d = rest.slice(0,slash); if(d && !dirSeen[d]){ dirSeen[d]=1; out.push({ name:d, dir:true, size:0 }); } }
+      else { out.push({ name:rest, dir:false, size:(localStorage.getItem(k)||"").length }); }
+    }
     return JSON.stringify(out);
   }catch(e){ return "[]"; }
 }
@@ -6266,6 +6284,17 @@ var wsCurFile = "";
 var wsNewMode = "file";
 function openWorkspace(){ wsCurDir=""; wsGo(""); }
 function wsGo(dir){ wsCurDir = dir||""; renderWorkspace(); }
+function wsUp(){ /* v0.4.44：返回上一级目录 */
+  if(!wsCurDir) return;
+  var i = wsCurDir.lastIndexOf("/");
+  wsGo(i>=0 ? wsCurDir.slice(0,i) : "");
+}
+var _wsItems = []; /* v0.4.44：当前列表条目，点击走索引寻址（文件名含引号/括号不再炸 onclick） */
+function wsClickItem(idx){
+  var it = _wsItems[idx]; if(!it) return;
+  if(it.dir) wsGo((wsCurDir?wsCurDir+"/":"")+it.name);
+  else wsOpenFile(it.name);
+}
 function renderWorkspace(){
   var box = document.getElementById("wsListBox");
   if(!box) return;
@@ -6273,24 +6302,35 @@ function renderWorkspace(){
   if(crumb) crumb.textContent = "📂 " + (wsCurDir ? "根目录 / "+wsCurDir : "根目录");
   var raw = wsList(wsCurDir);
   var items; try{ items = JSON.parse(raw); }catch(e){ items = []; }
+  if(!(items instanceof Array)) items = [];
+  items = items.filter(function(it){ return it && it.name && it.name!==".keep"; }); /* .keep 是目录占位，不给用户看 */
+  items.sort(function(a,b){ if(a.dir!==b.dir) return a.dir?-1:1; return a.name.localeCompare(b.name); });
+  _wsItems = items;
+  var html = "";
+  if(wsCurDir){ /* v0.4.44：子目录里固定第一行「返回上级」，再也不怕进得去出不来 */
+    html += '<div class="ws-item" onclick="wsUp()"><span class="ws-ic">⬆️</span><span class="ws-nm" style="color:var(--text-3)">返回上级</span></div>';
+  }
   if(!items.length){
-    box.innerHTML = '<div class="lw-empty">这个文件夹是空的。点右上「+文件」新建一个试试。</div>';
+    box.innerHTML = html + '<div class="lw-empty">这个文件夹是空的。点右上「+文件」新建一个试试。</div>';
     return;
   }
-  items.sort(function(a,b){ if(a.dir!==b.dir) return a.dir?-1:1; return a.name.localeCompare(b.name); });
-  box.innerHTML = items.map(function(it){
+  html += items.map(function(it, idx){
     if(it.dir){
-      return '<div class="ws-item" onclick="wsGo(\''+(wsCurDir?wsCurDir+"/":"")+it.name+'\')">'+
-        '<span class="ws-ic">📁</span><span class="ws-nm">'+esc(it.name)+'</span></div>';
+      return '<div class="ws-item" onclick="wsClickItem('+idx+')">'+
+        '<span class="ws-ic">📁</span><span class="ws-nm">'+esc(it.name)+'</span>'+
+        '<span class="ws-del" style="opacity:.5">›</span></div>';
     }
     var dot = (it.name.lastIndexOf(".")>=0)? it.name.slice(it.name.lastIndexOf(".")+1).toLowerCase() : "";
-    return '<div class="ws-item" onclick="wsOpenFile(\''+esc(it.name)+'\')">'+
+    return '<div class="ws-item" onclick="wsClickItem('+idx+')">'+
       '<span class="ws-ic">'+(dot==="txt"||dot==="md"?"📄":"📃")+'</span>'+
       '<span class="ws-nm">'+esc(it.name)+'</span>'+
-      '<span class="ws-del" title="用其他应用打开" style="margin-right:6px" onclick="event.stopPropagation();wsSysOpen(wsPathOf(\''+esc(it.name)+'\'))">↗</span>'+
-      '<span class="ws-del" onclick="event.stopPropagation();wsDeleteFile(\''+esc(it.name)+'\')">✕</span></div>';
+      '<span class="ws-del" title="用其他应用打开" style="margin-right:6px" onclick="event.stopPropagation();wsClickOpen('+idx+')">↗</span>'+
+      '<span class="ws-del" onclick="event.stopPropagation();wsClickDel('+idx+')">✕</span></div>';
   }).join("");
+  box.innerHTML = html;
 }
+function wsClickOpen(idx){ var it=_wsItems[idx]; if(it) wsSysOpen(wsPathOf(it.name)); }
+function wsClickDel(idx){ var it=_wsItems[idx]; if(it) wsDeleteFile(it.name); }
 function wsPathOf(name){ return (wsCurDir? wsCurDir+"/":"") + name; }
 function wsNewFile(){ wsNewMode="file"; var i=document.getElementById("wsNewInput"); if(i){ i.value=""; document.getElementById("wsNewBox").style.display="block"; try{i.focus();}catch(e){} } }
 function wsNewDir(){ wsNewMode="dir"; var i=document.getElementById("wsNewInput"); if(i){ i.value=""; document.getElementById("wsNewBox").style.display="block"; try{i.focus();}catch(e){} } }
@@ -6304,10 +6344,25 @@ function wsNewConfirm(){
   renderWorkspace();
 }
 function wsOpenFile(name){
-  var content = wsRead(wsPathOf(name));
-  var fe = document.getElementById("wsFileName"); if(fe) fe.textContent = wsPathOf(name);
+  var path = wsPathOf(name);
+  /* v0.4.44：原生环境下先直读桥拿真实错误——读失败绝不打开空白编辑框（防止一点保存把原文件清空） */
+  if(hasWsNative()){
+    var r = null; try{ r = NativeBridge.wsRead(path); }catch(e){ r = "err:"+(e.message||e); }
+    if(r!==null && String(r).indexOf("err:")===0){
+      toast("打不开 "+path+"："+String(r).slice(4).replace("NOT_FOUND","文件不存在（可能已被删除，下拉刷新列表）"));
+      renderWorkspace();
+      return;
+    }
+    var fe0 = document.getElementById("wsFileName"); if(fe0) fe0.textContent = path;
+    var ta0 = document.getElementById("wsFileTa"); if(ta0) ta0.value = r || "";
+    wsCurFile = path;
+    show("wsFilePage");
+    return;
+  }
+  var content = wsRead(path);
+  var fe = document.getElementById("wsFileName"); if(fe) fe.textContent = path;
   var ta = document.getElementById("wsFileTa"); if(ta) ta.value = content || "";
-  wsCurFile = wsPathOf(name);
+  wsCurFile = path;
   show("wsFilePage");
 }
 function wsSaveFile(){
