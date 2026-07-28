@@ -233,7 +233,7 @@
   .dlg-mask.show{display:flex;}
   .dlg{background:var(--bg-2);border-radius:12px;width:80%;max-width:300px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);}
   .dlg .dh{padding:20px 20px 8px;font-size:16px;font-weight:600;text-align:center;color:var(--text);}
-  .dlg .db{padding:0 20px 16px;font-size:14px;color:var(--text-2);text-align:center;line-height:1.6;}
+  .dlg .db{padding:0 20px 16px;font-size:14px;color:var(--text-2);text-align:center;line-height:1.6;white-space:pre-line;}
   .dlg .di{margin:0 20px 16px;width:calc(100% - 40px);border:1px solid var(--line);border-radius:8px;
     padding:10px;font-size:15px;outline:none;background:var(--input);color:var(--text);}
   .dlg .df{display:flex;border-top:1px solid var(--line);}
@@ -2883,13 +2883,19 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.42";
+var APP_VERSION = "0.4.43";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.42", date:"2026-07-29", items:[
+var CHANGELOG = [  { v:"0.4.43", date:"2026-07-29", items:[
+    "修复（版本混淆根治）：版本号此前只显示一个数字，分不清「网页热更版本」和「安装包(APK)版本」——数字一样内容却不一样，导致更新弹窗看起来像「让我重装同一个版本」",
+    "设置 → 关于：版本拆成两行分别显示「网页版本（热更）」与「安装包版本（APK）」，一眼看清各自到哪了",
+    "APK 更新弹窗改为「安装包更新：v旧 → v新」，并明确说明与网页热更版本不是一回事、为什么必须重装；网页热更弹窗同样标明「网页热更：v旧 → v新」",
+    "「已是最新」提示同时显示网页版本与安装包版本；静默检查提示也区分「安装包更新（需重装）」与「网页热更」",
+  ]},
+  { v:"0.4.42", date:"2026-07-29", items:[
     "修复（导出）：工作区/长文写作的「导出」按钮在 APK 里点了没反应（WebView 无下载器）——现改为三级智能通道：新 APK 直接导出到手机公共下载目录 Download/phone-agent/（文件管理器/WPS 立即可见）；旧 APK 自动改走系统分享面板（可存到文件App/微信/网盘）；浏览器预览保留传统下载",
     "新增（打开文件）：工作区文件列表每行新增「↗」按钮、文件编辑页新增「打开」按钮——用系统应用直接打开 AI 创建的文件（txt/md/json/html/pdf 等弹出应用选择器），解决「AI 创建的文件在手机上找不到/打不开」问题",
     "原生：NativeBridge 新增 wsExportToDownloads（MediaStore.Downloads 写公共下载目录，Android 9- 自动回退旧 API）与 wsOpenWith（SimpleFileProvider + ACTION_VIEW）；SimpleFileProvider MIME 表扩充文档类型",
@@ -5043,7 +5049,8 @@ function renderSettings(){
     cellNav("工作区（手机文件）", "openWorkspace()")+
   '</div>'+
   '<div class="group"><div class="gt">关于</div>'+
-    '<div class="cell"><span class="cl">版本</span><span class="cr">v'+APP_VERSION+'</span></div>'+
+    '<div class="cell"><span class="cl">网页版本（热更）</span><span class="cr">v'+APP_VERSION+'</span></div>'+
+    '<div class="cell"><span class="cl">安装包版本（APK）</span><span class="cr">'+(window.__PA_APK_NAME__ ? 'v'+esc(String(window.__PA_APK_NAME__)) : '浏览器环境')+'</span></div>'+
     cellNav("更新日志", "openChangelog()")+
     cellNav("清理缓存", "clearCache()")+
     cellNav("导出 / 备份聊天", "exportChats()")+
@@ -5156,8 +5163,9 @@ function checkUpdate(){
     if(!j){ toast("检查更新失败（确认地址可访问）"); return; }
     var u = evalUpdate(j);
     if(u.apkNewer){
-      showConfirm("发现新版本 v"+u.apkName+"（完整更新）",
-        (u.apkNote||"有新版安装包可用")+" 将下载并安装新安装包（此更新需重新安装 App）。",
+      var curApk = window.__PA_APK_NAME__ ? "v"+window.__PA_APK_NAME__ : "旧版";
+      showConfirm("安装包更新："+curApk+" → v"+u.apkName,
+        "注意：这是「安装包(APK)」更新，和网页热更版本（当前 v"+APP_VERSION+"）不是一回事——即使数字相同，安装包里带的是原生新功能，必须重装才有。\n\n更新内容："+(u.apkNote||"有新版安装包可用")+"\n\n点确定将下载并重新安装 App。",
         function(){
           if(!hasNative() || !window.NativeBridge || !window.NativeBridge.downloadAndInstallApk){ toast("当前环境不支持 APK 安装，请在手机 App 内更新"); return; }
           toast("已发起下载，请稍候（进度与结果由系统提示）");
@@ -5166,12 +5174,12 @@ function checkUpdate(){
       return;
     }
     if(u.webNewer){
-      showConfirm("发现新版本 v"+u.webVer, (u.webNote||"有新版可用")+"（点击更新将下载并立即应用，无需重装）", function(){
+      showConfirm("网页热更：v"+APP_VERSION+" → v"+u.webVer, (u.webNote||"有新版可用")+"（点击更新将下载并立即应用，无需重装）", function(){
         doInstallUpdate(base);
       });
       return;
     }
-    toast("当前已是最新版 v"+APP_VERSION);
+    toast("已是最新：网页 v"+APP_VERSION+(window.__PA_APK_NAME__ ? " / 安装包 v"+window.__PA_APK_NAME__ : ""));
   });
 }
 function doInstallUpdate(base){
@@ -5201,8 +5209,8 @@ function silentCheckUpdate(){
   readUpdate().then(function(j){
     if(!j) return;
     var u = evalUpdate(j);
-    if(u.apkNewer){ toast("发现新版本 v"+u.apkName+"（完整更新）：去 设置 → 检查更新 升级"); return; }
-    if(u.webNewer){ toast("发现新版本 v"+u.webVer+"：去 设置 → 检查更新 升级"); }
+    if(u.apkNewer){ toast("发现安装包更新 v"+u.apkName+"（需重装）：去 设置 → 检查更新"); return; }
+    if(u.webNewer){ toast("发现网页热更 v"+u.webVer+"：去 设置 → 检查更新"); }
   });
 }
 function resetBuiltinUpdate(){
