@@ -2883,13 +2883,19 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.41";
+var APP_VERSION = "0.4.42";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.41", date:"2026-07-29", items:[
+var CHANGELOG = [  { v:"0.4.42", date:"2026-07-29", items:[
+    "修复（导出）：工作区/长文写作的「导出」按钮在 APK 里点了没反应（WebView 无下载器）——现改为三级智能通道：新 APK 直接导出到手机公共下载目录 Download/phone-agent/（文件管理器/WPS 立即可见）；旧 APK 自动改走系统分享面板（可存到文件App/微信/网盘）；浏览器预览保留传统下载",
+    "新增（打开文件）：工作区文件列表每行新增「↗」按钮、文件编辑页新增「打开」按钮——用系统应用直接打开 AI 创建的文件（txt/md/json/html/pdf 等弹出应用选择器），解决「AI 创建的文件在手机上找不到/打不开」问题",
+    "原生：NativeBridge 新增 wsExportToDownloads（MediaStore.Downloads 写公共下载目录，Android 9- 自动回退旧 API）与 wsOpenWith（SimpleFileProvider + ACTION_VIEW）；SimpleFileProvider MIME 表扩充文档类型",
+    "说明：导出到下载目录和「打开」功能需要安装本次新 APK（0.4.42）；旧 APK 上导出自动走分享面板不受影响",
+  ]},
+  { v:"0.4.41", date:"2026-07-29", items:[
     "新增（自动进化·档位1 经验自记）：工作区 skills/ 目录成为 AI 的经验技能库——被纠正/踩坑/摸出套路时 AI 主动用 [FILE_WRITE] 写 skills/经验-*.md（触发场景+正确做法，300字内）；每轮对话前端自动注入技能文件名索引（上限30个），AI 觉得相关就 [FILE_READ] 读全文",
     "新增（自动进化·档位2 偏好自调）：skills/_我的风格.md 全文自动注入系统提示词，AI 可自行覆盖更新（500字上限，超了自行精简）——相当于 AI 能微调自己的提示词，核心 TOOL_CAPS 仍写死在代码里作保险底座",
     "机制：新增 buildSkillsContext()（wsList 索引 + wsRead 风格全文），doChat sysParts 注入；TOOL_CAPS 新增「四、自我进化类」与进化守则（节制要求：一次对话最多写1-2个技能文件，只记可复用经验）",
@@ -3656,6 +3662,31 @@ function wsDelete(path){ toolLog("file","删除 "+path);
 function wsMkdir(dir){
   if(hasWsNative()){ try{ var r = NativeBridge.wsWrite((dir||"__dir__")+"/.keep", ""); if(r && r.indexOf("err:")!==0) return "ok"; }catch(e){} }
   return "ok";
+}
+/* v0.4.42：导出到公共下载目录（新 APK 才有此桥；旧 APK 返回 false 由调用方降级走分享） */
+function wsExportNative(path){
+  try{
+    if(hasNative() && typeof NativeBridge.wsExportToDownloads==="function"){
+      var r = NativeBridge.wsExportToDownloads(path);
+      if(r && r.indexOf("ok:")===0){ toast("已导出到 "+r.slice(3)+"（文件管理器可见）"); return true; }
+      if(r && r.indexOf("err:")===0){ toast("导出失败："+r.slice(4)); return true; } /* 桥在但失败：不再降级，把真实原因给用户 */
+    }
+  }catch(e){}
+  return false; /* 没这个桥（旧 APK / 浏览器）→ 调用方降级 */
+}
+/* v0.4.42：用系统应用打开工作区文件（新 APK 才有；旧 APK 提示升级） */
+function wsSysOpen(path){
+  try{
+    if(hasNative() && typeof NativeBridge.wsOpenWith==="function"){
+      var r = NativeBridge.wsOpenWith(path);
+      if(r==="ok") return;
+      if(r==="err:NO_APP"){ toast("手机上没有能打开这类文件的应用"); return; }
+      toast("打开失败："+String(r||"").replace(/^err:/,""));
+      return;
+    }
+  }catch(e){}
+  if(hasNative()){ toast("此功能需要更新安装包（设置→检查更新）"); }
+  else { toast("浏览器预览环境不支持"); }
 }
 function wsList(dir){ toolLog("file","列出 "+(dir||"根目录"));
   if(hasWsNative()){ try{ var r = NativeBridge.wsList(dir||""); if(r && r.indexOf("err:")!==0) return r; }catch(e){} }
@@ -6203,6 +6234,17 @@ function lwExport(){
   var txt = lwToText(lwState);
   if(!txt.trim()){ toast("没有可导出的内容"); return; }
   var name = (lwState.title||"未命名小说")+".txt";
+  /* v0.4.42：路线1 新 APK → 先落工作区再原生导出到 Download/phone-agent/ */
+  if(hasNative() && typeof NativeBridge.wsExportToDownloads==="function"){
+    var wsPath = "小说导出/"+name;
+    wsWrite(wsPath, txt);
+    if(wsExportNative(wsPath)) return;
+  }
+  /* 路线2：旧 APK → 系统分享面板 */
+  if(hasNative() && typeof NativeBridge.shareText==="function"){
+    try{ NativeBridge.shareText(txt, name); toast("已弹出分享（可选择保存到文件）"); return; }catch(e){}
+  }
+  /* 路线3：浏览器预览 → 传统下载 */
   var a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([txt], {type:"text/plain;charset=utf-8"}));
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -6237,6 +6279,7 @@ function renderWorkspace(){
     return '<div class="ws-item" onclick="wsOpenFile(\''+esc(it.name)+'\')">'+
       '<span class="ws-ic">'+(dot==="txt"||dot==="md"?"📄":"📃")+'</span>'+
       '<span class="ws-nm">'+esc(it.name)+'</span>'+
+      '<span class="ws-del" title="用其他应用打开" style="margin-right:6px" onclick="event.stopPropagation();wsSysOpen(wsPathOf(\''+esc(it.name)+'\'))">↗</span>'+
       '<span class="ws-del" onclick="event.stopPropagation();wsDeleteFile(\''+esc(it.name)+'\')">✕</span></div>';
   }).join("");
 }
@@ -6275,8 +6318,17 @@ function wsExportFile(){
   var ta = document.getElementById("wsFileTa");
   if(!wsCurFile) return;
   var name = wsCurFile.split("/").pop();
+  /* v0.4.42：先保存再导出，确保导出的是编辑框里的最新内容 */
+  wsWrite(wsCurFile, (ta&&ta.value)||"");
+  /* 路线1：新 APK 原生导出 → 公共 Download/phone-agent/（文件管理器可见） */
+  if(wsExportNative(wsCurFile)) return;
+  /* 路线2：旧 APK 没有导出桥 → 走系统分享面板（可存到"文件"App/微信/网盘） */
+  if(hasNative() && typeof NativeBridge.shareText==="function"){
+    try{ NativeBridge.shareText((ta&&ta.value)||"", name); toast("已弹出分享（可选择保存到文件）"); return; }catch(e){}
+  }
+  /* 路线3：浏览器预览 → 传统下载 */
   var a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([ta.value||""], {type:"text/plain;charset=utf-8"}));
+  a.href = URL.createObjectURL(new Blob([(ta&&ta.value)||""], {type:"text/plain;charset=utf-8"}));
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 1000);
   toast("已导出 "+name);
@@ -6530,10 +6582,11 @@ function lwStop(){ if(lwAbort){ try{ lwAbort.abort(); }catch(e){} lwAbort=null; 
     </button>
     <div class="pt" id="wsFileName" style="font-size:14px">文件</div>
     <div class="lw-head-btns" style="display:flex;gap:4px">
-      <button onclick="wsAiRewrite()" style="padding:6px 10px;font-size:12px">AI 改写</button>
-      <button onclick="wsExportFile()" style="padding:6px 10px;font-size:12px">导出</button>
-      <button onclick="phoneShare((document.getElementById('wsFileTa')||{}).value||'', document.getElementById('wsFileName').textContent||'文件')" style="padding:6px 10px;font-size:12px">分享</button>
-      <button onclick="wsSaveFile()" style="padding:6px 10px;font-size:12px">保存</button>
+      <button onclick="wsAiRewrite()" style="padding:6px 8px;font-size:12px">AI 改写</button>
+      <button onclick="wsCurFile&&wsSysOpen(wsCurFile)" style="padding:6px 8px;font-size:12px">打开</button>
+      <button onclick="wsExportFile()" style="padding:6px 8px;font-size:12px">导出</button>
+      <button onclick="phoneShare((document.getElementById('wsFileTa')||{}).value||'', document.getElementById('wsFileName').textContent||'文件')" style="padding:6px 8px;font-size:12px">分享</button>
+      <button onclick="wsSaveFile()" style="padding:6px 8px;font-size:12px">保存</button>
     </div>
   </div>
   <div class="page-body" style="padding:8px 12px;overflow-y:auto">
