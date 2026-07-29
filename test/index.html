@@ -2883,13 +2883,19 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.47";
+var APP_VERSION = "0.4.48";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.47", date:"2026-07-29", items:[
+var CHANGELOG = [  { v:"0.4.48", date:"2026-07-29", items:[
+    "新增自主思维循环（Agent Loop）：聊天从单轮直连升级为多轮推理——AI 先规划目标与步骤、再调用文件工具落地、最后自查修正，具备自己的思维",
+    "思考过程对用户可见：对话气泡实时展示 思考过程/计划/执行/反思/总结 全流程，不再是冷冰冰一句回复",
+    "自动执行与自愈：工具调用全自动无需逐步确认；执行失败或被干扰时，模型依据 成功/失败 观察自动重试修正（上限 3 轮），显著降低写了一半或写错的概率",
+    "纯 web 热更（v0.4.48），复用既有 FILE_WRITE/FILE_READ 文件桥与 skills 自进化、跨会话记忆机制；无需重装 APK",
+  ]},
+  { v:"0.4.47", date:"2026-07-29", items:[
     "根治下载链路：downloadAndInstallApk 下载完成后用 apkMd5 校验包完整性，md5 不符（被中间网络替换为旧包/HTML 错误页）直接删包 + 切换备用源重试，绝不直接拿去安装——从源头消灭\"装同版/装更高版本\"系统弹窗",
     "下载源双保险：主源 jsdelivr CDN（国内有节点，比 raw.githubusercontent.com 稳）+ 备用 raw.githubusercontent.com，任一源失败自动回退，两边都校验 md5",
     "native 层新增 md5Of()/downloadFrom() 内部函数；签名扩展为 downloadAndInstallApk(apkUrl, targetCode, expectedMd5, fallbackUrl)，前端 evalUpdate 透传 apkMd5 与 apkUrl2",
@@ -3974,6 +3980,7 @@ var TOOL_CAPS = `【身份定位（最重要，请牢记）】
   你具备推理与规划能力。面对复杂、多步骤或需要判断的任务，先想清楚再动手——
   可以在回复里用自然语言写下你的思路与步骤规划，再调用工具逐步执行；也可以边思考边行动（先 wsList/wsRead 了解现状 → 规划 → wsWrite/wsMkdir 落地）。
   思考过程直接写给用户看没问题，这能提升结果质量；你不需要隐藏思考，也不需要假装「只是个聊天机器人」。
+  系统已内置「自主思维循环」：你无需手动分步，直接给出目标即可——系统会驱动你先规划、再调用文件工具落地、最后自查修正，思考过程对用户全程可见（🧠 思考过程 / 计划 / 执行 / 反思 / 总结）。
 
 三、长期记忆类：
   上方「长期记忆」段落是跨会话自动注入的，你可参考它，无需自行存储任何记忆。
@@ -4510,6 +4517,32 @@ function cleanPrompt(t, intent){
 }
 
 
+/* ======================= v0.4.48 自主思维循环 基础能力 ======================= */
+var AGENT_LOOP_MAX_ROUNDS = 3;
+function agentCall(messages, onDelta, ac){
+  return new Promise(function(resolve, reject){
+    fetchTimeout(apiBase()+"/chat/completions",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
+      timeout: 120000,
+      body: JSON.stringify({ model:currentModel("text"), stream:true, messages: messages })
+    }).then(function(resp){
+      if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,120)); });
+      return resp.text();
+    }).then(function(fullBody){
+      var acc = "";
+      parseSSEStream(fullBody, function(delta){ acc+=delta; if(onDelta) onDelta(delta); });
+      SESSION_STATS.calls++; SESSION_STATS.tokens += estTokens(acc);
+      resolve(acc);
+    }).catch(function(err){ reject(err); });
+  });
+}
+function extractObservations(text){
+  if(!text) return "";
+  var lines = (""+text).split("\n").filter(function(l){ return /✅|⚠️|⚠/.test(l); });
+  return lines.join(" ").replace(/\s+/g," ").trim();
+}
+
 /* ---- 线① 文本对话（流式打字机 F22）+ F13/F14 附件处理 ---- */
 function doChat(text, attachments){
   attachments = attachments || [];
@@ -4582,59 +4615,115 @@ function doChat(text, attachments){
       userContent = text || "（请继续）";
     }
 
-    /* F20/F24：可打断 + 失败可重试 + 超时保护 */
+    /* ===== v0.4.48 自主思维循环（Agent Loop）：规划→执行→反思→自纠，思考过程对用户可见 ===== */
     abortReason = null;
     var ac = new AbortController();
     activeAbort = ac; setGenState(true);
-    var chatAcc = "";
-    var _t0 = Date.now(); SESSION_STATS.calls++;
-    var chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 240000);
+    var _loopT0 = Date.now();
+    var chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 600000);
+    runLog("agent","自主思维循环启动");
+    var think = "🧠 思考过程\n";
 
-    /* 【修复 v0.4.7】聊天原走 WebView 原生 fetch，在手机 file:// 环境下被跨域拦截（报"网络被拦截"）。
-        改走 fetchTimeout → 原生桥 httpRequestAsync（与生图同一通道），绕过 WebView CORS；
-        原生桥返回整段 SSE 响应体，下方用 parseSSEStream 手动解析还原流式输出。 */
-    fetchTimeout(apiBase()+"/chat/completions",{
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
-      timeout: 240000,
-      body: JSON.stringify({ model:currentModel("text"), stream:true, messages: hist.concat([{role:"user", content:userContent}]) })
-    }).then(function(resp){
-      if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,120)); });
-      return resp.text();
-    }).then(function(fullBody){
-      parseSSEStream(fullBody, function(delta){
-        chatAcc+=delta; var bb=rowBubble(); if(bb) bb.textContent=chatAcc.replace(/^\s+/,""); scrollBottom();
-      });
-      SESSION_STATS.ms += (Date.now()-_t0); SESSION_STATS.tokens += estTokens(chatAcc);
-      runLog("chat","对话完成 · ~"+estTokens(chatAcc)+" token · "+((Date.now()-_t0)/1000).toFixed(1)+"s"); renderStats();
-      /* v0.4.38 B：解析 AI 回复里的 [FILE_WRITE] 块，自动调 wsWrite */
-      var writeApplied = parseFileWriteBlocks(chatAcc);
-      if(writeApplied) chatAcc = writeApplied;   // 把标记块从聊天里清掉，避免污染显示
-      finalizeChat(aiMsg, chatAcc, attachments);
-    }).then(function(){
-      clearTimeout(chatTimer); clearRetry(aiMsg.id);
-    }).catch(function(err){
+    function agentLoop(){
+      function renderThink(){ var bb=rowBubble(); if(bb) bb.textContent = think.replace(/^\s+/,""); scrollBottom(); }
+      function thinkLine(s){ think += s; renderThink(); }
+      function thinkDelta(d){ think += d; renderThink(); }
+      var observations = [];
+      var conv = [];
+
+      function planPhase(){
+        if(ac.signal.aborted) return Promise.reject({abort:true});
+        renderThink();
+        var planPrompt = { role:"user", content:"（请先用简短要点列出你的执行计划：本次要达成的目标，以及准备分哪几步、每步大概做什么。如果这是一个不需要任何工具、可以直接回答的问题，请只回复「直接回答」即可。）" };
+        return agentCall(hist.concat([{role:"user", content:userContent}, planPrompt]), thinkDelta, ac).then(function(planText){
+          if(/直接回答/.test(planText)){
+            var ans = planText.replace(/直接回答[:：]?/,"").trim();
+            finish(ans || planText);
+            return;
+          }
+          thinkLine("\n📋 计划：\n"+planText.trim()+"\n");
+          conv.push({role:"assistant", content:"计划："+planText});
+          return actPhase(planText, 0);
+        });
+      }
+
+      function actPhase(planText, round){
+        if(ac.signal.aborted) return Promise.reject({abort:true});
+        if(round >= AGENT_LOOP_MAX_ROUNDS) return doSummarize(planText);
+        thinkLine("\n🔧 第 "+(round+1)+" 轮执行…\n");
+        var obsText = observations.length ? ("\n【已完成的步骤与结果】\n"+observations.join("\n")) : "";
+        var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。需要操作文件就输出 [FILE_WRITE]（或先 [FILE_READ] 了解现状），完成后说明这一步结果。如果所有任务都已完成，请只输出「DONE」并简要说明完成情况，不要继续写文件。\n"+obsText };
+        return agentCall(hist.concat([{role:"user", content:userContent}], conv, [actPrompt]), thinkDelta, ac).then(function(actText){
+          var cleaned = parseFileWriteBlocks(actText);
+          if(cleaned && cleaned !== actText) thinkLine("\n"+cleaned.replace(/^\s+/,"")+"\n");
+          var obs = extractObservations(cleaned || actText);
+          if(obs) observations.push(obs);
+          conv.push({role:"assistant", content: cleaned || actText});
+          if(/DONE/i.test(actText)) return reflectPhase(planText);
+          return actPhase(planText, round+1);
+        });
+      }
+
+      function reflectPhase(planText){
+        if(ac.signal.aborted) return Promise.reject({abort:true});
+        thinkLine("\n🔍 反思/自检…\n");
+        var obsText = observations.join("\n");
+        var refPrompt = { role:"user", content:"请基于以上执行结果做一次自检：用户的目标是否真正达成了？文件是否都写对了、内容是否完整？如果有遗漏或失败，请指出并给出修正步骤（可输出 [FILE_WRITE] 修正）；如果已达成，请只回复「OK」。" + (obsText ? ("\n【执行结果】\n"+obsText) : "") };
+        return agentCall(hist.concat([{role:"user", content:userContent}], conv, [refPrompt]), thinkDelta, ac).then(function(refText){
+          var cleaned = parseFileWriteBlocks(refText);
+          if(cleaned && cleaned !== refText) thinkLine("\n"+cleaned.replace(/^\s+/,"")+"\n");
+          var obs = extractObservations(cleaned || refText);
+          if(obs) observations.push(obs);
+          conv.push({role:"assistant", content: cleaned || refText});
+          var ok = /^\s*OK\b|已达成|已完成|没有问题|无需修正/i.test(refText) && !/(失败|遗漏|缺失|未完成|错误|需修正)/.test(refText);
+          if(ok) return doSummarize(planText);
+          thinkLine("\n♻️ 发现需修正，重新执行…\n");
+          return actPhase(planText, 1);
+        });
+      }
+
+      function doSummarize(planText){
+        if(ac.signal.aborted) return Promise.reject({abort:true});
+        thinkLine("\n✍️ 正在总结…\n");
+        var obsText = observations.length ? observations.join("\n") : "(本次未操作文件)";
+        var uc = (typeof userContent==="string") ? userContent : JSON.stringify(userContent);
+        var sumPrompt = { role:"user", content:"用户说：" + uc + "\n\n（以下是你刚才的执行过程与结果）\n" + (planText?("计划：\n"+planText+"\n"):"") + "执行结果：\n"+obsText + "\n\n请给用户一个友好、清晰的总结回复（用中文），告诉他你完成了什么、产出了哪些文件；如果部分失败也如实说明。" };
+        var sumAcc = "";
+        return agentCall(hist.concat([{role:"user", content:userContent}, sumPrompt]), function(d){ sumAcc+=d; var bb=rowBubble(); if(bb) bb.textContent = (think.trim()+"\n\n— — —\n\n"+sumAcc.replace(/^\s+/,"")); scrollBottom(); }, ac).then(function(){
+          finish(sumAcc);
+        });
+      }
+
+      function finish(sumText){
+        clearTimeout(chatTimer); clearRetry(aiMsg.id);
+        var finalText = think.trim() + "\n\n— — —\n\n" + (sumText && sumText.trim() ? sumText.trim() : "（已完成）");
+        aiMsg.text = finalText;
+        SESSION_STATS.ms += (Date.now()-_loopT0); SESSION_STATS.tokens += estTokens(finalText);
+        runLog("agent","思维循环完成 · ~"+estTokens(finalText)+" token"); renderStats();
+        setGenState(false); activeAbort=null; abortReason=null;
+        finalizeChat(aiMsg, finalText, attachments);
+        if(pendingGuide){ var g=pendingGuide; pendingGuide=null; setTimeout(function(){ doChat(g); }, 30); }
+      }
+
+      return planPhase();
+    }
+
+    function onLoopError(err){
       clearTimeout(chatTimer);
-      if(err && (err.name==="AbortError" || /abort/i.test(err.message||""))){
-        var note = abortReason==="timeout" ? "\n\n（请求超时，已自动停止）"
-                 : abortReason==="guide" ? "\n\n（已按新指令改写）"
-                 : "\n\n（已停止生成）";
-        finalizeChat(aiMsg, (chatAcc||"（已停止生成）")+note, attachments);
-        return;
+      if(err && (err.abort || err.name==="AbortError" || /abort/i.test(err.message||""))){
+        var note = abortReason==="timeout" ? "\n\n（请求超时，已自动停止）" : "\n\n（已停止生成）";
+        aiMsg.text = think.replace(/^\s+/,"") + note;
+        finalizeChat(aiMsg, aiMsg.text, attachments);
+        setGenState(false); activeAbort=null; abortReason=null; return;
       }
       attachRetry(aiMsg.id, function(){ doChat(text, attachments); });
       aiMsg._err = true;
       SESSION_STATS.errors++; runLog("err", friendlyErr(err)); renderStats();
       finalizeChat(aiMsg, "⚠️ 出错了："+friendlyErr(err), attachments);
-    }).then(function(){
-      activeAbort = null; abortReason = null;
-      if(pendingGuide){
-        var g = pendingGuide; pendingGuide = null;
-        setTimeout(function(){ doChat(g); }, 30);   /* 引导续写：半截已落历史，以引导语开新请求 */
-        return;   /* 保持停止态，待 doChat 重新接管 */
-      }
-      setGenState(false);
-    });
+      setGenState(false); activeAbort=null; abortReason=null;
+    }
+
+    agentLoop().catch(onLoopError);
   }).catch(function(err){
     aiMsg._err = true;
     finalizeChat(aiMsg, "⚠️ 附件图片读取失败："+friendlyErr(err), attachments);
