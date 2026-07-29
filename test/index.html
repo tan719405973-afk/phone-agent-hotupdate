@@ -2883,19 +2883,13 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.46";
+var APP_VERSION = "0.4.45";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.46", date:"2026-07-29", items:[
-    "修复（永久根治\"装同版\"系统弹窗·v0.4.45 补丁失效）：v0.4.45 的校验依赖 PackageManager.getPackageArchiveInfo 读下载包 versionCode，而该 API 在 Android 11+（本 App targetSdk 34）包可见性下返回 null，导致校验恒为 -1、永远放行调起安装器——防护形同虚设",
-    "实现：downloadAndInstallApk 改为由前端传入『已校验过的目标 versionCode』，与『已装 versionCode』直接比对（不依赖任何受限文件解析 API，全版本 100% 可靠）；只有目标版本确实高于已装才调起安装器，否则删文件 + toast 跳过",
-    "AndroidManifest 新增 QUERY_ALL_PACKAGES 权限，提升 getPackageArchiveInfo 作为兜底检查的可用性；读取失败或取不到版本时一律保守拦截，绝不再误放行",
-    "版本号 0.4.45→0.4.46（versionCode 20260753→20260754），强制重新分发新 APK 让所有设备拿到修复后的安装逻辑",
-  ]},
-  { v:"0.4.45", date:"2026-07-29", items:[
+var CHANGELOG = [  { v:"0.4.45", date:"2026-07-29", items:[
     "修复（永久防“装同版”系统弹窗）：下载下来的 APK 即使 versionCode 与已装相同（或更低），App 内会自动识别并跳过安装提示原因，不再调起系统安装器——根治“已安装相同版本 0.4.38”之类的系统弹窗",
     "根因：apkUrl 此前走 GitHub Pages（*.github.io）域名，Pages CDN 缓存命中旧版 APK 的概率高；改走 raw.githubusercontent.com（实时服务 main 分支 tree、无 CDN 缓存、ETag/If-Modified-Since 正常）",
     "实现：NativeBridge.downloadAndInstallApk 下载完成后用 PackageManager.getPackageArchiveInfo 读下载包的 versionCode，与当前已装对比，同/旧版删文件 + toast 跳过；只有真正更高版本才调起安装器",
@@ -5181,7 +5175,7 @@ function evalUpdate(j){
   var webNote = j.webNote || j.note || "";
   var webNewer = !!(webVer && compareVer(webVer, APP_VERSION) > 0);
   return { apkNewer: apkNewer, webVer: webVer, webNote: webNote, webNewer: webNewer,
-           apkName: j.versionName, apkNote: j.note, apkUrl: j.apkUrl, apkCode: j.versionCode };
+           apkName: j.versionName, apkNote: j.note, apkUrl: j.apkUrl };
 }
 
 function checkUpdate(){
@@ -5199,7 +5193,7 @@ function checkUpdate(){
         function(){
           if(!hasNative() || !window.NativeBridge || !window.NativeBridge.downloadAndInstallApk){ toast("当前环境不支持 APK 安装，请在手机 App 内更新"); return; }
           toast("已发起下载，请稍候（进度与结果由系统提示）");
-          NativeBridge.downloadAndInstallApk(u.apkUrl, u.apkCode);
+          NativeBridge.downloadAndInstallApk(u.apkUrl);
         });
       return;
     }

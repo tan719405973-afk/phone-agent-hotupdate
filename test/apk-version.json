@@ -1,8 +1,8 @@
 {
-  "versionCode": 20260754,
-  "versionName": "0.4.46",
-  "apkUrl": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.46.apk",
-  "note": "v0.4.46：永久根治\"装同版\"——downloadAndInstallApk 改用前端传入的目标 versionCode 与已装 versionCode 比对（不依赖 Android 11+ 失效的 getPackageArchiveInfo），只有目标更高才安装，否则跳过不弹系统窗",
-  "webVersion": "0.4.46",
-  "webNote": "v0.4.46：永久根治\"装同版\"——downloadAndInstallApk 改用前端传入的目标 versionCode 与已装 versionCode 比对（不依赖 Android 11+ 失效的 getPackageArchiveInfo），只有目标更高才安装，否则跳过不弹系统窗"
+  "versionCode": 20260753,
+  "versionName": "0.4.45",
+  "apkUrl": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.45.apk",
+  "note": "v0.4.45：永久防\"装同版\"——apkUrl 改 raw.githubusercontent.com 绕开 Pages 缓存；下载后自动校验 versionCode，已是最新则跳过安装不调起系统安装器",
+  "webVersion": "0.4.45",
+  "webNote": "v0.4.45：永久防\"装同版\"——apkUrl 改 raw.githubusercontent.com 绕开 Pages 缓存；下载后自动校验 versionCode，已是最新则跳过安装不调起系统安装器"
 }
