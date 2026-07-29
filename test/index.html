@@ -2883,13 +2883,27 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.48";
+var APP_VERSION = "0.4.50";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.48", date:"2026-07-29", items:[
+var CHANGELOG = [  { v:"0.4.50", date:"2026-07-30", items:[
+    "真流式对话：原生桥 httpRequestAsync 升级为边下载边把内容推给网页（chunk 增量回调），AI 回复实时逐字打出，不再\"憋很久整段蹦出\"——需安装 0.4.50 新壳生效；旧壳自动退化为打字机回放（收完后 2 秒内逐块播出），同样告别整段蹦",
+    "思维循环全程有反馈：每个阶段等待模型时显示「🧠 正在思考、规划… Xs / ⚙️ 执行中… / 🔍 自检中… / ✍️ 总结中…」秒表跳动，不再死寂空白",
+    "简单问题提速：规划阶段判定无需工具时，一次调用直接给完整答案（回到单轮速度），不再空跑执行/反思/总结流程",
+    "修复（工作区）：设置里点「工作区（手机文件）」页面根本不弹出（入口自始至终漏调 show()，陈年bug）——skills 技能库、AI 写的文件现在终于能点开看了",
+    "「我的风格」不再空白：首次使用自动预置观察模板（语气/长度/格式/反感点），并放宽守则——AI 聊天中察觉到偏好倾向就立即更新，不必等你明确纠正",
+    "版本号 0.4.49→0.4.50（versionCode 20260756），APK 与 web 同步升级",
+  ]},
+  { v:"0.4.49", date:"2026-07-30", items:[
+    "AI 学会上网了：思维循环新增联网工具——[WEB_SEARCH]关键词 联网搜索（返回标题+网址+摘要）、[WEB_OPEN]网址 打开网页抓正文，结果自动回灌给 AI 下一轮推理",
+    "联网走原生 HTTP 桥（httpRequestAsync），彻底绕开 WebView file:// 跨域限制，无需任何额外权限或重装 APK",
+    "规划阶段强约束：涉及新闻/天气/价格/最新资料等实时信息时必须先联网查证再回答，并注明来源网址，杜绝凭过时记忆编造",
+    "能力清单（TOOL_CAPS）新增「联网类」章节，与文件读写、记忆、技能自进化并列为 AI 的常备工具",
+  ]},
+  { v:"0.4.48", date:"2026-07-29", items:[
     "新增自主思维循环（Agent Loop）：聊天从单轮直连升级为多轮推理——AI 先规划目标与步骤、再调用文件工具落地、最后自查修正，具备自己的思维",
     "思考过程对用户可见：对话气泡实时展示 思考过程/计划/执行/反思/总结 全流程，不再是冷冰冰一句回复",
     "自动执行与自愈：工具调用全自动无需逐步确认；执行失败或被干扰时，模型依据 成功/失败 观察自动重试修正（上限 3 轮），显著降低写了一半或写错的概率",
@@ -3528,13 +3542,19 @@ function nativeFetch(url, opts){
     }
     var id = "__nh"+(++__nativeHttpId);
     var ms = opts.timeout || ((opts.method && opts.method.toUpperCase() !== "GET") ? 120000 : 30000);
+    /* v0.4.50 真流式：新壳原生桥边下载边通过 __nativeHttpChunk 增量推送；旧壳没有此回调则自动退化为整段返回 */
+    if(opts.onChunk){
+      window.__nativeHttpChunk = window.__nativeHttpChunk || {};
+      window.__nativeHttpChunk[id] = function(c){ try{ opts.onChunk(String(c||"")); }catch(e){} };
+    }
+    function _cleanChunk(){ try{ if(window.__nativeHttpChunk) delete window.__nativeHttpChunk[id]; }catch(e){} }
     var t = setTimeout(function(){
-      delete __nativeHttpCb[id];
+      delete __nativeHttpCb[id]; _cleanChunk();
       reject(new Error("请求超时（等待超过 "+(ms/1000)+" 秒），可能是网络慢或服务繁忙"));
     }, ms);
     __nativeHttpCb[id] = function(res){
       clearTimeout(t);
-      delete __nativeHttpCb[id];
+      delete __nativeHttpCb[id]; _cleanChunk();
       var resp = {
         ok: res.status >= 200 && res.status < 300,
         status: res.status,
@@ -3554,7 +3574,7 @@ function nativeFetch(url, opts){
       );
     } catch(e) {
       clearTimeout(t);
-      delete __nativeHttpCb[id];
+      delete __nativeHttpCb[id]; _cleanChunk();
       reject(e);
     }
   });
@@ -3790,6 +3810,68 @@ function parseFileWriteBlocks(text){
   }
   return out;
 }
+/* v0.4.49：联网工具——HTML 转正文 */
+function htmlToText(html){
+  if(!html) return "";
+  var s = ""+html;
+  s = s.replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ");
+  s = s.replace(/<!--[\s\S]*?-->/g," ");
+  s = s.replace(/<\/(p|div|br|li|tr|h[1-6]|section|article)>/gi,"\n").replace(/<br\s*\/?>/gi,"\n");
+  s = s.replace(/<[^>]+>/g," ");
+  s = s.replace(/&(nbsp|ensp|emsp|thinsp);/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&hellip;/g,"…").replace(/&#(\d+);/g,function(_,n){try{return String.fromCharCode(+n);}catch(e){return " ";}});
+  s = s.replace(/[ \t\u3000]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").replace(/^\s+|\s+$/g,"");
+  return s;
+}
+var WEB_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+/* 联网搜索（cn.bing.com，国内可直连，解析 b_algo 结果块） */
+function webSearch(query){
+  var url = "https://cn.bing.com/search?q="+encodeURIComponent(query)+"&setlang=zh-CN&ensearch=0";
+  return nativeFetch(url,{ method:"GET", headers:{ "User-Agent":WEB_UA }, timeout:20000 }).then(function(resp){
+    return resp.text();
+  }).then(function(html){
+    var results = [], m;
+    var re = /<li class="b_algo"[\s\S]*?<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h2>([\s\S]*?)<\/li>/gi;
+    while((m = re.exec(html)) && results.length < 5){
+      var link = m[1], title = htmlToText(m[2]), snip = htmlToText(m[3]).slice(0,220);
+      if(title && /^https?:/i.test(link)) results.push({title:title, url:link, snip:snip});
+    }
+    return results;
+  });
+}
+/* 解析 AI 回复里的 [WEB_SEARCH]/[WEB_OPEN] 块 → 走原生桥抓取 → 把标记块替换成结果文本。
+   返回 Promise<清理后文本>，供思维循环回灌观察（无标记块时原样 resolve）。 */
+function parseWebBlocks(text){
+  if(!text || (text.indexOf("[WEB_SEARCH]")===-1 && text.indexOf("[WEB_OPEN]")===-1)) return Promise.resolve(text);
+  var out = text, jobs = [];
+  out.replace(/\[WEB_SEARCH\]([\s\S]*?)\[\/WEB_SEARCH\]/g, function(block, inner){ jobs.push({type:"search", block:block, arg:inner.trim()}); return block; });
+  out.replace(/\[WEB_OPEN\]([\s\S]*?)\[\/WEB_OPEN\]/g, function(block, inner){ jobs.push({type:"open", block:block, arg:inner.trim()}); return block; });
+  var i = 0;
+  function put(block, rep){ out = out.replace(block, function(){ return rep; }); }
+  function next(){
+    if(i >= jobs.length) return Promise.resolve(out);
+    var job = jobs[i++];
+    if(job.type==="search"){
+      if(!job.arg){ put(job.block,"\n\n⚠️ 联网搜索关键词为空\n"); return next(); }
+      runLog("web","搜索 "+job.arg);
+      return webSearch(job.arg).then(function(rs){
+        var rep;
+        if(!rs.length){ rep = "\n\n⚠️ 联网搜索「"+job.arg+"」没拿到结果（可能被拦或无匹配），可换关键词或用 [WEB_OPEN] 直接打开网址\n"; }
+        else { rep = "\n\n✅ 联网搜索「"+job.arg+"」得到 "+rs.length+" 条：\n"; rs.forEach(function(r,idx){ rep += (idx+1)+". "+r.title+"\n   "+r.url+"\n   "+r.snip+"\n"; }); }
+        put(job.block, rep); return next();
+      }).catch(function(e){ put(job.block, "\n\n⚠️ 联网搜索失败："+friendlyErr(e)+"\n"); return next(); });
+    } else {
+      var u = job.arg;
+      if(!/^https?:\/\//i.test(u)) u = "https://"+u.replace(/^\/+/,"");
+      runLog("web","打开 "+u);
+      return nativeFetch(u,{ method:"GET", headers:{ "User-Agent":WEB_UA }, timeout:25000 }).then(function(resp){ return resp.text(); }).then(function(html){
+        var txt = htmlToText(html).slice(0,4000);
+        put(job.block, txt ? ("\n\n✅ 已打开 "+u+"（正文约 "+txt.length+" 字）：\n```\n"+txt+"\n```\n") : ("\n\n⚠️ 打开 "+u+" 没读到正文（可能是非网页内容）\n"));
+        return next();
+      }).catch(function(e){ put(job.block, "\n\n⚠️ 打开 "+u+" 失败："+friendlyErr(e)+"\n"); return next(); });
+    }
+  }
+  return next();
+}
 /* 工作区编辑页 C：AI 改写当前文件 */
 var _aiRewritePendingFile = "";
 var _aiRewritePendingText = "";
@@ -3991,11 +4073,17 @@ var TOOL_CAPS = `【身份定位（最重要，请牢记）】
   ① 被用户纠正了做法或答案 → 写 skills/经验-简短主题.md，内容固定两段：「触发场景：……」「正确做法：……」，全文 300 字以内
   ② 踩了坑、犯了错并找到解法 → 同上格式记录
   ③ 摸索出一套好用的套路或流程 → 同上格式记录
-  ④ 发现用户的表达/格式/语气偏好（如喜欢短句、讨厌表情符号）→ 更新 skills/_我的风格.md（覆盖写入，全文 500 字以内，超了先自行精简再写）
+  ④ 观察到用户的表达/格式/语气偏好或倾向（如喜欢短句、讨厌表情符号、反感啰嗦）→ 立即更新 skills/_我的风格.md（覆盖写入，把模板里对应的「待观察」替换为观察结论；全文 500 字以内，超了先自行精简再写）。不必等用户明确纠正，聊天中感觉到就记——这是你了解主人的方式
   使用规则：看到索引里某个技能文件名与当前任务相关，先用 [FILE_READ] 读它的全文再动手；_我的风格.md 已全文注入，直接遵守即可。
   节制要求：一次对话最多写 1-2 个技能文件；只记可复用的经验，不记一次性琐事；写技能文件不需要用户批准，这是你的本职。
 
-【文件写 / 改 的输出格式（用户要求写/改/覆盖/创建文件时，按此格式输出；其他场景禁止输出任何工具格式）】
+五、联网类（你能真实上网！需要最新/外部信息时必须用，严禁凭过时记忆编造）：
+  [WEB_SEARCH]关键词[/WEB_SEARCH]   联网搜索，系统会返回前几条结果的 标题+网址+摘要
+  [WEB_OPEN]网址[/WEB_OPEN]         打开指定网页，系统会抓取正文文本返回给你
+  什么时候必须用：用户问 新闻/天气/股价/汇率/赛事比分/最新版本/某网站内容/近期发生的事，或任何你不确定、可能过时的事实——先搜索或打开网页拿到真实内容，再基于结果回答，并注明信息来源网址。
+  用法提示：先 [WEB_SEARCH] 找到相关网址，再视需要 [WEB_OPEN] 打开其中一条读全文；结果会在下一轮自动返回给你。搜索没结果时可换关键词重试。
+
+【文件写 / 改 的输出格式（用户要求写/改/覆盖/创建文件时，按此格式输出；非文件、非联网场景不要输出任何工具格式）】
 [FILE_WRITE]
 path: 相对路径
 content:
@@ -4026,8 +4114,25 @@ path: 相对路径
    档位2=偏好自调（skills/_我的风格.md 全文注入，AI 可自行覆盖更新，500字上限写在 TOOL_CAPS 守则里）。 */
 var SKILL_DIR = "skills";
 var STYLE_FILE = "skills/_我的风格.md";
+function ensureStyleFile(){
+  /* v0.4.50：首次使用时预置「我的风格」模板（原来是空文件，用户打开一看什么都没有）；AI 观察到偏好后覆盖更新 */
+  try{
+    var cur = "";
+    try{ cur = wsRead(STYLE_FILE) || ""; }catch(e){}
+    if(cur && cur.trim()) return;
+    try{ wsMkdir(SKILL_DIR); }catch(e){}
+    wsWrite(STYLE_FILE,
+      "# 我的风格（AI 自动维护：聊天中观察到用户偏好就更新本文件，不必等用户明确纠正）\n\n"+
+      "- 语气：待观察（默认：简洁直接、大白话，少客套）\n"+
+      "- 回复长度：待观察（默认：短句优先，能一句话说清不写三句）\n"+
+      "- 格式偏好：待观察（列表 or 段落 / 是否喜欢表情符号）\n"+
+      "- 反感的：待观察（如：啰嗦、重复确认、过度解释）\n"+
+      "- 常用场景：待观察（写作 / 查资料 / 文件整理…）\n");
+  }catch(e){}
+}
 function buildSkillsContext(){
   var parts = [];
+  try{ ensureStyleFile(); }catch(e){}
   try{
     var arr = JSON.parse(wsList(SKILL_DIR) || "[]");
     var names = [];
@@ -4521,19 +4626,47 @@ function cleanPrompt(t, intent){
 var AGENT_LOOP_MAX_ROUNDS = 3;
 function agentCall(messages, onDelta, ac){
   return new Promise(function(resolve, reject){
+    /* v0.4.50：真流式优先。新壳原生桥 onChunk 边下载边推 SSE 片段 → 实时解析 delta 渲染；
+       旧壳（无 chunk 回调）退化为「整段收完 → 打字机异步回放」，至少有打字观感不再整段蹦出。 */
+    var gotChunk = false, sseBuf = "", liveAcc = "";
+    function onChunk(raw){
+      gotChunk = true; sseBuf += raw;
+      var i;
+      while((i = sseBuf.indexOf("\n")) >= 0){
+        var line = sseBuf.slice(0, i).trim(); sseBuf = sseBuf.slice(i+1);
+        if(line.indexOf("data:") !== 0) continue;
+        var d = line.slice(5).trim();
+        if(!d || d === "[DONE]") continue;
+        try{
+          var j = JSON.parse(d);
+          var delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+          if(delta){ liveAcc += delta; if(onDelta) onDelta(delta); }
+        }catch(e){}
+      }
+    }
     fetchTimeout(apiBase()+"/chat/completions",{
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+currentApiKey() },
       timeout: 120000,
+      onChunk: onDelta ? onChunk : null,
       body: JSON.stringify({ model:currentModel("text"), stream:true, messages: messages })
     }).then(function(resp){
       if(!resp.ok) return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+" "+t.slice(0,120)); });
       return resp.text();
     }).then(function(fullBody){
       var acc = "";
-      parseSSEStream(fullBody, function(delta){ acc+=delta; if(onDelta) onDelta(delta); });
+      parseSSEStream(fullBody, function(delta){ acc += delta; });
       SESSION_STATS.calls++; SESSION_STATS.tokens += estTokens(acc);
-      resolve(acc);
+      if(gotChunk){ resolve(acc || liveAcc); return; }        /* 真流式已边收边渲染，直接完成 */
+      if(!onDelta || !acc){ resolve(acc); return; }
+      /* 旧壳兜底：打字机回放（整段 ≤2 秒播完，块大小自适应） */
+      var pos = 0, step = Math.max(8, Math.ceil(acc.length/60));
+      var timer = setInterval(function(){
+        if(ac && ac.signal && ac.signal.aborted){ clearInterval(timer); resolve(acc); return; }
+        var next = acc.slice(pos, pos+step); pos += step;
+        try{ if(next) onDelta(next); }catch(e){}
+        if(pos >= acc.length){ clearInterval(timer); resolve(acc); }
+      }, 33);
     }).catch(function(err){ reject(err); });
   });
 }
@@ -4623,22 +4756,31 @@ function doChat(text, attachments){
     var chatTimer = setTimeout(function(){ if(activeAbort===ac){ abortReason="timeout"; try{ac.abort();}catch(e){} } }, 600000);
     runLog("agent","自主思维循环启动");
     var think = "🧠 思考过程\n";
+    /* v0.4.50 阶段进度秒表：每个阶段等待模型返回期间显示「正在…Xs」跳动，全程有反馈、不再死寂空白 */
+    var _tkT = null, _tkLabel = "";
+    function renderThink(){ var bb=rowBubble(); if(bb) bb.textContent = (think + _tkLabel).replace(/^\s+/,""); scrollBottom(); }
+    function stopTicker(){ if(_tkT){ clearInterval(_tkT); _tkT=null; } _tkLabel=""; }
+    function startTicker(label){
+      stopTicker(); var t0 = Date.now();
+      _tkLabel = "\n"+label+" 0s"; renderThink();
+      _tkT = setInterval(function(){ _tkLabel = "\n"+label+" "+Math.round((Date.now()-t0)/1000)+"s"; renderThink(); }, 1000);
+    }
 
     function agentLoop(){
-      function renderThink(){ var bb=rowBubble(); if(bb) bb.textContent = think.replace(/^\s+/,""); scrollBottom(); }
       function thinkLine(s){ think += s; renderThink(); }
-      function thinkDelta(d){ think += d; renderThink(); }
+      function thinkDelta(d){ stopTicker(); think += d; renderThink(); }
       var observations = [];
       var conv = [];
 
       function planPhase(){
         if(ac.signal.aborted) return Promise.reject({abort:true});
-        renderThink();
-        var planPrompt = { role:"user", content:"（请先用简短要点列出你的执行计划：本次要达成的目标，以及准备分哪几步、每步大概做什么。如果这是一个不需要任何工具、可以直接回答的问题，请只回复「直接回答」即可。）" };
+        startTicker("🧠 正在思考、规划…");
+        var planPrompt = { role:"user", content:"（请先用简短要点列出你的执行计划：本次要达成的目标，以及准备分哪几步、每步大概做什么。注意：如果问题涉及最新消息、实时信息、天气、新闻、价格、某网站内容等你记忆里没有或可能过时的信息，必须规划用联网工具 [WEB_SEARCH]/[WEB_OPEN] 查证后再回答，不许凭记忆编。只有既不需要文件工具、也不需要联网、纯靠已有知识就能答的问题，才以「直接回答：」开头，后面紧跟给用户的完整答案——这样一次就能答完，不再走后续流程。）" };
         return agentCall(hist.concat([{role:"user", content:userContent}, planPrompt]), thinkDelta, ac).then(function(planText){
-          if(/直接回答/.test(planText)){
-            var ans = planText.replace(/直接回答[:：]?/,"").trim();
-            finish(ans || planText);
+          if(/^\s*直接回答/.test(planText) || /直接回答[:：]/.test(planText.slice(0,30))){
+            var ans = planText.replace(/^[\s\S]*?直接回答[:：]?/,"").trim();
+            think = "";  /* 简单问题：不展示思考块，答案即全部 */
+            finish(ans || planText.trim());
             return;
           }
           thinkLine("\n📋 计划：\n"+planText.trim()+"\n");
@@ -4651,26 +4793,32 @@ function doChat(text, attachments){
         if(ac.signal.aborted) return Promise.reject({abort:true});
         if(round >= AGENT_LOOP_MAX_ROUNDS) return doSummarize(planText);
         thinkLine("\n🔧 第 "+(round+1)+" 轮执行…\n");
+        startTicker("⚙️ 执行中…");
         var obsText = observations.length ? ("\n【已完成的步骤与结果】\n"+observations.join("\n")) : "";
-        var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。需要操作文件就输出 [FILE_WRITE]（或先 [FILE_READ] 了解现状），完成后说明这一步结果。如果所有任务都已完成，请只输出「DONE」并简要说明完成情况，不要继续写文件。\n"+obsText };
+        var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。需要查最新/外部信息就输出 [WEB_SEARCH]关键词[/WEB_SEARCH] 联网搜索、或 [WEB_OPEN]网址[/WEB_OPEN] 打开网页读正文（结果会在下一轮返回给你）；需要操作文件就输出 [FILE_WRITE]（或先 [FILE_READ] 了解现状），完成后说明这一步结果。如果所有任务都已完成，请只输出「DONE」并简要说明完成情况，不要继续调工具。\n"+obsText };
         return agentCall(hist.concat([{role:"user", content:userContent}], conv, [actPrompt]), thinkDelta, ac).then(function(actText){
-          var cleaned = parseFileWriteBlocks(actText);
-          if(cleaned && cleaned !== actText) thinkLine("\n"+cleaned.replace(/^\s+/,"")+"\n");
-          var obs = extractObservations(cleaned || actText);
-          if(obs) observations.push(obs);
-          conv.push({role:"assistant", content: cleaned || actText});
-          if(/DONE/i.test(actText)) return reflectPhase(planText);
-          return actPhase(planText, round+1);
+          return parseWebBlocks(actText).then(function(webbed){
+            var cleaned = parseFileWriteBlocks(webbed);
+            var base = cleaned || webbed || actText;
+            if(base !== actText) thinkLine("\n"+base.replace(/^\s+/,"")+"\n");
+            var obs = extractObservations(base);
+            if(obs) observations.push(obs);
+            conv.push({role:"assistant", content: base});
+            if(/DONE/i.test(actText)) return reflectPhase(planText);
+            return actPhase(planText, round+1);
+          });
         });
       }
 
       function reflectPhase(planText){
         if(ac.signal.aborted) return Promise.reject({abort:true});
         thinkLine("\n🔍 反思/自检…\n");
+        startTicker("🔍 自检中…");
         var obsText = observations.join("\n");
         var refPrompt = { role:"user", content:"请基于以上执行结果做一次自检：用户的目标是否真正达成了？文件是否都写对了、内容是否完整？如果有遗漏或失败，请指出并给出修正步骤（可输出 [FILE_WRITE] 修正）；如果已达成，请只回复「OK」。" + (obsText ? ("\n【执行结果】\n"+obsText) : "") };
         return agentCall(hist.concat([{role:"user", content:userContent}], conv, [refPrompt]), thinkDelta, ac).then(function(refText){
-          var cleaned = parseFileWriteBlocks(refText);
+          return parseWebBlocks(refText).then(function(webbed){
+          var cleaned = parseFileWriteBlocks(webbed);
           if(cleaned && cleaned !== refText) thinkLine("\n"+cleaned.replace(/^\s+/,"")+"\n");
           var obs = extractObservations(cleaned || refText);
           if(obs) observations.push(obs);
@@ -4679,24 +4827,29 @@ function doChat(text, attachments){
           if(ok) return doSummarize(planText);
           thinkLine("\n♻️ 发现需修正，重新执行…\n");
           return actPhase(planText, 1);
+          });
         });
       }
 
       function doSummarize(planText){
         if(ac.signal.aborted) return Promise.reject({abort:true});
         thinkLine("\n✍️ 正在总结…\n");
+        startTicker("✍️ 总结中…");
         var obsText = observations.length ? observations.join("\n") : "(本次未操作文件)";
         var uc = (typeof userContent==="string") ? userContent : JSON.stringify(userContent);
         var sumPrompt = { role:"user", content:"用户说：" + uc + "\n\n（以下是你刚才的执行过程与结果）\n" + (planText?("计划：\n"+planText+"\n"):"") + "执行结果：\n"+obsText + "\n\n请给用户一个友好、清晰的总结回复（用中文），告诉他你完成了什么、产出了哪些文件；如果部分失败也如实说明。" };
         var sumAcc = "";
-        return agentCall(hist.concat([{role:"user", content:userContent}, sumPrompt]), function(d){ sumAcc+=d; var bb=rowBubble(); if(bb) bb.textContent = (think.trim()+"\n\n— — —\n\n"+sumAcc.replace(/^\s+/,"")); scrollBottom(); }, ac).then(function(){
+        return agentCall(hist.concat([{role:"user", content:userContent}, sumPrompt]), function(d){ stopTicker(); sumAcc+=d; var bb=rowBubble(); if(bb) bb.textContent = (think.trim()+"\n\n— — —\n\n"+sumAcc.replace(/^\s+/,"")); scrollBottom(); }, ac).then(function(){
           finish(sumAcc);
         });
       }
 
       function finish(sumText){
+        stopTicker();
         clearTimeout(chatTimer); clearRetry(aiMsg.id);
-        var finalText = think.trim() + "\n\n— — —\n\n" + (sumText && sumText.trim() ? sumText.trim() : "（已完成）");
+        var finalText = think.trim()
+          ? (think.trim() + "\n\n— — —\n\n" + (sumText && sumText.trim() ? sumText.trim() : "（已完成）"))
+          : ((sumText && sumText.trim()) || "（已完成）");   /* 直接回答：只展示答案，不带思考块 */
         aiMsg.text = finalText;
         SESSION_STATS.ms += (Date.now()-_loopT0); SESSION_STATS.tokens += estTokens(finalText);
         runLog("agent","思维循环完成 · ~"+estTokens(finalText)+" token"); renderStats();
@@ -4709,6 +4862,7 @@ function doChat(text, attachments){
     }
 
     function onLoopError(err){
+      stopTicker();
       clearTimeout(chatTimer);
       if(err && (err.abort || err.name==="AbortError" || /abort/i.test(err.message||""))){
         var note = abortReason==="timeout" ? "\n\n（请求超时，已自动停止）" : "\n\n（已停止生成）";
@@ -6390,7 +6544,7 @@ function lwExport(){
 var wsCurDir = "";
 var wsCurFile = "";
 var wsNewMode = "file";
-function openWorkspace(){ wsCurDir=""; wsGo(""); }
+function openWorkspace(){ wsCurDir=""; wsGo(""); show('workspacePage'); /* v0.4.50 修复：入口从未调 show()，点「工作区」页面根本不弹出（陈年bug） */ }
 function wsGo(dir){ wsCurDir = dir||""; renderWorkspace(); }
 function wsUp(){ /* v0.4.44：返回上一级目录 */
   if(!wsCurDir) return;
