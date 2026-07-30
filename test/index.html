@@ -2883,13 +2883,20 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.50";
+var APP_VERSION = "0.4.51";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.50", date:"2026-07-30", items:[
+var CHANGELOG = [  { v:"0.4.51", date:"2026-07-30", items:[
+    "新增：文件操作「参数强校验」——AI 输出的 [FILE_WRITE]/[FILE_READ] 路径若含 .. 越界、绝对路径（/sdcard/...、C:\\...）、空路径、超 200 字，或内容超 1000K 字符，系统直接拦截并返回带码错误（E1001 参数错 / E1002 越界 / E1003 超限），思维循环反思阶段可据此自动改用正确相对路径重发",
+    "新增：权限分级 L0-L3——L0 公开(读/列/建目录)、L1 本职写(wsWrite，系统校验路径与内容)、L2 危险删(wsDelete)、L3 禁用(越界/绝对路径/删红线)；TOOL_CAPS 新增「权限分级与红线」章节让模型自治理，减少危险误操作",
+    "新增：删除红线——wsDelete 硬禁止删除工作区根目录、skills/ 整个目录、skills/_我的风格.md（用户偏好档案），误删导致用户档案丢失归零的事故从源头杜绝",
+    "新增：错误码体系 E1001-E1008（参数/越界/超限/红线/超时/网络/读写/未知）——onLoopError 报错带 [码]，文件工具失败也带码回灌观察，便于定位与自纠",
+    "纯 web 热更（v0.4.51），APK 仍为 v0.4.50 无需重装；校验/权限/错误码全在 web 层生效",
+  ]},
+  { v:"0.4.50", date:"2026-07-30", items:[
     "真流式对话：原生桥 httpRequestAsync 升级为边下载边把内容推给网页（chunk 增量回调），AI 回复实时逐字打出，不再\"憋很久整段蹦出\"——需安装 0.4.50 新壳生效；旧壳自动退化为打字机回放（收完后 2 秒内逐块播出），同样告别整段蹦",
     "思维循环全程有反馈：每个阶段等待模型时显示「🧠 正在思考、规划… Xs / ⚙️ 执行中… / 🔍 自检中… / ✍️ 总结中…」秒表跳动，不再死寂空白",
     "简单问题提速：规划阶段判定无需工具时，一次调用直接给完整答案（回到单轮速度），不再空跑执行/反思/总结流程",
@@ -3703,17 +3710,25 @@ function renderStats(){
 var WS_KEY = "ws:";   // KV 回退前缀：路径用 :: 编码避免子目录创建失败
 function wsKeyEncode(p){ return WS_KEY + String(p||"").replace(/\//g, "::").replace(/\\/g, "::"); }
 function hasWsNative(){ try{ return hasNative() && NativeBridge && typeof NativeBridge.wsRead==="function"; }catch(e){ return false; } }
-function wsWrite(path, content){ toolLog("file","写入 "+path);
-  if(hasWsNative()){ try{ var r = NativeBridge.wsWrite(path, content||""); if(r && r.indexOf("err:")!==0) return "ok"; }catch(e){} }
-  try{ nSave(wsKeyEncode(path), content||""); return "ok"; }catch(e){ return "err:"+(e.message||e); }
+function wsWrite(path, content){
+  var v = validateWsPath(path); if(!v.ok) return "err:"+v.code+":"+v.msg;
+  var c = validateWsContent(content); if(!c.ok) return "err:"+c.code+":"+c.msg;
+  toolLog("file","写入 "+v.path);
+  if(hasWsNative()){ try{ var r = NativeBridge.wsWrite(v.path, content||""); if(r && r.indexOf("err:")!==0) return "ok"; }catch(e){} }
+  try{ nSave(wsKeyEncode(v.path), content||""); return "ok"; }catch(e){ return "err:E1007:"+(e.message||e); }
 }
-function wsRead(path){ toolLog("file","读取 "+path);
-  if(hasWsNative()){ try{ var r = NativeBridge.wsRead(path); if(r && r.indexOf("err:")!==0) return r; }catch(e){} }
-  try{ return nLoad(wsKeyEncode(path)); }catch(e){ return ""; }
+function wsRead(path){
+  var v = validateWsPath(path); if(!v.ok) return "err:"+v.code+":"+v.msg;
+  toolLog("file","读取 "+v.path);
+  if(hasWsNative()){ try{ var r = NativeBridge.wsRead(v.path); if(r && r.indexOf("err:")!==0) return r; }catch(e){} }
+  try{ return nLoad(wsKeyEncode(v.path)); }catch(e){ return ""; }
 }
-function wsDelete(path){ toolLog("file","删除 "+path);
-  if(hasWsNative()){ try{ NativeBridge.wsDelete(path); }catch(e){} }
-  try{ if(typeof nRemove==="function") nRemove(wsKeyEncode(path)); else localStorage.removeItem(WS_KEY+path); }catch(e){}
+function wsDelete(path){
+  var v = validateWsPath(path); if(!v.ok) return "err:"+v.code+":"+v.msg;
+  if(isDeleteRedline(v.path)) return "err:E1004:红线目标禁止删除（工作区根目录/skills 目录/_我的风格.md）";
+  toolLog("file","删除 "+v.path);
+  if(hasWsNative()){ try{ NativeBridge.wsDelete(v.path); }catch(e){} }
+  try{ if(typeof nRemove==="function") nRemove(wsKeyEncode(v.path)); else localStorage.removeItem(WS_KEY+v.path); }catch(e){}
   return "ok";
 }
 function wsMkdir(dir){
@@ -3745,7 +3760,10 @@ function wsSysOpen(path){
   if(hasNative()){ toast("此功能需要更新安装包（设置→检查更新）"); }
   else { toast("浏览器预览环境不支持"); }
 }
-function wsList(dir){ toolLog("file","列出 "+(dir||"根目录"));
+function wsList(dir){
+  var v = validateWsPath(dir||"", {allowEmpty:true}); if(!v.ok) return "[]";
+  dir = v.path;
+  toolLog("file","列出 "+(dir||"根目录"));
   if(hasWsNative()){ try{ var r = NativeBridge.wsList(dir||""); if(r && r.indexOf("err:")!==0) return r; }catch(e){} }
   try{   /* KV 回退（v0.4.44 重写）：把 :: 编码的完整路径切成"当前层"视图——子目录合成 📁 条目，文件只显示相对名 */
     var base = String(dir||"").replace(/\\/g,"/").replace(/^\/+|\/+$/g,"");
@@ -3764,6 +3782,51 @@ function wsList(dir){ toolLog("file","列出 "+(dir||"根目录"));
     return JSON.stringify(out);
   }catch(e){ return "[]"; }
 }
+/* ===== v0.4.51：参数强校验 + 权限分级 + 错误码（借鉴 D:\agent2 research 设计，热更即可生效，无需重打包） ===== */
+var WS_CONTENT_MAX = 1000000;   /* 单文件内容字符上限（~1MB），防把存储写炸 */
+var WS_PATH_MAX = 200;          /* 路径长度上限 */
+/* 删除红线：这些目标被系统硬禁止删除，防止 AI/误操作毁掉用户档案或整个技能库 */
+var WS_DELETE_REDLINE = ["", "skills", "skills/", "_我的风格.md", "skills/_我的风格.md"];
+function isDeleteRedline(p){
+  p = String(p==null?"":p).replace(/\\/g,"/").replace(/\/+/g,"/").replace(/^\/+|\/+$/g,"");
+  return WS_DELETE_REDLINE.indexOf(p) !== -1;
+}
+/* 校验工作区相对路径：拒绝 空/超长/控制字符/绝对路径/..越界；allowEmpty 允许根目录 */
+function validateWsPath(path, opts){
+  opts = opts || {};
+  path = String(path==null?"":path).replace(/\\/g,"/").trim();
+  if(!path){
+    if(opts.allowEmpty) return { ok:true, path:"" };
+    return { ok:false, code:"E1001", msg:"路径为空" };
+  }
+  if(path.length > WS_PATH_MAX) return { ok:false, code:"E1001", msg:"路径超过 "+WS_PATH_MAX+" 字上限" };
+  if(/[\x00-\x1f]/.test(path)) return { ok:false, code:"E1001", msg:"路径含非法控制字符" };
+  if(/^([a-zA-Z]:[\\/]|\/)/.test(path)) return { ok:false, code:"E1002", msg:"不允许绝对路径（请用相对工作区根目录的相对路径）" };
+  if(path.indexOf("..") !== -1) return { ok:false, code:"E1002", msg:"不允许 .. 越界路径" };
+  return { ok:true, path:path };
+}
+function validateWsContent(content){
+  content = content==null?"":String(content);
+  if(content.length > WS_CONTENT_MAX) return { ok:false, code:"E1003", msg:"内容超过 "+(WS_CONTENT_MAX/1000)+"K 字符上限（请分段写或精简）" };
+  return { ok:true };
+}
+/* 把 ws* 返回的错误串（err:xxx）解出可读信息（供观察/反思阶段识别码） */
+function wsErrDecode(r){
+  if(r && String(r).indexOf("err:")===0) return r.slice(4);
+  return r;
+}
+/* 错误码分类（供 onLoopError 与反思策略使用）：
+   E1001 参数/路径格式错 · E1002 越界/绝对路径 · E1003 内容超限 · E1004 红线/权限拒绝
+   E1005 超时/中止 · E1006 网络/HTTP · E1007 文件读写失败 · E1008 未知 */
+function classifyError(err){
+  if(!err) return { code:"E1008", msg:"未知错误" };
+  var s = (err && err.message) ? String(err.message) : String(err);
+  if(err && err.abort) return { code:"E1005", msg:"已中止" };
+  if(/abort/i.test(s)) return { code:"E1005", msg:"已中止" };
+  if(/timeout/i.test(s)) return { code:"E1005", msg:"请求超时" };
+  if(/HTTP 4|HTTP 5|network|fetch|ENOTFOUND|ECONN|Failed to fetch/i.test(s)) return { code:"E1006", msg:"网络/HTTP 错误" };
+  return { code:"E1008", msg: s.slice(0,120) };
+}
 /* 选中图片 base64 → 落本地（APK），浏览器保留 base64（5MB 风险仅预览期） */
 function persistPickedImage(base64, ext){
   if(!hasNative()) return base64;
@@ -3780,13 +3843,14 @@ function parseFileWriteBlocks(text){
     var m = inner.match(/^\s*path:\s*([^\n]+)/);
     if(!m) return block;
     var path = m[1].trim();
-    var content = wsRead(path);
+    var pv = validateWsPath(path); if(!pv.ok) return "\n\n⚠️ ["+pv.code+"] 读取路径校验失败："+pv.msg+"\n";
+    var content = wsRead(pv.path);
     if(content && content.indexOf("err:")!==0){
-      runLog("file","读取 "+path+"（"+content.length+" 字）");
+      runLog("file","读取 "+pv.path+"（"+content.length+" 字）");
       var truncated = content.length>8000 ? content.slice(0,8000)+"\n…（截断）" : content;
-      return "\n\n【已读取 "+path+"（"+content.length+" 字）】\n```\n"+truncated+"\n```\n";
+      return "\n\n【已读取 "+pv.path+"（"+content.length+" 字）】\n```\n"+truncated+"\n```\n";
     }
-    return "\n\n⚠️ 读 "+path+" 失败："+(content||"")+"\n";
+    return "\n\n⚠️ 读 "+pv.path+" 失败："+wsErrDecode(content||"")+"\n";
   });
   /* —— FILE_WRITE：调 wsWrite，覆盖写文件并把标记块从聊天区移除 —— */
   if(out.indexOf("[FILE_WRITE]")!==-1){
@@ -3794,17 +3858,19 @@ function parseFileWriteBlocks(text){
     out = out.replace(/\[FILE_WRITE\]([\s\S]*?)\[\/FILE_WRITE\]/g, function(block, inner){
       var m = inner.match(/^\s*path:\s*([^\n]+)\s*content:\s*([\s\S]*?)\s*$/);
       if(!m){
-        return "\n\n⚠️ FILE_WRITE 格式不对（需 path: + content: 两行）\n";
+        return "\n\n⚠️ [E1000] FILE_WRITE 格式不对（需 path: + content: 两行）\n";
       }
       var path = m[1].trim();
       var content = m[2].replace(/^\n+/,"").replace(/\n+$/,"");
-      var r = wsWrite(path, content);
+      var pv = validateWsPath(path); if(!pv.ok) return "\n\n⚠️ ["+pv.code+"] 路径校验失败："+pv.msg+"（请改成相对工作区根目录的相对路径，不要含 .. 或绝对路径）\n";
+      var cv = validateWsContent(content); if(!cv.ok) return "\n\n⚠️ ["+cv.code+"] "+cv.msg+"\n";
+      var r = wsWrite(pv.path, content);
       if(r === "ok"){
         okCount++;
-        runLog("file","改写 "+path+"（"+content.length+" 字）");
-        return "\n\n✅ 已写入 "+path+"（"+content.length+" 字）\n";
+        runLog("file","改写 "+pv.path+"（"+content.length+" 字）");
+        return "\n\n✅ 已写入 "+pv.path+"（"+content.length+" 字）\n";
       }
-      return "\n\n⚠️ 写入 "+path+" 失败："+r+"\n";
+      return "\n\n⚠️ 写入 "+pv.path+" 失败："+wsErrDecode(r)+"\n";
     });
     if(okCount>0) toast("已写入 "+okCount+" 个文件");
   }
@@ -4107,6 +4173,14 @@ path: 相对路径
   · 用户只问理论、问建议、问计划但没要求落地到文件
   · 用户只是「想看个示例/听个方案」且没说要存成文件
   · 用户没提到任何文件，且当前没有打开/上传的文件
+
+【权限分级与红线（务必遵守，避免误操作触发系统拦截）】
+  文件工具按风险分档；越权或危险操作会被系统拦截并返回错误码，请按提示修正而非硬试：
+  · L0 公开（直接用）：wsRead 读、wsList 列目录、wsMkdir 建目录 —— 只读/创建，零风险。
+  · L1 本职写（系统会校验路径与内容）：wsWrite 写入/覆盖文件 —— 这是你的核心本职；路径须相对工作区根目录、不带 .. 或绝对路径，内容超 1000K 字符会被拒（请分段写）。
+  · L2 危险删（受红线限制）：wsDelete 删除文件 —— 系统**禁止删除**红线目标：工作区根目录本身、skills/ 整个目录、skills/_我的风格.md（用户偏好档案）。其余文件可删，但删除前你的回复里必须已说明要删什么、为何删。
+  · L3 禁用（绝不允许）：尝试删除红线目标、或用 .. 越界到工作区之外、或写绝对路径（如 /sdcard/...、C:\\...）都会被系统拦截返回 E1002/E1004，请立即改用正确相对路径。
+  错误码速查（出现时按码修正）：E1001 参数/路径格式错 · E1002 越界/绝对路径 · E1003 内容超限 · E1004 红线/权限拒绝 · E1007 文件读写失败。
 
 如触发改写但不知文件路径，先问一句「请告诉我要改的文件名（相对于工作区根目录）」再等用户回复。`;
 /* v0.4.41 自动进化（档位1+2）：每轮发送前把 skills/ 索引 + _我的风格.md 全文注入系统提示词。
@@ -4872,8 +4946,9 @@ function doChat(text, attachments){
       }
       attachRetry(aiMsg.id, function(){ doChat(text, attachments); });
       aiMsg._err = true;
-      SESSION_STATS.errors++; runLog("err", friendlyErr(err)); renderStats();
-      finalizeChat(aiMsg, "⚠️ 出错了："+friendlyErr(err), attachments);
+      var ec = classifyError(err);
+      SESSION_STATS.errors++; runLog("err", "["+ec.code+"] "+friendlyErr(err)); renderStats();
+      finalizeChat(aiMsg, "⚠️ 出错了 ["+ec.code+"]："+friendlyErr(err), attachments);
       setGenState(false); activeAbort=null; abortReason=null;
     }
 
