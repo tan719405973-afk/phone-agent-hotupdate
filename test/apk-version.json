@@ -4,7 +4,7 @@
   "apkUrl": "https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test/phone-agent-release-0.4.50.apk",
   "apkUrl2": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.50.apk",
   "apkMd5": "3529c7d4e156b4a5f2b27462c984fe1f",
-  "note": "v0.4.54（纯 web 热更，APK 仍为 0.4.50 无需重装）：紧急修复 v0.4.53 寒暄短路分支漏清生成态——回复「你好」后 activeAbort 残留非空，导致之后所有发送被 onSend 的生成中拦截逻辑吞掉，表现为「第一次能聊、之后打字进不了会话」。修复：寒暄短路分支补齐与 finish() 一致的清理（stopTicker/clearTimeout(chatTimer)/activeAbort=null/abortReason=null/setGenState(false)），对话状态彻底复位，后续输入正常进入会话。含 v0.4.53 寒暄友好回复+空转检测+plan 去重、v0.4.52 Weng 方法论五增强、v0.4.51 校验/权限/错误码、v0.4.50 真流式/工作区修复、v0.4.49 联网、v0.4.48 思维循环",
-  "webVersion": "0.4.54",
-  "webNote": "v0.4.54（纯 web 热更，APK 仍为 0.4.50 无需重装）：紧急修复 v0.4.53 寒暄短路分支漏清生成态——回复「你好」后 activeAbort 残留非空，导致之后所有发送被 onSend 的生成中拦截逻辑吞掉，表现为「第一次能聊、之后打字进不了会话」。修复：寒暄短路分支补齐与 finish() 一致的清理（stopTicker/clearTimeout(chatTimer)/activeAbort=null/abortReason=null/setGenState(false)），对话状态彻底复位，后续输入正常进入会话。含 v0.4.53 寒暄友好回复+空转检测+plan 去重、v0.4.52 Weng 方法论五增强、v0.4.51 校验/权限/错误码、v0.4.50 真流式/工作区修复、v0.4.49 联网、v0.4.48 思维循环"
+  "note": "v0.4.55（纯 web 热更，APK 仍为 0.4.50 无需重装）：修复联网抓网页「返回的是整页导航/侧边栏垃圾、且答非所问/重复一句」的设计缺陷。①htmlToText 由「只去 script/style 再整页截取」升级为 DOM 解析，精准剔除导航/页脚/侧边栏/广告等噪声容器，只保留主体正文（含 main/article/常见正文容器优选 + 最长文本块回退）；②新增 webResults 通道：联网抓取到的正文单独收集并喂给总结模型，终结「doSummarize 拿不到抓取内容只能答非所问」；③可见思考块不再贴整段网页原文，只显示「已读取 N 字」状态；④act/总结提示词约束「只提炼相关内容作答、不回贴原文、不重复问题」。含 v0.4.54 状态复位修复、v0.4.53 寒暄/空转/去重、v0.4.52 Weng 方法论、v0.4.51 校验权限、v0.4.50 真流式、v0.4.49 联网、v0.4.48 思维循环",
+  "webVersion": "0.4.55",
+  "webNote": "v0.4.55（纯 web 热更，APK 仍为 0.4.50 无需重装）：修复联网抓网页「返回的是整页导航/侧边栏垃圾、且答非所问/重复一句」的设计缺陷。①htmlToText 由「只去 script/style 再整页截取」升级为 DOM 解析，精准剔除导航/页脚/侧边栏/广告等噪声容器，只保留主体正文（含 main/article/常见正文容器优选 + 最长文本块回退）；②新增 webResults 通道：联网抓取到的正文单独收集并喂给总结模型，终结「doSummarize 拿不到抓取内容只能答非所问」；③可见思考块不再贴整段网页原文，只显示「已读取 N 字」状态；④act/总结提示词约束「只提炼相关内容作答、不回贴原文、不重复问题」。含 v0.4.54 状态复位修复、v0.4.53 寒暄/空转/去重、v0.4.52 Weng 方法论、v0.4.51 校验权限、v0.4.50 真流式、v0.4.49 联网、v0.4.48 思维循环"
 }

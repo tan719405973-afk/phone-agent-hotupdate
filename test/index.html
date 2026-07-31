@@ -2883,13 +2883,20 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.54";
+var APP_VERSION = "0.4.55";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.54", date:"2026-08-01", items:[
+var CHANGELOG = [  { v:"0.4.55", date:"2026-08-01", items:[
+    "修复联网抓网页返回整页导航/侧边栏垃圾、且答非所问/重复一句的设计缺陷（纯 web 热更，APK 仍 0.4.50）",
+    "htmlToText 由「只去 script/style 再整页截取前 4000 字」升级为 DOM 解析：剔除 nav/header/footer/aside/广告等噪声容器，优选 main/article/常见正文容器、回退取最长文本块，只留主体正文；[WEB_OPEN] 切片上限 4000→6000",
+    "新增 webResults 通道：联网抓取到的网页正文单独收集，喂给总结模型 doSummarize，终结「总结阶段拿不到抓取内容、只能泛泛说『已帮你查』」的答非所问",
+    "可见思考块不再贴整段网页原文：联网结果只显示「已读取 N 字」状态，原文留给模型内部作答用，用户不再看到一大片无关导航",
+    "act/总结提示词加约束：联网结果只提炼与问题相关要点作答，严禁回贴整页原文、不重复用户问题原句，根治「一句老是重复」",
+  ]},
+  { v:"0.4.54", date:"2026-08-01", items:[
     "紧急修复（纯 web 热更，APK 仍 0.4.50）：v0.4.53 寒暄短路分支漏清生成态——回复「你好」后 activeAbort 残留非空，导致之后所有发送被 onSend 的生成中拦截逻辑吞掉，表现为「第一次能聊、之后打字进不了会话」",
     "修复：寒暄短路分支补齐与 finish() 一致的清理（stopTicker / clearTimeout(chatTimer) / activeAbort=null / abortReason=null / setGenState(false)），对话状态彻底复位，后续输入正常进入会话，不再被误判为「生成中」拦截",
     "沿用 v0.4.53 全部逻辑（寒暄友好回复 isSmallTalk/pickGreeting、循环空转检测 idleStreak、plan 去重渲染），仅修正状态复位缺陷，无功能回退",
@@ -3907,10 +3914,38 @@ function parseFileWriteBlocks(text){
 /* v0.4.49：联网工具——HTML 转正文 */
 function htmlToText(html){
   if(!html) return "";
+  /* v0.4.55：优先 DOM 解析，精准剔除导航/侧边栏/页脚等噪声，只留主体正文 */
+  try{
+    var doc = new DOMParser().parseFromString(html, "text/html");
+    var kill = doc.querySelectorAll("script,style,noscript,iframe,svg,header,nav,footer,aside,form,button,input,select,textarea,canvas,figure");
+    for(var i=0;i<kill.length;i++){ if(kill[i].parentNode) kill[i].parentNode.removeChild(kill[i]); }
+    /* 按 class/id 关键词剔除噪声容器（仅当自身文字很短，避免误删长正文） */
+    var kw = /nav|menu|sidebar|side-?bar|header|footer|banner|breadcrumb|toolbar|pagination|recommend|related|comment|share|social|login|search-?box|widget|crumb|topbar|top-?bar|bottom|site-?|ad-?|advert|float|popup|mask|cookie|layer|notice|tip-|guide|sitemap|friend/i;
+    var els = doc.querySelectorAll("*");
+    for(var j=0;j<els.length;j++){
+      var el = els[j]; var cls = (typeof el.className==="string"?el.className:"") + " " + (el.id||"");
+      if(kw.test(cls) && (el.textContent||"").trim().length < 240){ if(el.parentNode) el.parentNode.removeChild(el); }
+    }
+    /* 主体内容优先：main/article/常见正文容器；否则取正文最长的块 */
+    var main = doc.querySelector("main,article,[role=main],#content,.content,#main,.main,.article,.post,.detail,.post-content,.article-content,.rich-text,.content-detail,.article-detail,.news-detail,.news-content,.content-box,.text");
+    var root = main || doc.body;
+    if(!main){
+      var best=null, bestLen=0;
+      var blocks = doc.body ? doc.body.querySelectorAll("div,section") : [];
+      for(var b=0;b<blocks.length;b++){
+        var t = (blocks[b].textContent||"").trim();
+        if(t.length>bestLen){ bestLen=t.length; best=blocks[b]; }
+      }
+      if(best && bestLen>200) root = best;
+    }
+    var txt = (root ? (root.textContent||"") : "") || "";
+    txt = txt.replace(/[ \t　]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").replace(/^\s+|\s+$/g,"");
+    if(txt.length>200) return txt;
+  }catch(e){ /* 落到下方正则兜底 */ }
   var s = ""+html;
   s = s.replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ");
   s = s.replace(/<!--[\s\S]*?-->/g," ");
-  s = s.replace(/<\/(p|div|br|li|tr|h[1-6]|section|article)>/gi,"\n").replace(/<br\s*\/?>/gi,"\n");
+  s = s.replace(/<\/(p|div|br|li|tr|h[1-6]|section|article|header|nav|footer|aside)>/gi,"\n").replace(/<br\s*\/?>/gi,"\n");
   s = s.replace(/<[^>]+>/g," ");
   s = s.replace(/&(nbsp|ensp|emsp|thinsp);/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&hellip;/g,"…").replace(/&#(\d+);/g,function(_,n){try{return String.fromCharCode(+n);}catch(e){return " ";}});
   s = s.replace(/[ \t\u3000]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").replace(/^\s+|\s+$/g,"");
@@ -3934,7 +3969,7 @@ function webSearch(query){
 }
 /* 解析 AI 回复里的 [WEB_SEARCH]/[WEB_OPEN] 块 → 走原生桥抓取 → 把标记块替换成结果文本。
    返回 Promise<清理后文本>，供思维循环回灌观察（无标记块时原样 resolve）。 */
-function parseWebBlocks(text){
+function parseWebBlocks(text, collector){
   if(!text || (text.indexOf("[WEB_SEARCH]")===-1 && text.indexOf("[WEB_OPEN]")===-1)) return Promise.resolve(text);
   var out = text, jobs = [];
   out.replace(/\[WEB_SEARCH\]([\s\S]*?)\[\/WEB_SEARCH\]/g, function(block, inner){ jobs.push({type:"search", block:block, arg:inner.trim()}); return block; });
@@ -3951,6 +3986,7 @@ function parseWebBlocks(text){
         var rep;
         if(!rs.length){ rep = "\n\n⚠️ 联网搜索「"+job.arg+"」没拿到结果（可能被拦或无匹配），可换关键词或用 [WEB_OPEN] 直接打开网址\n"; }
         else { rep = "\n\n✅ 联网搜索「"+job.arg+"」得到 "+rs.length+" 条：\n"; rs.forEach(function(r,idx){ rep += (idx+1)+". "+r.title+"\n   "+r.url+"\n   "+r.snip+"\n"; }); }
+        if(collector) collector.push({ type:"search", url:"（搜索）"+job.arg, text: rs.map(function(r){ return r.title+"\n"+r.url+"\n"+r.snip; }).join("\n") });
         put(job.block, rep); return next();
       }).catch(function(e){ put(job.block, "\n\n⚠️ 联网搜索失败："+friendlyErr(e)+"\n"); return next(); });
     } else {
@@ -3958,7 +3994,8 @@ function parseWebBlocks(text){
       if(!/^https?:\/\//i.test(u)) u = "https://"+u.replace(/^\/+/,"");
       runLog("web","打开 "+u);
       return nativeFetch(u,{ method:"GET", headers:{ "User-Agent":WEB_UA }, timeout:25000 }).then(function(resp){ return resp.text(); }).then(function(html){
-        var txt = htmlToText(html).slice(0,4000);
+        var txt = htmlToText(html).slice(0,6000);
+        if(collector) collector.push({ type:"open", url:u, text:txt });
         put(job.block, txt ? ("\n\n✅ 已打开 "+u+"（正文约 "+txt.length+" 字）：\n```\n"+txt+"\n```\n") : ("\n\n⚠️ 打开 "+u+" 没读到正文（可能是非网页内容）\n"));
         return next();
       }).catch(function(e){ put(job.block, "\n\n⚠️ 打开 "+u+" 失败："+friendlyErr(e)+"\n"); return next(); });
@@ -4933,6 +4970,7 @@ function doChat(text, attachments){
       function thinkDelta(d){ stopTicker(); think += d; renderThink(); }
       var observations = [];
       var conv = [];
+      var webResults = [];   /* v0.4.55：联网抓取到的网页正文，喂给总结模型让其能基于真实内容作答（不进可见思考块） */
       /* v0.4.52：Reflexion 反思限额 + 连续相同动作止损 */
       var reflectCount = 0;
       var lastActionSig = "";
@@ -4962,12 +5000,19 @@ function doChat(text, attachments){
         thinkLine("\n🔧 第 "+(round+1)+" 轮执行…\n");
         startTicker("⚙️ 执行中…");
         var obsText = observations.length ? ("\n【已完成的步骤与结果】\n"+observations.join("\n")) : "";
-        var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。需要查最新/外部信息就输出 [WEB_SEARCH]关键词[/WEB_SEARCH] 联网搜索、或 [WEB_OPEN]网址[/WEB_OPEN] 打开网页读正文（结果会在下一轮返回给你）；需要操作文件就输出 [FILE_WRITE]（或先 [FILE_READ] 了解现状），完成后说明这一步结果。如果所有任务都已完成，请只输出「DONE」并简要说明完成情况，不要继续调工具。\n"+obsText };
+        var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。需要查最新/外部信息就输出 [WEB_SEARCH]关键词[/WEB_SEARCH] 联网搜索、或 [WEB_OPEN]网址[/WEB_OPEN] 打开网页读正文（结果会在下一轮返回给你）；需要操作文件就输出 [FILE_WRITE]（或先 [FILE_READ] 了解现状），完成后说明这一步结果。如果所有任务都已完成，请只输出「DONE」并简要说明完成情况，不要继续调工具。\n重要：联网抓回的网页正文可能很长且含无关的导航/广告/侧边栏，请只提炼与用户问题相关的要点来作答或继续，严禁把整页原文回贴出来，也不要重复用户的问题原句。\n"+obsText };
         return agentCall(hist.concat([{role:"user", content:userContent}], conv, [actPrompt]), thinkDelta, ac).then(function(actText){
-          return parseWebBlocks(actText).then(function(webbed){
+          return parseWebBlocks(actText, webResults).then(function(webbed){
             var cleaned = parseFileWriteBlocks(webbed);
             var base = cleaned || webbed || actText;
-            if(base !== actText) thinkLine("\n"+base.replace(/^\s+/,"")+"\n");
+            if(base !== actText){
+              /* v0.4.55：联网抓取的正文很长，不要把整段网页塞进可见思考块，只显示读取状态 */
+              var disp = base;
+              if(/✅ 已打开|⚠️ 打开|✅ 联网搜索|⚠️ 联网搜索/.test(base)){
+                disp = base.replace(/```[\s\S]*?```/g, "「网页正文已读取，将用于作答，详见下方回复」").slice(0, 300);
+              }
+              thinkLine("\n"+disp.replace(/^\s+/,"")+"\n");
+            }
             var obs = extractObservations(base);
             if(obs) observations.push(obs);
             conv.push({role:"assistant", content: base});
@@ -4994,8 +5039,8 @@ function doChat(text, attachments){
         startTicker("🔍 自检中…");
         var obsText = observations.join("\n");
         var refPrompt = { role:"user", content:"请基于以上执行结果做一次自检：用户的目标是否真正达成了？文件是否都写对了、内容是否完整？如果有遗漏或失败，请指出并给出修正步骤（可输出 [FILE_WRITE] 修正）；如果已达成，请只回复「OK」。" + (obsText ? ("\n【执行结果】\n"+obsText) : "") };
-        return agentCall(hist.concat([{role:"user", content:userContent}], conv, [refPrompt]), thinkDelta, ac).then(function(refText){
-          return parseWebBlocks(refText).then(function(webbed){
+          return agentCall(hist.concat([{role:"user", content:userContent}], conv, [refPrompt]), thinkDelta, ac).then(function(refText){
+          return parseWebBlocks(refText, webResults).then(function(webbed){
           var cleaned = parseFileWriteBlocks(webbed);
           if(cleaned && cleaned !== refText) thinkLine("\n"+cleaned.replace(/^\s+/,"")+"\n");
           var obs = extractObservations(cleaned || refText);
@@ -5015,7 +5060,13 @@ function doChat(text, attachments){
         startTicker("✍️ 总结中…");
         var obsText = observations.length ? observations.join("\n") : "(本次未操作文件)";
         var uc = (typeof userContent==="string") ? userContent : JSON.stringify(userContent);
-        var sumPrompt = { role:"user", content:"用户说：" + uc + "\n\n（以下是你刚才的执行过程与结果）\n" + (planText?("计划：\n"+planText+"\n"):"") + "执行结果：\n"+obsText + "\n\n请给用户一个友好、清晰的总结回复（用中文），告诉他你完成了什么、产出了哪些文件；如果部分失败也如实说明。" };
+        /* v0.4.55：把联网抓取到的网页正文喂给总结模型，否则它拿不到真实内容、只能答非所问 */
+        var webCtx = "";
+        if(webResults && webResults.length){
+          var wc = webResults.map(function(r){ return "【来源 "+(r.url||"")+"】\n"+(r.text||"").slice(0,3000); }).join("\n\n");
+          webCtx = "\n\n（以下是联网抓取到的网页正文，请从中提取与用户问题相关的事实来回答，不要原样回贴整段原文，也不要重复用户的问题原句）\n" + wc.slice(0,6000);
+        }
+        var sumPrompt = { role:"user", content:"用户说：" + uc + "\n\n（以下是你刚才的执行过程与结果）\n" + (planText?("计划：\n"+planText+"\n"):"") + "执行结果：\n"+obsText + webCtx + "\n\n请给用户一个友好、清晰的总结回复（用中文），基于上面真实抓到的信息直接回答用户的问题（例如问天气就给出具体预报、问价格就给出具体数字），告诉他你查到了什么；如果部分失败也如实说明。回答要简洁，只保留与问题相关的内容，严禁把整页网页原文贴给用户。" };
         var sumAcc = "";
         return agentCall(hist.concat([{role:"user", content:userContent}, sumPrompt]), function(d){ stopTicker(); sumAcc+=d; var bb=rowBubble(); if(bb) bb.textContent = (think.trim()+"\n\n— — —\n\n"+sumAcc.replace(/^\s+/,"")); scrollBottom(); }, ac).then(function(){
           finish(sumAcc);
