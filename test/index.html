@@ -2883,13 +2883,21 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.51";
+var APP_VERSION = "0.4.52";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.51", date:"2026-07-30", items:[
+var CHANGELOG = [  { v:"0.4.52", date:"2026-08-01", items:[
+    "借鉴 Lilian Weng 自主 Agent 方法论，对思维循环做五处增强（均纯 web 热更生效、APK 仍 0.4.50）",
+    "Reflexion 反思限额：reflectPhase 重试新增 REFLECT_MAX_ROUNDS=2 上限，超出即停重试直接交付；actPhase 新增连续相同动作止损（SAME_ACTION_LIMIT=2，同动作重复达上限即停），杜绝「反思不达标→重执行→仍不达标→无限重入」卡死",
+    "结构化思考槽位：规划/反思阶段支持 [REASONING]推理/[PLAN]计划/[CRITICISM]风险自评 可选槽位，系统自动美化为 前缀展示，提升可解析性与可监控性",
+    "记忆三因子检索：buildSkillsContext 注入技能库索引时按 重要性(核心档案/经验类置顶)+相关性(与当前输入匹配前置) 加权排序，治「AI 把旧的无关技能当真」；recency 因子由 buildMemoryContext 既有近期优先逻辑覆盖",
+    "先澄清后执行：覆盖写 skills/ 下已存在的技能文件(.md)时，parseFileWriteBlocks 先做硬拦截返回 [E1004-确认]，逼模型先向用户说明并等确认；_我的风格.md 保留自动增量更新（进化守则④）但要求更新前一句话告知",
+    "确定性外包原则：TOOL_CAPS 新增章节，凡精确计算/排序/去重/计数/排期等可机械验证的任务，要求先用确定性方法算准、模型只做翻译层，避免凭直觉估数出错",
+  ]},
+  { v:"0.4.51", date:"2026-07-30", items:[
     "新增：文件操作「参数强校验」——AI 输出的 [FILE_WRITE]/[FILE_READ] 路径若含 .. 越界、绝对路径（/sdcard/...、C:\\...）、空路径、超 200 字，或内容超 1000K 字符，系统直接拦截并返回带码错误（E1001 参数错 / E1002 越界 / E1003 超限），思维循环反思阶段可据此自动改用正确相对路径重发",
     "新增：权限分级 L0-L3——L0 公开(读/列/建目录)、L1 本职写(wsWrite，系统校验路径与内容)、L2 危险删(wsDelete)、L3 禁用(越界/绝对路径/删红线)；TOOL_CAPS 新增「权限分级与红线」章节让模型自治理，减少危险误操作",
     "新增：删除红线——wsDelete 硬禁止删除工作区根目录、skills/ 整个目录、skills/_我的风格.md（用户偏好档案），误删导致用户档案丢失归零的事故从源头杜绝",
@@ -3864,6 +3872,14 @@ function parseFileWriteBlocks(text){
       var content = m[2].replace(/^\n+/,"").replace(/\n+$/,"");
       var pv = validateWsPath(path); if(!pv.ok) return "\n\n⚠️ ["+pv.code+"] 路径校验失败："+pv.msg+"（请改成相对工作区根目录的相对路径，不要含 .. 或绝对路径）\n";
       var cv = validateWsContent(content); if(!cv.ok) return "\n\n⚠️ ["+cv.code+"] "+cv.msg+"\n";
+      /* v0.4.52：先澄清后执行 —— 覆盖写 skills/ 下已有技能文件先做硬拦截，逼模型先向用户确认 */
+      var norm = pv.path.replace(/\\/g,"/").replace(/\/+/g,"/").replace(/^\/+|\/+$/g,"");
+      if(/^skills\/.+\.md$/i.test(norm) && norm !== "skills/_我的风格.md"){
+        var _existed = wsRead(pv.path);
+        if(_existed && _existed.indexOf("err:")!==0 && _existed.trim()){
+          return "\n\n⚠️ [E1004-确认] 拟覆盖写 "+norm+"，该技能文件已存在（"+_existed.length+" 字）。按「先澄清后执行」原则已暂停写入：请先在回复中明确向用户说明「我要更新技能文件 "+norm+"」，等用户确认后再执行；若只是追加经验，建议另存新文件名。\n";
+        }
+      }
       var r = wsWrite(pv.path, content);
       if(r === "ok"){
         okCount++;
@@ -4182,6 +4198,26 @@ path: 相对路径
   · L3 禁用（绝不允许）：尝试删除红线目标、或用 .. 越界到工作区之外、或写绝对路径（如 /sdcard/...、C:\\...）都会被系统拦截返回 E1002/E1004，请立即改用正确相对路径。
   错误码速查（出现时按码修正）：E1001 参数/路径格式错 · E1002 越界/绝对路径 · E1003 内容超限 · E1004 红线/权限拒绝 · E1007 文件读写失败。
 
+【先澄清后执行（高风险操作护栏，务必遵守）】
+  覆盖写 / 删除任何「已存在的重要文件」属于高风险，禁止静默执行：
+  · 覆盖写 skills/ 下的已有技能文件（.md）—— 暂停写入，先向用户说明「我要更新 XX 技能文件（当前 N 字），目的是…可以吗？」，等用户明确回复「确认覆盖/可以」后再执行；若只是追加经验，建议另存新文件名。
+  · skills/_我的风格.md（用户偏好档案）—— 你可自动增量更新（进化守则④），但每次更新前用一句话告诉用户「我记下你的偏好：…」，不要一声不吭改写。
+  · 删除文件 —— 见上方 L2 红线，删除前回复里必须已说明要删什么、为何删。
+  原则：凡改动不可逆或影响用户沉淀资产，先开口确认再动手；系统也会对 skills/ 已有文件做硬拦截提示，看到 [E1004-确认] 就必须停下问用户。
+
+【确定性外包（精确任务用代码算，你只做翻译层）】
+  凡涉及精确计算、排序、去重、计数、排期、正则匹配、数值核对等「确定有且唯一正确」的任务：
+  · 不要凭直觉估数或手写排序——那会出错。先用确定性方法算准（可借 [FILE_WRITE] 写一个一次性小脚本让用户在前端跑，或明确分步逐项核对）。
+  · 你只负责把算准的结果翻译成自然语言给用户，并标注计算过程可追溯。
+  适用边界：开放式创意 / 写作 / 判断仍由你主导；只有「可机械验证对错」的部分才外包给确定性流程。
+
+【结构化思考（可选槽位，提升可解析性）】
+  复杂规划可在回复里用下列槽位组织（系统会美化展示；不用槽位、纯自然语言也完全可以）：
+  · [REASONING]…[/REASONING] 简述推理依据与约束
+  · [PLAN]…[/PLAN] 列步骤清单
+  · [CRITICISM]…[/CRITICISM] 自评风险 / 可能的失败点
+  反思阶段同理可用 [CRITICISM] 暴露问题，便于系统判断是否需要重试。
+
 如触发改写但不知文件路径，先问一句「请告诉我要改的文件名（相对于工作区根目录）」再等用户回复。`;
 /* v0.4.41 自动进化（档位1+2）：每轮发送前把 skills/ 索引 + _我的风格.md 全文注入系统提示词。
    档位1=经验自记（AI 用 [FILE_WRITE] 写 skills/*.md，下轮索引可见、按需 [FILE_READ]）；
@@ -4204,19 +4240,32 @@ function ensureStyleFile(){
       "- 常用场景：待观察（写作 / 查资料 / 文件整理…）\n");
   }catch(e){}
 }
-function buildSkillsContext(){
+function buildSkillsContext(input){
   var parts = [];
   try{ ensureStyleFile(); }catch(e){}
   try{
     var arr = JSON.parse(wsList(SKILL_DIR) || "[]");
-    var names = [];
+    var items = [];
     for(var i=0;i<arr.length;i++){
       var n = arr[i] && arr[i].name ? String(arr[i].name) : "";
       if(!n || arr[i].dir) continue;
       if(n.indexOf(".keep")>=0) continue;
-      names.push(n.replace(/^skills\//,""));
-      if(names.length>=30) break; /* 索引上限 30 个，防提示词膨胀 */
+      /* 三因子加权：importance（核心档案/经验类置顶）+ relevance（与当前输入相关前置）+ 默认名序。
+         注：recency 因子依赖文件 mtime，当前 wsList 不返回 mtime，故以 importance/relevance 近似；
+         buildMemoryContext 已按 recency（近期对话优先）处理长期记忆，二者互补。 */
+      var base = String(n).replace(/^skills\//,"").replace(/\.md$/i,"");
+      var low = base.toLowerCase();
+      var imp = /_我的风格|核心|重要|readme/i.test(base) ? 2 : (/经验|套路|流程|规范|原则|方法/i.test(base) ? 1 : 0);
+      var rel = 0;
+      if(input){
+        var iw = (" "+(input||"").toLowerCase()+" ");
+        rel = low.split(/[_\-\s]+/).some(function(t){ return t.length>1 && iw.indexOf(t)>=0; }) ? 1 : 0;
+      }
+      items.push({ name: base, imp:imp, rel:rel });
+      if(items.length>=40) break;
     }
+    items.sort(function(a,b){ if(b.imp!==a.imp) return b.imp-a.imp; if(b.rel!==a.rel) return b.rel-a.rel; return a.name<b.name?-1:1; });
+    var names = items.slice(0,30).map(function(x){ return x.name; });  /* 索引上限 30，防提示词膨胀 */
     if(names.length) parts.push("【技能库索引（skills/ 下你沉淀过的经验，觉得相关就用 [FILE_READ] 读全文）】\n"+names.join("、"));
   }catch(e){}
   try{
@@ -4698,6 +4747,8 @@ function cleanPrompt(t, intent){
 
 /* ======================= v0.4.48 自主思维循环 基础能力 ======================= */
 var AGENT_LOOP_MAX_ROUNDS = 3;
+var REFLECT_MAX_ROUNDS = 2;       /* Reflexion 反思上限：超出即停重试、直接交付当前最佳结果 */
+var SAME_ACTION_LIMIT = 2;         /* 连续相同动作止损：同一动作重复达上限即停止重试 */
 function agentCall(messages, onDelta, ac){
   return new Promise(function(resolve, reject){
     /* v0.4.50：真流式优先。新壳原生桥 onChunk 边下载边推 SSE 片段 → 实时解析 delta 渲染；
@@ -4744,6 +4795,14 @@ function agentCall(messages, onDelta, ac){
     }).catch(function(err){ reject(err); });
   });
 }
+/* v0.4.52：结构化思考槽位美化 —— 把 [REASONING]/[PLAN]/[CRITICISM] 渲染成带前缀的展示格式 */
+function renderSlots(t){
+  if(!t) return t;
+  return String(t)
+    .replace(/\[REASONING\]([\s\S]*?)\[\/REASONING\]/gi, "\n🧠 推理：\n$1")
+    .replace(/\[PLAN\]([\s\S]*?)\[\/PLAN\]/gi, "\n📋 计划：\n$1")
+    .replace(/\[CRITICISM\]([\s\S]*?)\[\/CRITICISM\]/gi, "\n⚠️ 风险自评：\n$1");
+}
 function extractObservations(text){
   if(!text) return "";
   var lines = (""+text).split("\n").filter(function(l){ return /✅|⚠️|⚠/.test(l); });
@@ -4783,7 +4842,7 @@ function doChat(text, attachments){
   /* v0.4.38：统一引用 TOOL_CAPS 能力清单（单一可维护来源，见上方定义） */
   sysParts.push(TOOL_CAPS);
   /* v0.4.41 自动进化：注入技能库索引 + 风格偏好全文（无技能文件时为空串，不注入） */
-  try{ var _skillCtx = buildSkillsContext(); if(_skillCtx) sysParts.push(_skillCtx); }catch(e){}
+  try{ var _skillCtx = buildSkillsContext(text); if(_skillCtx) sysParts.push(_skillCtx); }catch(e){}
   var hist = recent;
   if(sysParts.length) hist = [{role:"system", content: sysParts.join("\n\n")}].concat(hist);
   var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
@@ -4845,11 +4904,15 @@ function doChat(text, attachments){
       function thinkDelta(d){ stopTicker(); think += d; renderThink(); }
       var observations = [];
       var conv = [];
+      /* v0.4.52：Reflexion 反思限额 + 连续相同动作止损 */
+      var reflectCount = 0;
+      var lastActionSig = "";
+      var sameStreak = 0;
 
       function planPhase(){
         if(ac.signal.aborted) return Promise.reject({abort:true});
         startTicker("🧠 正在思考、规划…");
-        var planPrompt = { role:"user", content:"（请先用简短要点列出你的执行计划：本次要达成的目标，以及准备分哪几步、每步大概做什么。注意：如果问题涉及最新消息、实时信息、天气、新闻、价格、某网站内容等你记忆里没有或可能过时的信息，必须规划用联网工具 [WEB_SEARCH]/[WEB_OPEN] 查证后再回答，不许凭记忆编。只有既不需要文件工具、也不需要联网、纯靠已有知识就能答的问题，才以「直接回答：」开头，后面紧跟给用户的完整答案——这样一次就能答完，不再走后续流程。）" };
+        var planPrompt = { role:"user", content:"（请先用简短要点列出你的执行计划：本次要达成的目标，以及准备分哪几步、每步大概做什么。注意：如果问题涉及最新消息、实时信息、天气、新闻、价格、某网站内容等你记忆里没有或可能过时的信息，必须规划用联网工具 [WEB_SEARCH]/[WEB_OPEN] 查证后再回答，不许凭记忆编。只有既不需要文件工具、也不需要联网、纯靠已有知识就能答的问题，才以「直接回答：」开头，后面紧跟给用户的完整答案——这样一次就能答完，不再走后续流程。）复杂任务可用 [REASONING]…[/REASONING] 写推理、[PLAN]…[/PLAN] 列步骤、[CRITICISM]…[/CRITICISM] 评风险（可选，系统会美化展示）。" };
         return agentCall(hist.concat([{role:"user", content:userContent}, planPrompt]), thinkDelta, ac).then(function(planText){
           if(/^\s*直接回答/.test(planText) || /直接回答[:：]/.test(planText.slice(0,30))){
             var ans = planText.replace(/^[\s\S]*?直接回答[:：]?/,"").trim();
@@ -4857,7 +4920,7 @@ function doChat(text, attachments){
             finish(ans || planText.trim());
             return;
           }
-          thinkLine("\n📋 计划：\n"+planText.trim()+"\n");
+          thinkLine("\n📋 计划：\n"+renderSlots(planText.trim())+"\n");
           conv.push({role:"assistant", content:"计划："+planText});
           return actPhase(planText, 0);
         });
@@ -4878,6 +4941,11 @@ function doChat(text, attachments){
             var obs = extractObservations(base);
             if(obs) observations.push(obs);
             conv.push({role:"assistant", content: base});
+            /* v0.4.52：连续相同动作止损 —— 本轮动作与上一轮完全一致且重复达上限，停止重试直接交付 */
+            var sigWrites = (base||"").match(/\[FILE_WRITE\][\s\S]*?path:\s*([^\n]+)/g) || [];
+            var sig = sigWrites.join("|") || ("ACT:" + (base||actText||"").slice(0,160));
+            if(sig === lastActionSig){ sameStreak++; } else { sameStreak = 0; lastActionSig = sig; }
+            if(sameStreak >= SAME_ACTION_LIMIT){ thinkLine("\n⚠️ 检测到连续重复动作（已达上限），停止重试，直接交付当前结果\n"); return doSummarize(planText); }
             if(/DONE/i.test(actText)) return reflectPhase(planText);
             return actPhase(planText, round+1);
           });
@@ -4886,6 +4954,8 @@ function doChat(text, attachments){
 
       function reflectPhase(planText){
         if(ac.signal.aborted) return Promise.reject({abort:true});
+        reflectCount++;
+        if(reflectCount > REFLECT_MAX_ROUNDS){ thinkLine("\n⚠️ 反思重试已达上限，停止重试，交付当前最佳结果\n"); return doSummarize(planText); }
         thinkLine("\n🔍 反思/自检…\n");
         startTicker("🔍 自检中…");
         var obsText = observations.join("\n");
