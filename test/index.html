@@ -2883,13 +2883,18 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.53";
+var APP_VERSION = "0.4.54";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.53", date:"2026-08-01", items:[
+var CHANGELOG = [  { v:"0.4.54", date:"2026-08-01", items:[
+    "紧急修复（纯 web 热更，APK 仍 0.4.50）：v0.4.53 寒暄短路分支漏清生成态——回复「你好」后 activeAbort 残留非空，导致之后所有发送被 onSend 的生成中拦截逻辑吞掉，表现为「第一次能聊、之后打字进不了会话」",
+    "修复：寒暄短路分支补齐与 finish() 一致的清理（stopTicker / clearTimeout(chatTimer) / activeAbort=null / abortReason=null / setGenState(false)），对话状态彻底复位，后续输入正常进入会话，不再被误判为「生成中」拦截",
+    "沿用 v0.4.53 全部逻辑（寒暄友好回复 isSmallTalk/pickGreeting、循环空转检测 idleStreak、plan 去重渲染），仅修正状态复位缺陷，无功能回退",
+  ]},
+  { v:"0.4.53", date:"2026-08-01", items:[
     "修复「你好」等寒暄触发一大片废话与重复展示（纯 web 热更，APK 仍 0.4.50）",
     "寒暄/无任务入口短路：新增 isSmallTalk/pickGreeting，识别你好/在吗/你是谁/闲聊等纯打招呼，直接友好回复，不进思维循环、且不读 skills 省开销",
     "循环空转检测：actPhase 新增 idleStreak，连续两轮无任何工具调用([FILE_WRITE]/[WEB_SEARCH]/[WEB_OPEN]/[FILE_READ])且未 DONE 即停止空转直接 doSummarize，根治反复问「你想做什么」刷屏",
@@ -5055,7 +5060,9 @@ function doChat(text, attachments){
     if(typeof text === "string" && isSmallTalk(text)){
       var _g = pickGreeting();
       think = "";
-      setGenState(false);
+      stopTicker();                       /* 清理阶段进度秒表（与 finish 对齐，防残留定时器） */
+      clearTimeout(chatTimer);            /* 清理 600s 超时定时器 */
+      setGenState(false); activeAbort=null; abortReason=null;   /* v0.4.54 修复：必须复位生成态，否则 activeAbort 泄漏会让后续所有 onSend 被「生成中」拦截（首次寒暄后无法再对话） */
       aiMsg.text = _g;
       finalizeChat(aiMsg, _g, attachments);
       return;

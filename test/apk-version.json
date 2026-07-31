@@ -4,7 +4,7 @@
   "apkUrl": "https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test/phone-agent-release-0.4.50.apk",
   "apkUrl2": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.50.apk",
   "apkMd5": "3529c7d4e156b4a5f2b27462c984fe1f",
-  "note": "v0.4.53（纯 web 热更，APK 仍为 0.4.50 无需重装）：修复「你好」等寒暄触发一大片废话与重复展示。三处改动——①寒暄/无任务入口短路（isSmallTalk 识别你好/在吗/你是谁等，直接友好回复，不进思维循环、不读 skills）；②循环空转检测（actPhase 连续两轮无工具调用且无 DONE 即停止空转直接交付，根治反复问「你想做什么」刷屏）；③plan 去重渲染（planPhase 不再把计划流式写进思考块，仅「计划」区块展示一次，消除重复）。含 v0.4.52 Weng 方法论五增强、v0.4.51 校验/权限/错误码、v0.4.50 真流式/工作区修复、v0.4.49 联网、v0.4.48 思维循环",
-  "webVersion": "0.4.53",
-  "webNote": "v0.4.53（纯 web 热更，APK 仍为 0.4.50 无需重装）：修复「你好」等寒暄触发一大片废话与重复展示。三处改动——①寒暄/无任务入口短路（isSmallTalk 识别你好/在吗/你是谁等，直接友好回复，不进思维循环、不读 skills）；②循环空转检测（actPhase 连续两轮无工具调用且无 DONE 即停止空转直接交付，根治反复问「你想做什么」刷屏）；③plan 去重渲染（planPhase 不再把计划流式写进思考块，仅「计划」区块展示一次，消除重复）。含 v0.4.52 Weng 方法论五增强、v0.4.51 校验/权限/错误码、v0.4.50 真流式/工作区修复、v0.4.49 联网、v0.4.48 思维循环"
+  "note": "v0.4.54（纯 web 热更，APK 仍为 0.4.50 无需重装）：紧急修复 v0.4.53 寒暄短路分支漏清生成态——回复「你好」后 activeAbort 残留非空，导致之后所有发送被 onSend 的生成中拦截逻辑吞掉，表现为「第一次能聊、之后打字进不了会话」。修复：寒暄短路分支补齐与 finish() 一致的清理（stopTicker/clearTimeout(chatTimer)/activeAbort=null/abortReason=null/setGenState(false)），对话状态彻底复位，后续输入正常进入会话。含 v0.4.53 寒暄友好回复+空转检测+plan 去重、v0.4.52 Weng 方法论五增强、v0.4.51 校验/权限/错误码、v0.4.50 真流式/工作区修复、v0.4.49 联网、v0.4.48 思维循环",
+  "webVersion": "0.4.54",
+  "webNote": "v0.4.54（纯 web 热更，APK 仍为 0.4.50 无需重装）：紧急修复 v0.4.53 寒暄短路分支漏清生成态——回复「你好」后 activeAbort 残留非空，导致之后所有发送被 onSend 的生成中拦截逻辑吞掉，表现为「第一次能聊、之后打字进不了会话」。修复：寒暄短路分支补齐与 finish() 一致的清理（stopTicker/clearTimeout(chatTimer)/activeAbort=null/abortReason=null/setGenState(false)），对话状态彻底复位，后续输入正常进入会话。含 v0.4.53 寒暄友好回复+空转检测+plan 去重、v0.4.52 Weng 方法论五增强、v0.4.51 校验/权限/错误码、v0.4.50 真流式/工作区修复、v0.4.49 联网、v0.4.48 思维循环"
 }
