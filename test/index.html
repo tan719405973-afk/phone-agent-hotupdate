@@ -2883,13 +2883,20 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.52";
+var APP_VERSION = "0.4.53";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.52", date:"2026-08-01", items:[
+var CHANGELOG = [  { v:"0.4.53", date:"2026-08-01", items:[
+    "修复「你好」等寒暄触发一大片废话与重复展示（纯 web 热更，APK 仍 0.4.50）",
+    "寒暄/无任务入口短路：新增 isSmallTalk/pickGreeting，识别你好/在吗/你是谁/闲聊等纯打招呼，直接友好回复，不进思维循环、且不读 skills 省开销",
+    "循环空转检测：actPhase 新增 idleStreak，连续两轮无任何工具调用([FILE_WRITE]/[WEB_SEARCH]/[WEB_OPEN]/[FILE_READ])且未 DONE 即停止空转直接 doSummarize，根治反复问「你想做什么」刷屏",
+    "plan 去重渲染：planPhase 的 agentCall 不再传 thinkDelta（计划不流式写进思考块），仅「计划」区块展示一次，消除计划内容显示两遍",
+    "planPrompt 加寒暄指引：明确告知模型遇到纯打招呼/无任务时以「直接回答：」开头回一句友好话，不要编造执行计划",
+  ]},
+  { v:"0.4.52", date:"2026-08-01", items:[
     "借鉴 Lilian Weng 自主 Agent 方法论，对思维循环做五处增强（均纯 web 热更生效、APK 仍 0.4.50）",
     "Reflexion 反思限额：reflectPhase 重试新增 REFLECT_MAX_ROUNDS=2 上限，超出即停重试直接交付；actPhase 新增连续相同动作止损（SAME_ACTION_LIMIT=2，同动作重复达上限即停），杜绝「反思不达标→重执行→仍不达标→无限重入」卡死",
     "结构化思考槽位：规划/反思阶段支持 [REASONING]推理/[PLAN]计划/[CRITICISM]风险自评 可选槽位，系统自动美化为 前缀展示，提升可解析性与可监控性",
@@ -4812,6 +4819,21 @@ function extractObservations(text){
 /* ---- 线① 文本对话（流式打字机 F22）+ F13/F14 附件处理 ---- */
 function doChat(text, attachments){
   attachments = attachments || [];
+  /* v0.4.53 寒暄/无任务识别：纯打招呼、闲聊、空内容、或无明确任务的短句，直接友好回复不进循环 */
+  function isSmallTalk(t){
+    if(!t || typeof t !== "string") return false;
+    var s = t.trim().toLowerCase().replace(/[\s!！。.~？?，,、。]/g,"");
+    if(!s) return false;
+    var greet = ["你好","您好","hi","hello","hey","哈喽","嗨","在吗","在不在","在么","你是谁","你叫什么","你是什么","早上好","下午好","晚上好","晚安","早安","哈哈","谢谢","感谢","多谢","辛苦了","辛苦您","在的","测试","在不在呀","喂"];
+    if(greet.indexOf(s) >= 0) return true;
+    if(s.length <= 5 && !/[写|改|创|建|查|搜|找|读|删|列|整|生|分|译|总|算|帮|请|如|怎|什|为|如何|能不能|可以|需要|我想|我要|帮我]/.test(s)) return true;
+    return false;
+  }
+  function pickGreeting(){
+    var h = new Date().getHours();
+    var t = (h>=5&&h<11)?"早上好":(h>=11&&h<14)?"中午好":(h>=14&&h<18)?"下午好":(h>=18||h<5)?"晚上好":"你好";
+    return t + "！我是你的手机 AI 助手，有什么可以帮你的吗？";
+  }
   var c = current();
   var allTxt = c.messages.filter(function(m){return m.type==="text";});
   var summaryMsg = allTxt.filter(function(m){return m.role==="summary";})[0];
@@ -4841,8 +4863,10 @@ function doChat(text, attachments){
   if(_memCtx) sysParts.push(MEM_SYS_PROMPT + "\n" + _memCtx);
   /* v0.4.38：统一引用 TOOL_CAPS 能力清单（单一可维护来源，见上方定义） */
   sysParts.push(TOOL_CAPS);
-  /* v0.4.41 自动进化：注入技能库索引 + 风格偏好全文（无技能文件时为空串，不注入） */
-  try{ var _skillCtx = buildSkillsContext(text); if(_skillCtx) sysParts.push(_skillCtx); }catch(e){}
+  /* v0.4.41 自动进化：注入技能库索引 + 风格偏好全文（无技能文件时为空串，不注入）；v0.4.53：寒暄类不读 skills，省开销 */
+  if(!(typeof text === "string" && isSmallTalk(text))){
+    try{ var _skillCtx = buildSkillsContext(text); if(_skillCtx) sysParts.push(_skillCtx); }catch(e){}
+  }
   var hist = recent;
   if(sysParts.length) hist = [{role:"system", content: sysParts.join("\n\n")}].concat(hist);
   var aiMsg = appendMessage({role:"assistant", type:"text", text:""});
@@ -4908,12 +4932,13 @@ function doChat(text, attachments){
       var reflectCount = 0;
       var lastActionSig = "";
       var sameStreak = 0;
+      var idleStreak = 0;   /* v0.4.53：连续无工具调用轮次计数，防空转刷屏 */
 
       function planPhase(){
         if(ac.signal.aborted) return Promise.reject({abort:true});
         startTicker("🧠 正在思考、规划…");
-        var planPrompt = { role:"user", content:"（请先用简短要点列出你的执行计划：本次要达成的目标，以及准备分哪几步、每步大概做什么。注意：如果问题涉及最新消息、实时信息、天气、新闻、价格、某网站内容等你记忆里没有或可能过时的信息，必须规划用联网工具 [WEB_SEARCH]/[WEB_OPEN] 查证后再回答，不许凭记忆编。只有既不需要文件工具、也不需要联网、纯靠已有知识就能答的问题，才以「直接回答：」开头，后面紧跟给用户的完整答案——这样一次就能答完，不再走后续流程。）复杂任务可用 [REASONING]…[/REASONING] 写推理、[PLAN]…[/PLAN] 列步骤、[CRITICISM]…[/CRITICISM] 评风险（可选，系统会美化展示）。" };
-        return agentCall(hist.concat([{role:"user", content:userContent}, planPrompt]), thinkDelta, ac).then(function(planText){
+        var planPrompt = { role:"user", content:"（重要：若用户只是打招呼、闲聊、或没提出任何具体任务（如'你好''在吗''你是谁'），直接以「直接回答：」开头回一句友好话，不要编造执行计划。请先用简短要点列出你的执行计划：本次要达成的目标，以及准备分哪几步、每步大概做什么。注意：如果问题涉及最新消息、实时信息、天气、新闻、价格、某网站内容等你记忆里没有或可能过时的信息，必须规划用联网工具 [WEB_SEARCH]/[WEB_OPEN] 查证后再回答，不许凭记忆编。只有既不需要文件工具、也不需要联网、纯靠已有知识就能答的问题，才以「直接回答：」开头，后面紧跟给用户的完整答案——这样一次就能答完，不再走后续流程。）复杂任务可用 [REASONING]…[/REASONING] 写推理、[PLAN]…[/PLAN] 列步骤、[CRITICISM]…[/CRITICISM] 评风险（可选，系统会美化展示）。" };
+        return agentCall(hist.concat([{role:"user", content:userContent}, planPrompt]), null, ac).then(function(planText){
           if(/^\s*直接回答/.test(planText) || /直接回答[:：]/.test(planText.slice(0,30))){
             var ans = planText.replace(/^[\s\S]*?直接回答[:：]?/,"").trim();
             think = "";  /* 简单问题：不展示思考块，答案即全部 */
@@ -4946,6 +4971,10 @@ function doChat(text, attachments){
             var sig = sigWrites.join("|") || ("ACT:" + (base||actText||"").slice(0,160));
             if(sig === lastActionSig){ sameStreak++; } else { sameStreak = 0; lastActionSig = sig; }
             if(sameStreak >= SAME_ACTION_LIMIT){ thinkLine("\n⚠️ 检测到连续重复动作（已达上限），停止重试，直接交付当前结果\n"); return doSummarize(planText); }
+            /* v0.4.53：空转检测——本轮无任何工具调用且未 DONE，记为空转；连续 2 轮空转直接交付，避免反复问"你想做什么"刷屏 */
+            var hasTool = /\[FILE_WRITE\]|\[WEB_SEARCH\]|\[WEB_OPEN\]|\[FILE_READ\]/i.test(base);
+            if(!hasTool && !/DONE/i.test(actText)){ idleStreak++; } else { idleStreak = 0; }
+            if(idleStreak >= 2){ thinkLine("\n⚠️ 连续两轮未执行任何实际操作，停止空转，直接交付当前结果\n"); return doSummarize(planText); }
             if(/DONE/i.test(actText)) return reflectPhase(planText);
             return actPhase(planText, round+1);
           });
@@ -5022,6 +5051,15 @@ function doChat(text, attachments){
       setGenState(false); activeAbort=null; abortReason=null;
     }
 
+    /* v0.4.53 寒暄/无任务入口短路：纯打招呼、闲聊直接友好回复，不进思维循环（skills 已在上方跳过读取） */
+    if(typeof text === "string" && isSmallTalk(text)){
+      var _g = pickGreeting();
+      think = "";
+      setGenState(false);
+      aiMsg.text = _g;
+      finalizeChat(aiMsg, _g, attachments);
+      return;
+    }
     agentLoop().catch(onLoopError);
   }).catch(function(err){
     aiMsg._err = true;
