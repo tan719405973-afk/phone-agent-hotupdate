@@ -2883,13 +2883,19 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.55";
+var APP_VERSION = "0.4.56";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
-var CHANGELOG = [  { v:"0.4.55", date:"2026-08-01", items:[
+var CHANGELOG = [  { v:"0.4.56", date:"2026-08-01", items:[
+    "紧急修复 v0.4.55 真机回归（纯 web 热更，APK 仍 0.4.50）：用户问「重庆天气」等极简联网查询，被 planPrompt 的「或没提出具体任务」模糊兜底误导为寒暄场景，模型直接回「早上好」而未联网查天气",
+    "新增 detectWebIntent 联网意图检测器：基于关键词（天气/搜索/价格/新闻/交通/物流 等）识别用户明显需要联网查询的意图，命中即在 planPrompt 顶部强制注入「必须用 [WEB_SEARCH]/[WEB_OPEN] 联网查证后再作答，严禁凭记忆编」",
+    "收窄 planPrompt 寒暄短路条件：只对「你好/在吗/你是谁/嗨/哈喽/晚安」等纯招呼词回「直接回答：」；任何含查询/操作/创作/疑问的句子（哪怕只几字如「天气」「价格」「写文件」）都视为真实任务，必须规划执行步骤并走 actPhase——严禁把任务型问句当寒暄",
+    "actPrompt 措辞缓和：v0.4.55 的「严禁回贴整页/不重复用户问题」改成「只用相关要点整理简洁答案即可」，避免模型因怕违规而不敢回答",
+  ]},
+  { v:"0.4.55", date:"2026-08-01", items:[
     "修复联网抓网页返回整页导航/侧边栏垃圾、且答非所问/重复一句的设计缺陷（纯 web 热更，APK 仍 0.4.50）",
     "htmlToText 由「只去 script/style 再整页截取前 4000 字」升级为 DOM 解析：剔除 nav/header/footer/aside/广告等噪声容器，优选 main/article/常见正文容器、回退取最长文本块，只留主体正文；[WEB_OPEN] 切片上限 4000→6000",
     "新增 webResults 通道：联网抓取到的网页正文单独收集，喂给总结模型 doSummarize，终结「总结阶段拿不到抓取内容、只能泛泛说『已帮你查』」的答非所问",
@@ -4876,6 +4882,22 @@ function doChat(text, attachments){
     var t = (h>=5&&h<11)?"早上好":(h>=11&&h<14)?"中午好":(h>=14&&h<18)?"下午好":(h>=18||h<5)?"晚上好":"你好";
     return t + "！我是你的手机 AI 助手，有什么可以帮你的吗？";
   }
+  /* v0.4.56：联网意图检测——含明显联网查询关键词（天气/搜索/价格/新闻/事件 等）时强制 plan 加联网指令，
+     解决 v0.4.55 真机回归：用户问「重庆天气」只有 4 字，被 planPrompt 的「或没提出具体任务」模糊兜底误导为寒暄，
+     结果直接回「早上好」而未联网查天气 */
+  function detectWebIntent(t){
+    if(!t || typeof t !== "string") return null;
+    var s = t.trim();
+    if(!s) return null;
+    if(/天气|气温|温度|几度|下雨|降雨|晴|阴|刮风|预警|预报|雾霾|湿度|风速/.test(s)) return "天气查询";
+    if(/搜索|搜一下|百度|必应|谷歌|搜搜|查一下|查查|网上查|联网|帮我查|帮我搜/.test(s)) return "搜索查询";
+    if(/价格|多少钱|报价|股价|行情|汇率|油价|金价|涨跌|收盘|开盘/.test(s)) return "实时价格";
+    if(/新闻|最新|最近|发生|今天|今日|昨天|本周|本月|刚刚|突发|资讯|动态|头条|热搜/.test(s)) return "实时资讯";
+    if(/航班|火车|高铁|机票|车票|航班动态|列车|余票/.test(s)) return "实时交通";
+    if(/快递|物流|到哪了|到哪儿|到达时间|派送|签收/.test(s)) return "实时物流";
+    if(/\[WEB_SEARCH\]|\[WEB_OPEN\]/.test(s)) return "联网标签";
+    return null;
+  }
   var c = current();
   var allTxt = c.messages.filter(function(m){return m.type==="text";});
   var summaryMsg = allTxt.filter(function(m){return m.role==="summary";})[0];
@@ -4980,7 +5002,18 @@ function doChat(text, attachments){
       function planPhase(){
         if(ac.signal.aborted) return Promise.reject({abort:true});
         startTicker("🧠 正在思考、规划…");
-        var planPrompt = { role:"user", content:"（重要：若用户只是打招呼、闲聊、或没提出任何具体任务（如'你好''在吗''你是谁'），直接以「直接回答：」开头回一句友好话，不要编造执行计划。请先用简短要点列出你的执行计划：本次要达成的目标，以及准备分哪几步、每步大概做什么。注意：如果问题涉及最新消息、实时信息、天气、新闻、价格、某网站内容等你记忆里没有或可能过时的信息，必须规划用联网工具 [WEB_SEARCH]/[WEB_OPEN] 查证后再回答，不许凭记忆编。只有既不需要文件工具、也不需要联网、纯靠已有知识就能答的问题，才以「直接回答：」开头，后面紧跟给用户的完整答案——这样一次就能答完，不再走后续流程。）复杂任务可用 [REASONING]…[/REASONING] 写推理、[PLAN]…[/PLAN] 列步骤、[CRITICISM]…[/CRITICISM] 评风险（可选，系统会美化展示）。" };
+        var _userText = (typeof userContent === "string") ? userContent : "";
+        /* v0.4.56：先做联网意图识别；命中则在 planPrompt 顶部强制说明，避免极简查询被误判为寒暄 */
+        var _webHint = detectWebIntent(_userText);
+        var planPrompt = {
+          role:"user",
+          content:"（重要：只有用户真的只发了「你好/在吗/你是谁/嗨/哈喽/晚安」等**纯招呼词**（无任何任务成分），才以「直接回答：」开头回一句友好话，然后结束；**除此之外任何含查询/操作/创作/任务/疑问意图的句子**（哪怕只有「天气/价格/搜索/写文件/什么是 X」等几字），都视为真实任务，必须规划执行步骤并走后续 actPhase——严禁把任务型问句当成寒暄处理。"
+            + (_webHint ? ("\n\n⚠️ **强制联网**：检测到用户问题属于「"+_webHint+"」类，必须安排 [WEB_SEARCH]关键词[/WEB_SEARCH] 或先搜索拿网址再 [WEB_OPEN]网址[/WEB_OPEN] 把最新数据抓回来后再作答，**严禁凭记忆编造内容**（你的知识可能过期）。") : "")
+            + "\n\n请先用简短要点列出你的执行计划：本次要达成的目标，以及准备分哪几步、每步大概做什么。"
+            + "\n注意：如果问题涉及最新消息、实时信息、天气、新闻、价格、某网站内容等你记忆里没有或可能过时的信息，必须规划用联网工具 [WEB_SEARCH]/[WEB_OPEN] 查证后再回答，不许凭记忆编。"
+            + "\n只有既不需要文件工具、也不需要联网、纯靠已有知识就能答的问题（如「自我介绍/什么是 LLM/写个 Python 函数」之类知识型任务），才以「直接回答：」开头，后面紧跟给用户的完整答案——这样一次就能答完。"
+            + "\n复杂任务可用 [REASONING]…[/REASONING] 写推理、[PLAN]…[/PLAN] 列步骤、[CRITICISM]…[/CRITICISM] 评风险（可选，系统会美化展示）。）"
+        };
         return agentCall(hist.concat([{role:"user", content:userContent}, planPrompt]), null, ac).then(function(planText){
           if(/^\s*直接回答/.test(planText) || /直接回答[:：]/.test(planText.slice(0,30))){
             var ans = planText.replace(/^[\s\S]*?直接回答[:：]?/,"").trim();
@@ -5000,7 +5033,7 @@ function doChat(text, attachments){
         thinkLine("\n🔧 第 "+(round+1)+" 轮执行…\n");
         startTicker("⚙️ 执行中…");
         var obsText = observations.length ? ("\n【已完成的步骤与结果】\n"+observations.join("\n")) : "";
-        var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。需要查最新/外部信息就输出 [WEB_SEARCH]关键词[/WEB_SEARCH] 联网搜索、或 [WEB_OPEN]网址[/WEB_OPEN] 打开网页读正文（结果会在下一轮返回给你）；需要操作文件就输出 [FILE_WRITE]（或先 [FILE_READ] 了解现状），完成后说明这一步结果。如果所有任务都已完成，请只输出「DONE」并简要说明完成情况，不要继续调工具。\n重要：联网抓回的网页正文可能很长且含无关的导航/广告/侧边栏，请只提炼与用户问题相关的要点来作答或继续，严禁把整页原文回贴出来，也不要重复用户的问题原句。\n"+obsText };
+        var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。需要查最新/外部信息就输出 [WEB_SEARCH]关键词[/WEB_SEARCH] 联网搜索、或 [WEB_OPEN]网址[/WEB_OPEN] 打开网页读正文（结果会在下一轮返回给你）；需要操作文件就输出 [FILE_WRITE]（或先 [FILE_READ] 了解现状），完成后说明这一步结果。如果所有任务都已完成，请只输出「DONE」并简要说明完成情况，不要继续调工具。\n执行风格：联网抓回的内容可能很长且含无关部分，最后总结时只用与用户问题相关的要点整理成简洁答案即可，无需贴整段网页。\n"+obsText };
         return agentCall(hist.concat([{role:"user", content:userContent}], conv, [actPrompt]), thinkDelta, ac).then(function(actText){
           return parseWebBlocks(actText, webResults).then(function(webbed){
             var cleaned = parseFileWriteBlocks(webbed);
