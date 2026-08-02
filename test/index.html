@@ -2883,13 +2883,14 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.60";
+var APP_VERSION = "0.4.61";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.4.61", date:"2026-08-03", items:["修复检查更新：多通道取最新清单，抗 CDN 陈旧缓存", "热更安装包 app.js 改为由当前 index.html 现生成，根治「装新版却装回旧 web」；readUpdate 多通道聚合取最新，单 CDN 陈旧不再卡死"] },
   { v:"0.4.60", date:"2026-08-03", items:["修复寒暄误判：短文本不再一律当问候，地名/单名词正常对话", "删除 isSmallTalk 的「≤5字无动作词即判寒暄」激进兜底，改纯精确问候词表匹配，避免「康腾」等被误当打招呼而跳过文件读取/联网"] },
   { v:"0.4.59", date:"2026-08-02", items:["删除思维可视化：不再渲染思考过程/计划/反思气泡（保留规划→执行→反思→总结逻辑）"] },
   { v:"0.4.58", date:"2026-08-02", items:["重打包 APK（烤入 web 0.4.58）；更新通道多候选+超时60s根治卡死", "更新通道多候选回退：jsdelivr 优先→raw→github.io 兜底，点「更新」不再因单通道慢而失败/转圈", "修复 TOOL_CAPS 模板字符串内反引号提前闭合导致的脚本语法错误（BLOCK 1 白屏风险）", "沿用 v0.4.57 自主模式+生图、v0.4.56 联网意图检测、v0.4.55 联网抓网页等全部 web 逻辑"] },
@@ -5554,38 +5555,39 @@ function readUpdate(){
   return new Promise(function(resolve){
     var list = updateBaseList();
     if(!list.length){ resolve(null); return; }
-    var idx = 0;
-    function tryOne(){
-      if(idx >= list.length){
-        // 全部通道失败：兜底用 version.js（旧格式 {version,note}）
-        loadScript(list[list.length-1]+"/version.js?t="+Date.now(), 12000)
-          .then(function(){ resolve(window.__PA_VER__ || null); })
-          .catch(function(){ resolve(null); });
-        return;
-      }
-      var base = list[idx++];
-      var url = base + "/apk-version.json?t=" + Date.now();
-      nativeFetch(url, {method:"GET"})
-        .then(function(r){ return r.ok ? r.json() : null; })
-        .then(function(j){
-          if(j && (j.versionCode || j.webVersion || j.version)){ resolve(j); return; }
-          if(idx < list.length) tryOne();
-          else {
-            loadScript(base+"/version.js?t="+Date.now(), 12000)
-              .then(function(){ resolve(window.__PA_VER__ || null); })
-              .catch(function(){ resolve(null); });
-          }
-        })
-        .catch(function(){
-          if(idx < list.length) tryOne();
-          else {
-            loadScript(base+"/version.js?t="+Date.now(), 12000)
-              .then(function(){ resolve(window.__PA_VER__ || null); })
-              .catch(function(){ resolve(null); });
-          }
-        });
+    var results = [];
+    var pending = list.length;
+    var settled = false;
+    function verNum(v){ var p=String(v||"0.0.0").split(".").map(Number); return (p[0]||0)*1000000+(p[1]||0)*1000+(p[2]||0); }
+    function finish(){
+      if(settled) return; settled = true;
+      var best=null, bestScore=-1;
+      results.forEach(function(j){
+        if(!j) return;
+        var c = Number(j.versionCode)||0;
+        var w = verNum(j.webVersion || j.version);
+        var score = c*1000000 + w; // APK code 为主、web 版本为辅，确保取最新
+        if(score > bestScore){ bestScore = score; best = j; }
+      });
+      if(best){ resolve(best); return; }
+      // 全部通道无效：兜底用 version.js（旧格式 {version,note}）
+      var last = list[list.length-1];
+      loadScript(last+"/version.js?t="+Date.now(), 12000)
+        .then(function(){ resolve(window.__PA_VER__ || null); })
+        .catch(function(){ resolve(null); });
     }
-    tryOne();
+    list.forEach(function(base){
+      var url = base + "/apk-version.json?t=" + Date.now();
+      nativeFetch(url, {method:"GET", timeout:8000})
+        .then(function(r){ try { return (r && r.ok) ? r.json() : null; } catch(e){ return null; } })
+        .then(function(j){
+          if(j && (j.versionCode || j.webVersion || j.version)) results.push(j);
+        })
+        .catch(function(){ /* 该通道失败，忽略 */ })
+        .then(function(){ if(--pending===0) finish(); });
+    });
+    // 整体兜底超时：8.5s 内未全部返回也先按已收集结果结算
+    setTimeout(function(){ if(pending>0){ pending=0; finish(); } }, 8500);
   });
 }
 /* 从统一清单解析 APK / web 是否可更新（两路共用，避免重复逻辑） */

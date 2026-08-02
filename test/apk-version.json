@@ -4,7 +4,7 @@
   "apkUrl": "https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test/phone-agent-release-0.4.58.apk",
   "apkUrl2": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.58.apk",
   "apkMd5": "46c365c4d8939457da9d70033dce7f62",
-  "note": "修复寒暄误判：短文本不再一律当问候，地名/单名词正常对话",
-  "webVersion": "0.4.60",
-  "webNote": "修复寒暄误判：短文本不再一律当问候，地名/单名词正常对话"
+  "note": "修复检查更新：多通道取最新清单，抗 CDN 陈旧缓存",
+  "webVersion": "0.4.61",
+  "webNote": "修复检查更新：多通道取最新清单，抗 CDN 陈旧缓存"
 }
