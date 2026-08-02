@@ -4,7 +4,7 @@
   "apkUrl": "https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test/phone-agent-release-0.4.50.apk",
   "apkUrl2": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.50.apk",
   "apkMd5": "3529c7d4e156b4a5f2b27462c984fe1f",
-  "note": "紧急修复 v0.4.55 真机回归（纯 web 热更，APK 仍 0.4.50）：用户问「重庆天气」等极简联网查询，被 planPrompt 的「或没提出具体任务」模糊兜底误导为寒暄场景，模型直接回「早上好」而未联网查天气",
-  "webVersion": "0.4.56",
-  "webNote": "紧急修复 v0.4.55 真机回归（纯 web 热更，APK 仍 0.4.50）：用户问「重庆天气」等极简联网查询，被 planPrompt 的「或没提出具体任务」模糊兜底误导为寒暄场景，模型直接回「早上好」而未联网查天气"
+  "note": "有新版可用",
+  "webVersion": "0.4.57",
+  "webNote": "有新版可用"
 }

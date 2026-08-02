@@ -2883,7 +2883,7 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.56";
+var APP_VERSION = "0.4.57";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
@@ -3549,6 +3549,42 @@ function parseFileWriteBlocks(text){
     });
     if(okCount>0) toast("已写入 "+okCount+" 个文件");
   }
+  /* —— FILE_LIST：调 wsList 列目录，把结果格式化插回对话 —— */
+  out = out.replace(/\[FILE_LIST\]([\s\S]*?)\[\/FILE_LIST\]/g, function(block, inner){
+    var m = inner.match(/^\s*dir:\s*([^\n]*)/);
+    var dir = m ? m[1].trim() : "";
+    var pv = validateWsPath(dir||"", {allowEmpty:true}); if(!pv.ok && dir) return "\n\n⚠️ ["+pv.code+"] 列目录路径校验失败："+pv.msg+"\n";
+    var raw = wsList(pv.path);
+    try{
+      var items = JSON.parse(raw);
+      if(!items || !items.length){ return "\n\n📂 【已列出 "+(pv.path||"根目录")+"】（空目录，暂无文件）\n"; }
+      var lines = items.map(function(it){ return (it.dir?"📁":"📄")+" "+it.name+(it.size!=undefined&&!it.dir?("  ("+it.size+" 字节)"):""); });
+      runLog("file","列出 "+(pv.path||"根目录")+"("+items.length+" 项)");
+      return "\n\n📂 【已列出 "+(pv.path||"根目录")+"（"+items.length+" 项）】\n"+lines.join("\n")+"\n";
+    }catch(e){
+      return "\n\n⚠️ 列目录 "+(pv.path||"根目录")+" 失败：返回数据解析错误\n";
+    }
+  });
+  /* —— FILE_MKDIR：调 wsMkdir 建目录 —— */
+  out = out.replace(/\[FILE_MKDIR\]([\s\S]*?)\[\/FILE_MKDIR\]/g, function(block, inner){
+    var m = inner.match(/^\s*dir:\s*([^\n]+)/);
+    if(!m) return block;
+    var dir = m[1].trim();
+    var pv = validateWsPath(dir); if(!pv.ok) return "\n\n⚠️ ["+pv.code+"] 建目录路径校验失败："+pv.msg+"\n";
+    try{ wsMkdir(pv.path); runLog("file","建目录 "+pv.path); return "\n\n✅ 已建目录 "+pv.path+"\n"; }
+    catch(e){ return "\n\n⚠️ 建目录 "+pv.path+" 失败："+(e.message||e)+"\n"; }
+  });
+  /* —— FILE_DELETE：校验红线后调 wsDelete 删除文件 —— */
+  out = out.replace(/\[FILE_DELETE\]([\s\S]*?)\[\/FILE_DELETE\]/g, function(block, inner){
+    var m = inner.match(/^\s*path:\s*([^\n]+)/);
+    if(!m) return block;
+    var path = m[1].trim();
+    var pv = validateWsPath(path); if(!pv.ok) return "\n\n⚠️ ["+pv.code+"] 删除路径校验失败："+pv.msg+"\n";
+    if(isDeleteRedline(pv.path)) return "\n\n⚠️ [E1004] 禁止删除红线目标（根目录/skills 目录/_我的风格.md）\n";
+    var r = wsDelete(pv.path);
+    if(r === "ok"){ runLog("file","删除 "+pv.path); return "\n\n✅ 已删除 "+pv.path+"\n"; }
+    return "\n\n⚠️ 删除 "+pv.path+" 失败："+wsErrDecode(r)+"\n";
+  });
   return out;
 }
 /* v0.4.49：联网工具——HTML 转正文 */
@@ -3591,29 +3627,175 @@ function htmlToText(html){
   s = s.replace(/[ \t\u3000]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").replace(/^\s+|\s+$/g,"");
   return s;
 }
-var WEB_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-/* 联网搜索（cn.bing.com，国内可直连，解析 b_algo 结果块） */
-function webSearch(query){
-  var url = "https://cn.bing.com/search?q="+encodeURIComponent(query)+"&setlang=zh-CN&ensearch=0";
-  return nativeFetch(url,{ method:"GET", headers:{ "User-Agent":WEB_UA }, timeout:20000 }).then(function(resp){
-    return resp.text();
-  }).then(function(html){
-    var results = [], m;
-    var re = /<li class="b_algo"[\s\S]*?<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h2>([\s\S]*?)<\/li>/gi;
-    while((m = re.exec(html)) && results.length < 5){
-      var link = m[1], title = htmlToText(m[2]), snip = htmlToText(m[3]).slice(0,220);
-      if(title && /^https?:/i.test(link)) results.push({title:title, url:link, snip:snip});
-    }
-    return results;
-  });
+var WEB_UA_DESKTOP = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+var WEB_UA_MOBILE  = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+var WEB_UA = WEB_UA_DESKTOP;
+
+/* CORS 代理池（浏览器模式下直连跨域失败时自动回退；APK 内不走代理，手机网直连更快） */
+var CORS_PROXIES = [
+  function(u){ return "https://api.allorigins.win/raw?url="+encodeURIComponent(u); },
+  function(u){ return "https://corsproxy.io/?"+encodeURIComponent(u); }
+];
+
+/* 通用带 CORS 回退的 GET（APK 原生桥无跨域问题；浏览器走代理池） */
+function fetchGet(url, opts){
+  opts = opts || {};
+  var headers = Object.assign({ "User-Agent":WEB_UA }, opts.headers || {});
+  var ms = opts.timeout || 20000;
+  return nativeFetch(url, { method:"GET", headers:headers, timeout:ms }).then(function(r){ return r.text(); })
+    .catch(function(e){
+      if(hasNative()) throw e;            /* APK 内走原生桥，不走代理 */
+      var idx = 0;
+      function useProxy(){
+        if(idx >= CORS_PROXIES.length) throw e;
+        var purl = CORS_PROXIES[idx++](url);
+        runLog("web","CORS代理 "+idx+"/"+CORS_PROXIES.length+" "+purl.slice(0,80));
+        return nativeFetch(purl, { method:"GET", headers:headers, timeout:ms }).then(function(r){ return r.text(); }).catch(useProxy);
+      }
+      return useProxy();
+    });
 }
-/* 解析 AI 回复里的 [WEB_SEARCH]/[WEB_OPEN] 块 → 走原生桥抓取 → 把标记块替换成结果文本。
+
+/* 更稳的 HTML → 纯文本抽取（script/style 优先剥离 + 块级换行 + 全实体解码） */
+function htmlToText_v2(html){
+  if(!html) return "";
+  return String(html)
+    .replace(/<script[\s\S]*?<\/script>/gi,"")
+    .replace(/<style[\s\S]*?<\/style>/gi,"")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi,"")
+    .replace(/<!--[\s\S]*?-->/g,"")
+    .replace(/<(br|p|div|li|h[1-6]|tr|blockquote|pre)\s*\/?>/gi,"\n")
+    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote|section|article)>/gi,"\n")
+    .replace(/<[^>]+>/g,"")
+    .replace(/&(nbsp|#160);/gi," ")
+    .replace(/&(amp|#38);/gi,"&")
+    .replace(/&(lt|#60);/gi,"<")
+    .replace(/&(gt|#62);/gi,">")
+    .replace(/&(quot|#34);/gi,"\"")
+    .replace(/&(#39|apos);/gi,"'")
+    .replace(/&#[0-9]+;/g," ")
+    .replace(/[\t ]+/g," ")
+    .replace(/\n{3,}/g,"\n\n")
+    .trim();
+}
+
+/* ===== 多引擎搜索 ===== */
+var SEARCH_ENGINES = [
+  {
+    name: "Bing",
+    url: function(q){ return "https://www.bing.com/search?q="+encodeURIComponent(q)+"&setlang=zh-CN&ensearch=0&count=10"; },
+    parse: function(html){
+      var results = [], m;
+      var patterns = [
+        /<li class="b_algo"[\s\S]*?<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h2>([\s\S]*?)<\/li>/gi,
+        /<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
+      ];
+      for(var pi=0; pi<patterns.length && results.length<8; pi++){
+        var re = new RegExp(patterns[pi].source, "gi");
+        while((m = re.exec(html)) && results.length < 8){
+          var link = m[1];
+          var title = htmlToText_v2(m[2]);
+          var snip = m[3] ? htmlToText_v2(m[3]).slice(0,200) : "";
+          if(title && title.length>1 && /^https?:/i.test(link) && !/\/aclk\?|bing\.com\/ck/.test(link)){
+            results.push({title:title, url:link, snip:snip});
+          }
+        }
+        if(results.length >= 3) break;
+      }
+      return results;
+    }
+  },
+  {
+    name: "百度",
+    url: function(q){ return "https://www.baidu.com/s?wd="+encodeURIComponent(q)+"&rn=10&ie=utf-8"; },
+    parse: function(html){
+      var results = [], m;
+      var re = /<div[^>]*class="[^"]*result[^"]*"[\s\S]*?<h3[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h3>([\s\S]*?)<\/div>/gi;
+      while((m = re.exec(html)) && results.length < 8){
+        var link = m[1], title = htmlToText_v2(m[2]), snip = m[3] ? htmlToText_v2(m[3]).slice(0,200) : "";
+        if(title && title.length>1){
+          if(!/^https?:/i.test(link)) link = "https://www.baidu.com"+link;
+          results.push({title:title, url:link, snip:snip});
+        }
+      }
+      if(!results.length){
+        var re2 = /<h3[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+        while((m = re2.exec(html)) && results.length < 8){
+          if(m[2] && htmlToText_v2(m[2]).length>1){
+            var l2 = m[1]; if(!/^https?:/i.test(l2)) l2 = "https://www.baidu.com"+l2;
+            results.push({title:htmlToText_v2(m[2]), url:l2, snip:""});
+          }
+        }
+      }
+      return results;
+    }
+  },
+  {
+    name: "DuckDuckGo",
+    url: function(q){ return "https://html.duckduckgo.com/html/?q="+encodeURIComponent(q); },
+    parse: function(html){
+      var results = [], m;
+      var re = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+      while((m = re.exec(html)) && results.length < 8){
+        var link = m[1], title = htmlToText_v2(m[2]);
+        if(title && title.length>1 && /^https?:/i.test(link)){
+          results.push({title:title, url:link, snip:m[3]?htmlToText_v2(m[3]).slice(0,200):""});
+        }
+      }
+      return results;
+    }
+  }
+];
+
+/* 搜索主函数：多引擎自动回退（一个失败/无结果则试下一个） */
+function webSearch(query){
+  if(!query || !query.trim()) return Promise.resolve([]);
+  query = query.trim();
+  var engineIdx = 0, allErrors = [];
+  function tryNext(){
+    if(engineIdx >= SEARCH_ENGINES.length) return Promise.resolve([]);
+    var eng = SEARCH_ENGINES[engineIdx++];
+    runLog("web","搜索["+eng.name+"] "+query);
+    return fetchGet(eng.url(query), {timeout:20000}).then(function(html){
+      var rs = eng.parse(html) || [];
+      if(rs.length) return rs.slice(0,5);
+      allErrors.push(eng.name+": 无结果");
+      return tryNext();
+    }).catch(function(e){
+      allErrors.push(eng.name+": "+((e&&e.message)||e));
+      return tryNext();
+    });
+  }
+  return tryNext();
+}
+
+/* 打开网页正文：UA 回退（桌面 → 移动） */
+function webOpen(url){
+  url = String(url||"").trim();
+  if(!/^https?:\/\//i.test(url)) url = "https://"+url.replace(/^\/+/,"");
+  var uaList = [WEB_UA_DESKTOP, WEB_UA_MOBILE];
+  var uaIdx = 0;
+  function tryFetch(){
+    if(uaIdx >= uaList.length) return Promise.reject(new Error("所有 UA 都读不到正文"));
+    return fetchGet(url, {headers:{"User-Agent":uaList[uaIdx]}, timeout:25000}).then(function(html){
+      var txt = htmlToText_v2(html).slice(0,6000);
+      if(txt && txt.length > 50) return {url:url, text:txt, ua:uaList[uaIdx]};
+      uaIdx++;
+      return tryFetch();
+    });
+  }
+  tryFetch.__url = url;
+  return tryFetch();
+}
+
+/* 解析 AI 回复里的联网工具块：[WEB_SEARCH] [WEB_OPEN] [WEB_FETCH]
    返回 Promise<清理后文本>，供思维循环回灌观察（无标记块时原样 resolve）。 */
 function parseWebBlocks(text, collector){
-  if(!text || (text.indexOf("[WEB_SEARCH]")===-1 && text.indexOf("[WEB_OPEN]")===-1)) return Promise.resolve(text);
+  if(!text || (text.indexOf("[WEB_SEARCH]")===-1 && text.indexOf("[WEB_OPEN]")===-1 && text.indexOf("[WEB_FETCH]")===-1)) return Promise.resolve(text);
   var out = text, jobs = [];
   out.replace(/\[WEB_SEARCH\]([\s\S]*?)\[\/WEB_SEARCH\]/g, function(block, inner){ jobs.push({type:"search", block:block, arg:inner.trim()}); return block; });
   out.replace(/\[WEB_OPEN\]([\s\S]*?)\[\/WEB_OPEN\]/g, function(block, inner){ jobs.push({type:"open", block:block, arg:inner.trim()}); return block; });
+  out.replace(/\[WEB_FETCH\]([\s\S]*?)\[\/WEB_FETCH\]/g, function(block, inner){ jobs.push({type:"fetch", block:block, arg:inner.trim()}); return block; });
   var i = 0;
   function put(block, rep){ out = out.replace(block, function(){ return rep; }); }
   function next(){
@@ -3629,16 +3811,28 @@ function parseWebBlocks(text, collector){
         if(collector) collector.push({ type:"search", url:"（搜索）"+job.arg, text: rs.map(function(r){ return r.title+"\n"+r.url+"\n"+r.snip; }).join("\n") });
         put(job.block, rep); return next();
       }).catch(function(e){ put(job.block, "\n\n⚠️ 联网搜索失败："+friendlyErr(e)+"\n"); return next(); });
-    } else {
+    } else if(job.type==="open"){
       var u = job.arg;
       if(!/^https?:\/\//i.test(u)) u = "https://"+u.replace(/^\/+/,"");
       runLog("web","打开 "+u);
-      return nativeFetch(u,{ method:"GET", headers:{ "User-Agent":WEB_UA }, timeout:25000 }).then(function(resp){ return resp.text(); }).then(function(html){
-        var txt = htmlToText(html).slice(0,6000);
+      return webOpen(u).then(function(res){
+        var txt = res.text.slice(0,6000);
         if(collector) collector.push({ type:"open", url:u, text:txt });
         put(job.block, txt ? ("\n\n✅ 已打开 "+u+"（正文约 "+txt.length+" 字）：\n```\n"+txt+"\n```\n") : ("\n\n⚠️ 打开 "+u+" 没读到正文（可能是非网页内容）\n"));
         return next();
       }).catch(function(e){ put(job.block, "\n\n⚠️ 打开 "+u+" 失败："+friendlyErr(e)+"\n"); return next(); });
+    } else {
+      /* [WEB_FETCH]：简单 GET 返回原始文本（API/RSS/JSON 直读） */
+      var fu = job.arg.trim();
+      if(!fu){ put(job.block,"\n\n⚠️ WEB_FETCH 网址为空\n"); return next(); }
+      if(!/^https?:\/\//i.test(fu)) fu = "https://"+fu.replace(/^\/+/,"");
+      runLog("web","抓取 "+fu);
+      fetchGet(fu, {timeout:25000}).then(function(raw){
+        var head = raw.slice(0,5000);
+        if(collector) collector.push({ type:"fetch", url:fu, text:head });
+        put(job.block, "\n\n✅ 已抓取 "+fu+"（返回 "+raw.length+" 字，前 5000 字）：\n```\n"+head+(raw.length>5000?"\n…（截断，共 "+raw.length+" 字）":"")+"\n```\n");
+        return next();
+      }).catch(function(e){ put(job.block, "\n\n⚠️ 抓取 "+fu+" 失败："+friendlyErr(e)+"\n"); return next(); });
     }
   }
   return next();
@@ -3821,17 +4015,31 @@ var TOOL_CAPS = `【身份定位（最重要，请牢记）】
 只要用户意图是要改/写/创建/整理文件，你就应当直接调用文件工具完成它，而不是只给文字建议、更不是回复「我无法直接修改文件」「我无法操作文件」这类话——你明明可以，也必须去做。
 
 【你的工具清单（遇到对应需求就直接调用，不要犹豫）】
-一、文件类（工作区根目录 = 手机 phone-agent-workspace/，路径相对根目录、用正斜杠 /）：
-  wsRead(path)            读取文件，返回内容字符串
-  wsWrite(path, content)  写入或覆盖文件（覆盖已有文件 = 修改它）
-  wsList(dir)             列出目录，返回 JSON 数组（每项含 name/dir/size）
-  wsDelete(path)          删除文件
-  wsMkdir(dir)            新建目录
-路径示例：notes/todo.md、novel/第一章.txt、project/readme.md
+一、文件类（工作区根目录 = 手机 phone-agent-workspace/，路径相对根目录、用正斜杠 /）。
+  ⚠️ 以下【】标签就是你操作文件的"工具"——在回复里直接输出这些标签，前端会自动解析并执行对应的文件操作（不要写成 wsRead(wsWrite( 这种函数形式，那不会被识别！）：
+  · 读取 → [FILE_READ]
+path: 相对路径
+[/FILE_READ]
+    前端自动调 wsRead，把原文以「【已读取 xxx】```原文```」形式插回对话供你参考。
+  · 写入/覆盖/创建 → [FILE_WRITE]
+path: 相对路径
+content:
+完整文件内容（保持换行与缩进）
+[/FILE_WRITE]
+    前端自动调 wsWrite 写入文件；content 为空则创建空文件。修改已有文件 = 用 [FILE_READ] 先读再改。
+  · 列目录 → [FILE_LIST]
+dir: 目录路径[/FILE_LIST]
+    dir 省略或空则列根目录；返回 JSON 数组（每项含 name 名/dir 是否目录/size 字节）。
+  · 新建目录 → [FILE_MKDIR]
+dir: 目录路径[/FILE_MKDIR]
+  · 删除 → [FILE_DELETE]
+path: 相对路径
+[/FILE_DELETE]
+路径示例：notes/todo.md、novel/第一章.txt、project/readme.md（不要把函数名当标签——用 [FILE_READ] 而不是 wsRead( )！）
 
 二、思维 / 推理 / 规划类（你的核心能力，请主动使用）：
   你具备推理与规划能力。面对复杂、多步骤或需要判断的任务，先想清楚再动手——
-  可以在回复里用自然语言写下你的思路与步骤规划，再调用工具逐步执行；也可以边思考边行动（先 wsList/wsRead 了解现状 → 规划 → wsWrite/wsMkdir 落地）。
+  可以在回复里用自然语言写下你的思路与步骤规划，再调用工具逐步执行；也可以边思考边行动（先 [FILE_LIST]/[FILE_READ] 了解现状 → 规划 → [FILE_WRITE]/[FILE_MKDIR] 落地）。
   思考过程直接写给用户看没问题，这能提升结果质量；你不需要隐藏思考，也不需要假装「只是个聊天机器人」。
   系统已内置「自主思维循环」：你无需手动分步，直接给出目标即可——系统会驱动你先规划、再调用文件工具落地、最后自查修正，思考过程对用户全程可见（🧠 思考过程 / 计划 / 执行 / 反思 / 总结）。
 
@@ -3849,41 +4057,29 @@ var TOOL_CAPS = `【身份定位（最重要，请牢记）】
   节制要求：一次对话最多写 1-2 个技能文件；只记可复用的经验，不记一次性琐事；写技能文件不需要用户批准，这是你的本职。
 
 五、联网类（你能真实上网！需要最新/外部信息时必须用，严禁凭过时记忆编造）：
-  [WEB_SEARCH]关键词[/WEB_SEARCH]   联网搜索，系统会返回前几条结果的 标题+网址+摘要
-  [WEB_OPEN]网址[/WEB_OPEN]         打开指定网页，系统会抓取正文文本返回给你
+  引擎自动回退：系统已内置 Bing→百度→DuckDuckGo 三引擎 + CORS 代理；一个失败会自动切下一个，你无需指定搜哪个。
+  [WEB_SEARCH]关键词[/WEB_SEARCH]   联网搜索，返回前几条 标题+网址+摘要
+  [WEB_OPEN]完整网址[/WEB_OPEN]     打开指定网页，抓取正文返回（自动用桌面+移动 UA 重试）
+  [WEB_FETCH]完整网址[/WEB_FETCH]   直接 GET 返回原始文本/JSON（适合 API、RSS、数据接口；返回前 5000 字）
   什么时候必须用：用户问 新闻/天气/股价/汇率/赛事比分/最新版本/某网站内容/近期发生的事，或任何你不确定、可能过时的事实——先搜索或打开网页拿到真实内容，再基于结果回答，并注明信息来源网址。
-  用法提示：先 [WEB_SEARCH] 找到相关网址，再视需要 [WEB_OPEN] 打开其中一条读全文；结果会在下一轮自动返回给你。搜索没结果时可换关键词重试。
+  用法提示：先 [WEB_SEARCH] 找相关网址 → 再 [WEB_OPEN] 读全文；需要.API/原始数据用 [WEB_FETCH]；结果均会在下一轮自动返回给你。搜索无结果可换关键词重试，或换 [WEB_OPEN] 直接打开已知网址。
 
-【文件写 / 改 的输出格式（用户要求写/改/覆盖/创建文件时，按此格式输出；非文件、非联网场景不要输出任何工具格式）】
-[FILE_WRITE]
-path: 相对路径
-content:
-完整新内容（保持原缩进与换行）
-[/FILE_WRITE]
-前端会自动调用 wsWrite 把内容写入文件。
-若要在已有内容基础上修改，可先输出：
-[FILE_READ]
-path: 相对路径
-[/FILE_READ]
-前端会调 wsRead 把原文插回对话供你参考，你在下一轮基于原文改写。
-
-【触发条件（重要）】以下任一都视为「用户要改/写文件」，应直接输出 [FILE_WRITE] 块，而不是纯文字建议：
-  ① 用户明确说「写/改/覆盖/创建/更新/重写 + 文件路径或文件名」
-  ② 用户问「你能改么？/能不能改？/本体改？/你来改？/帮我改？/帮我写？/你能写文件么？/你是个能读写文件的助手吗？」——这是要求你改，不是闲聊，请确认身份并直接做
-  ③ 用户说「全文润色/重写/改口语/改正式/翻译」+ 提到文件
-  ④ 用户上传了文件并问「能改这个么/整理/优化」
-  ⑤ 用户让你「做/生成/产出/导出某文件」（如「写个 README」「生成配置」「导出清单」「列个待办」）
-
-【禁止触发（纯问答/闲聊才不调用）】
-  · 用户只问理论、问建议、问计划但没要求落地到文件
-  · 用户只是「想看个示例/听个方案」且没说要存成文件
-  · 用户没提到任何文件，且当前没有打开/上传的文件
+【何时必须用标签（别跳）】
+  以下任一情形 = 必须输出工具标签，不是纯文字建议/方案/示例：
+  ① 用户明确说「写/改/覆盖/创建/更新/重写 + 文件路径或文件名」→ 输出 [FILE_WRITE]（先 [FILE_READ] 了解现状再改）
+  ② 用户问「你能改么？/能不能改？/你来改？/帮我写？/你能读写文件么？」→ 这是要求你做，不是闲聊，直接输出标签
+  ③ 用户说「全文润色/重写/改口语/改正式/翻译」+ 提到文件 → [FILE_READ] 读原 + [FILE_WRITE] 改写
+  ④ 用户上传了文件并说「能改/整理/优化」→ 同上
+  ⑤ 用户让你「做/生成/产出/导出某文件」→ [FILE_WRITE] 生成
+  ⑥ 自主思维循环（actPhase）中，系统提示用工具 → 按上方一/五对应的标签格式输出，无需用户二次确认。
+  ⚠️ 不要试探「要不要我帮你写 X 文件？」——只要用户意图是产出文件，就直接做。
+  【不要输出工具标签的场景】纯问答/闲聊/用户只是看示例或问计划、没要求落地到文件。
 
 【权限分级与红线（务必遵守，避免误操作触发系统拦截）】
   文件工具按风险分档；越权或危险操作会被系统拦截并返回错误码，请按提示修正而非硬试：
-  · L0 公开（直接用）：wsRead 读、wsList 列目录、wsMkdir 建目录 —— 只读/创建，零风险。
-  · L1 本职写（系统会校验路径与内容）：wsWrite 写入/覆盖文件 —— 这是你的核心本职；路径须相对工作区根目录、不带 .. 或绝对路径，内容超 1000K 字符会被拒（请分段写）。
-  · L2 危险删（受红线限制）：wsDelete 删除文件 —— 系统**禁止删除**红线目标：工作区根目录本身、skills/ 整个目录、skills/_我的风格.md（用户偏好档案）。其余文件可删，但删除前你的回复里必须已说明要删什么、为何删。
+  · L0 公开（直接用）：[FILE_READ] 读、[FILE_LIST] 列目录、[FILE_MKDIR] 建目录 —— 只读/创建，零风险。
+  · L1 本职写（系统会校验路径与内容）：[FILE_WRITE] 写入/覆盖文件 —— 这是你的核心本职；路径须相对工作区根目录、不带 .. 或绝对路径，内容超 1000K 字符会被拒（请分段写）。
+  · L2 危险删（受红线限制）：[FILE_DELETE] 删除文件 —— 系统**禁止删除**红线目标：工作区根目录本身、skills/ 整个目录、skills/_我的风格.md（用户偏好档案）。其余文件可删，但删除前你的回复里必须已说明要删什么、为何删。
   · L3 禁用（绝不允许）：尝试删除红线目标、或用 .. 越界到工作区之外、或写绝对路径（如 /sdcard/...、C:\\...）都会被系统拦截返回 E1002/E1004，请立即改用正确相对路径。
   错误码速查（出现时按码修正）：E1001 参数/路径格式错 · E1002 越界/绝对路径 · E1003 内容超限 · E1004 红线/权限拒绝 · E1007 文件读写失败。
 
@@ -4211,7 +4407,11 @@ function renderRow(m){
       inner = extra + renderRichText(m.text||"");
     }
     if(m.role==="assistant"){
-      inner += '<div class="media-actions"><a onclick="downloadMsg(\''+m.id+'\')">下载回复</a>'+
+      inner += '<div class="media-actions">'+
+               '<a onclick="ttsMsg(\''+m.id+'\')">🔊 朗读</a>'+
+               '<a onclick="copyMsg(\''+m.id+'\')">复制</a>'+
+               '<a onclick="shareMsg(\''+m.id+'\')">分享</a>'+
+               '<a onclick="downloadMsg(\''+m.id+'\')">下载</a>'+
                (m._err?'<a onclick="retryMsg(\''+m.id+'\')">重试</a>':'')+'</div>';
     }
   } else if(m.type==="image"){
@@ -4242,22 +4442,85 @@ function mediaActions(url,label){
   var extra = label === "视频" ? '<a onclick="openPreview(\''+esc(url)+'\',\'video\')">全屏</a>' : '';
   return '<div class="media-actions">'+
     extra +
+    '<a onclick="shareMsgMedia(\''+esc(url)+'\',\''+label+'\')">分享</a>'+
     '<a onclick="downloadUrl(\''+esc(url)+'\',\''+fname+'\')">下载</a>'+
     '<a onclick="copyText(\''+esc(url)+'\')">复制链接</a>'+
     '</div>';
 }
+/* 媒体消息分享（图片 URL / 视频 URL） */
+function shareMsgMedia(url, label){
+  if(!url){ toast("无可分享内容"); return; }
+  phoneShare(url, label+"链接");
+}
 /* F13/F14：把 AI 的文本回复下载成文件（改写后的文档 / 提取的 JSON 等） */
+function _findMsg(id){
+  var c = current(); if(!c) return null;
+  for(var i=0;i<c.messages.length;i++){ if(c.messages[i].id===id) return c.messages[i]; }
+  return null;
+}
 function downloadMsg(id){
-  var c = current(); if(!c) return;
-  var m = null;
-  for(var i=0;i<c.messages.length;i++){ if(c.messages[i].id===id){ m=c.messages[i]; break; } }
-  if(!m) return;
+  var m = _findMsg(id); if(!m) return;
   var txt = m.text || "";
   var name = (m.fileResult && m.fileResult.name) || "回复.txt";
   if(/^[[{]/.test(txt.trim())){
     try{ JSON.parse(txt.trim()); if(!/\.json$/i.test(name)) name = name.replace(/\.[^.]+$/,"")+".json"; }catch(e){}
   }
   downloadText(name, txt);
+}
+/* 朗读：端侧 TTS（APK 走原生桥；浏览器用 Web Speech API 兜底） */
+window._ttsState = window._ttsState || { speaking:false, mid:null, utter:null };
+function ttsMsg(id){
+  var m = _findMsg(id); if(!m || !m.text) return;
+  var txt = m.text.trim(); if(!txt) return;
+  /* 如果正在播同一条，则停止 */
+  if(window._ttsState.speaking && window._ttsState.mid===id){ ttsStop(); return; }
+  ttsStop();
+  if(hasNative() && typeof NativeBridge.ttsSpeak==="function"){
+    var r = NativeBridge.ttsSpeak(txt);
+    if(r==="ok"){ window._ttsState.speaking=true; window._ttsState.mid=id; toast("正在朗读… 再点停止"); return; }
+  }
+  /* 浏览器兜底：Web Speech API */
+  if(window.speechSynthesis){
+    try{
+      var u = new SpeechSynthesisUtterance(txt);
+      u.lang = "zh-CN"; u.rate = 1.0;
+      u.onend = function(){ window._ttsState.speaking=false; window._ttsState.mid=null; window._ttsState.utter=null; };
+      u.onerror = function(){ window._ttsState.speaking=false; window._ttsState.mid=null; window._ttsState.utter=null; };
+      window._ttsState.utter = u; window._ttsState.speaking=true; window._ttsState.mid=id;
+      speechSynthesis.speak(u);
+      toast("正在朗读… 再点停止");
+      return;
+    }catch(e){}
+  }
+  toast("当前环境不支持朗读");
+}
+function ttsStop(){
+  if(hasNative() && typeof NativeBridge.ttsSpeak==="function"){
+    try{ NativeBridge.ttsSpeak(""); }catch(e){}  /* QUEMY_FLUSH 空串=停 */
+  }
+  if(window.speechSynthesis && window._ttsState.speaking){
+    try{ speechSynthesis.cancel(); }catch(e){}
+  }
+  window._ttsState.speaking=false; window._ttsState.mid=null; window._ttsState.utter=null;
+}
+/* 一键复制：长回复不用手选 */
+function copyMsg(id){
+  var m = _findMsg(id); if(!m) return;
+  var txt = (m.text||"").trim();
+  if(!m.text){
+    /* 媒体/卡片消息复制描述 */
+    if(m.type==="image" && m.media && m.media.caption) txt = m.media.caption;
+    else if(m.type==="video" && m.media && m.media.caption) txt = m.media.caption;
+    else { toast("无可复制内容"); return; }
+  }
+  copyText(txt);
+}
+/* 分享：调系统分享面板（phoneShare 已含原生桥+Web Share+复制回退） */
+function shareMsg(id){
+  var m = _findMsg(id); if(!m) return;
+  var txt = (m.text||"").trim();
+  if(!txt){ toast("无可分享内容"); return; }
+  phoneShare(txt, "AI 回复");
 }
 function downloadText(name, text){
   try{
@@ -4508,7 +4771,7 @@ function doChat(text, attachments){
     if(!s) return false;
     var greet = ["你好","您好","hi","hello","hey","哈喽","嗨","在吗","在不在","在么","你是谁","你叫什么","你是什么","早上好","下午好","晚上好","晚安","早安","哈哈","谢谢","感谢","多谢","辛苦了","辛苦您","在的","测试","在不在呀","喂"];
     if(greet.indexOf(s) >= 0) return true;
-    if(s.length <= 5 && !/[写|改|创|建|查|搜|找|读|删|列|整|生|分|译|总|算|帮|请|如|怎|什|为|如何|能不能|可以|需要|我想|我要|帮我]/.test(s)) return true;
+    if(s.length <= 5 && !/写|改|创|建|查|搜|找|读|删|列|整|生|分|译|总|算|帮|请|如|怎|什|为|如何|能不能|可以|需要|我想|我要|帮我/.test(s)) return true;
     return false;
   }
   function pickGreeting(){
@@ -4667,7 +4930,7 @@ function doChat(text, attachments){
         thinkLine("\n🔧 第 "+(round+1)+" 轮执行…\n");
         startTicker("⚙️ 执行中…");
         var obsText = observations.length ? ("\n【已完成的步骤与结果】\n"+observations.join("\n")) : "";
-        var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。需要查最新/外部信息就输出 [WEB_SEARCH]关键词[/WEB_SEARCH] 联网搜索、或 [WEB_OPEN]网址[/WEB_OPEN] 打开网页读正文（结果会在下一轮返回给你）；需要操作文件就输出 [FILE_WRITE]（或先 [FILE_READ] 了解现状），完成后说明这一步结果。如果所有任务都已完成，请只输出「DONE」并简要说明完成情况，不要继续调工具。\n执行风格：联网抓回的内容可能很长且含无关部分，最后总结时只用与用户问题相关的要点整理成简洁答案即可，无需贴整段网页。\n"+obsText };
+        var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。\n\n工具格式提醒（严格按此格式输出，否则前端无法解析）：\n· 搜索 → [WEB_SEARCH]关键词[/WEB_SEARCH]（返回标题+网址+摘要，引擎自动回退 Bing→百度→DuckDuckGo）\n· 打开网页 → [WEB_OPEN]完整网址[/WEB_OPEN]（返回正文，网址须含 https://）\n· 抓取原始数据 → [WEB_FETCH]完整网址[/WEB_FETCH]（直接 GET 返回原始文本/JSON，适合 API、RSS、数据接口）\n· 读文件 → [FILE_READ]\npath: 相对工作区根目录的路径\n[/FILE_READ]\n· 写/创建文件 → [FILE_WRITE]\npath: 相对工作区根目录的路径\ncontent:\n文件完整内容\n[/FILE_WRITE]\n· 列目录 → [FILE_LIST]\ndir: 目录路径[/FILE_LIST]（省略 dir 则列根目录）\n· 新建目录 → [FILE_MKDIR]\ndir: 目录路径[/FILE_MKDIR]\n· 删除文件 → [FILE_DELETE]\npath: 相对路径[/FILE_DELETE]\n\n结果会在下一轮自动返回给你；完成后说明这一步结果。如果所有任务都已达成，请只输出「DONE」并简要说明，不要继续调工具。\n联网抓回的内容可能很长，最后总结只用与问题相关的要点。\n"+obsText };
         return agentCall(hist.concat([{role:"user", content:userContent}], conv, [actPrompt]), thinkDelta, ac).then(function(actText){
           return parseWebBlocks(actText, webResults).then(function(webbed){
             var cleaned = parseFileWriteBlocks(webbed);
@@ -4705,7 +4968,7 @@ function doChat(text, attachments){
         thinkLine("\n🔍 反思/自检…\n");
         startTicker("🔍 自检中…");
         var obsText = observations.join("\n");
-        var refPrompt = { role:"user", content:"请基于以上执行结果做一次自检：用户的目标是否真正达成了？文件是否都写对了、内容是否完整？如果有遗漏或失败，请指出并给出修正步骤（可输出 [FILE_WRITE] 修正）；如果已达成，请只回复「OK」。" + (obsText ? ("\n【执行结果】\n"+obsText) : "") };
+        var refPrompt = { role:"user", content:"请基于以上执行结果做一次自检：用户的目标是否真正达成了？文件是否都写对了、内容是否完整？如果有遗漏或失败，请指出并给出修正步骤（如需写文件修正，用 [FILE_WRITE]\npath: 路径\ncontent: 内容\n[/FILE_WRITE] 格式输出；需联网查证用 [WEB_SEARCH]关键词[/WEB_SEARCH]）；如果已达成，请只回复「OK」。" + (obsText ? ("\n【执行结果】\n"+obsText) : "") };
           return agentCall(hist.concat([{role:"user", content:userContent}], conv, [refPrompt]), thinkDelta, ac).then(function(refText){
           return parseWebBlocks(refText, webResults).then(function(webbed){
           var cleaned = parseFileWriteBlocks(webbed);
@@ -4933,11 +5196,16 @@ function doImageTwoStage(prompt, refs, params, loading){
   });
 }
 
-/* 纯文生图（无参考图 / 两段管线第二段共用） */
+/* 纯文生图（无参考图 / 两段管线第二段共用）
+   官方区别（实测）：
+   · agnes-image-2.1-flash（纯文生图）：不支持 response_format，传则 UnsupportedParamsError；默认返回 b64_json 无需指定。
+   · agnes-image-2.0-flash（图生图/编辑）：才需要且支持 extra_body.response_format="url"。
+   故按模型区分：2.1 纯文生图不传 extra_body，其他才传。 */
 function genImageOnly(prompt, loading, origPrompt, params){
   params = params || CFG.genParams || {};
-  var ib = { model:currentModel("image"), prompt:prompt, size:(params.size||"1024x1024") };
-  ib.extra_body = { response_format: "url" };   /* 官方要求 response_format 放 extra_body 内（不能放顶层） */
+  var model = currentModel("image");
+  var ib = { model:model, prompt:prompt, size:(params.size||"1024x1024") };
+  if(!/2\.1/.test(model)){ ib.extra_body = { response_format: "url" }; }   /* 仅非 2.1 模型传 response_format */
   fetchTimeout(mediaApiBase()+"/images/generations",{
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+mediaApiKey() },
@@ -5089,10 +5357,13 @@ function studioGenShots(arr, idx, loading, params, theme, style, shotUrls){
   loading.text = "② 逐镜出图（"+(idx+1)+"/"+arr.length+"）："+(shot.shot || ("第"+(idx+1)+"镜"));
   renderMsgs();
   var prompt = shot.prompt || shot.shot || theme;
+  var _imgModel = currentModel("image");
+  var _imgBody = { model:_imgModel, prompt:prompt, size:(params.size||"1024x1024") };
+  if(!/2\.1/.test(_imgModel)){ _imgBody.extra_body = { response_format:"url" }; }   /* 仅非 2.1 模型传 response_format，同 genImageOnly */
   fetchTimeout(mediaApiBase()+"/images/generations",{
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+mediaApiKey() },
-    body: JSON.stringify({ model:currentModel("image"), prompt:prompt, size:(params.size||"1024x1024"), extra_body:{ response_format:"url" } })
+    body: JSON.stringify(_imgBody)
   }, 120000).then(function(r){
     if(!r.ok) return r.text().then(function(t){throw new Error("HTTP "+r.status+" "+t.slice(0,120));});
     return r.json();
@@ -5241,6 +5512,7 @@ function renderSettings(){
     cellNav("更新日志", "openChangelog()")+
     cellNav("清理缓存", "clearCache()")+
     cellNav("导出 / 备份聊天", "exportChats()")+
+    cellNav("导出当前对话为 Markdown（可读）", "exportChatsMarkdown()")+
     cellNav("导入恢复聊天", "importChats()")+
     '<div class="cell" style="display:block;padding:10px 14px">'+
       '<div style="font-size:13px;color:var(--text-2);margin-bottom:6px">检查更新地址（电脑 / Pages 上放 index.html + apk-version.json 统一清单）</div>'+
@@ -5267,7 +5539,7 @@ function applyTheme(){
   var ph = document.getElementById("phone");
   if(ph) ph.classList.toggle("dark", dark);
 }
-var CELL_ICONS = { "生图 / 图生图":"🎨","生视频":"📹","智能制片":"🎬","API 接口管理（当前：":"🔌","我的记忆":"🧠","更新日志":"📝","清理缓存":"🧹","导出 / 备份聊天":"📤","导入恢复聊天":"📥","检查更新":"🔄","分享给亲友（二维码）":"🔗","意见反馈":"💬","重新查看引导":"✨","版本历史 / 回退":"⏱️","开源 / 隐私声明":"🔒" };
+var CELL_ICONS = { "生图 / 图生图":"🎨","生视频":"📹","智能制片":"🎬","API 接口管理（当前：":"🔌","我的记忆":"🧠","更新日志":"📝","清理缓存":"🧹","导出 / 备份聊天":"📤","导出当前对话为 Markdown（可读）":"📄","导入恢复聊天":"📥","检查更新":"🔄","分享给亲友（二维码）":"🔗","意见反馈":"💬","重新查看引导":"✨","版本历史 / 回退":"⏱️","开源 / 隐私声明":"🔒" };
 function cellNav(label, onclick){
   var ic = CELL_ICONS[label] || (label.indexOf("API 接口管理")>=0 ? "🔌" : "");
   return '<div class="cell" onclick="'+onclick+'"><span class="ci">'+ic+'</span><span class="cl">'+label+'</span>'+
@@ -5496,6 +5768,42 @@ function exportChats(){
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} }, 1500);
     toast("聊天已导出（保存位置："+(CFG.saveLocation||"Download/phone-agent")+"）");
+  }catch(e){ toast("导出失败："+((e&&e.message)||e)); }
+}
+/* 导出当前对话为 Markdown（人类可读、跨平台、可打印） */
+function exportChatsMarkdown(){
+  try{
+    var c = current(); if(!c || !c.messages || !c.messages.length){ toast("当前对话为空"); return; }
+    var lines = [];
+    lines.push("# " + (c.title || "phone-agent 对话") );
+    lines.push("");
+    lines.push("> 导出时间：" + new Date().toLocaleString("zh-CN"));
+    lines.push("> 来源：phone-agent v" + APP_VERSION);
+    lines.push("");
+    lines.push("---");
+    c.messages.forEach(function(m){
+      if(m.role==="summary"){ lines.push(""); lines.push("📌 *历史摘要：" + (m.text||"") + "*"); lines.push(""); return; }
+      var who = m.role==="user" ? "**🙋 你**" : "**🤖 AI**";
+      lines.push("");
+      lines.push(who);
+      lines.push("");
+      if(m.type==="text" || !m.type){
+        lines.push(m.text||"");
+      } else if(m.type==="image"){
+        lines.push("![图片](" + (m.media&&m.media.url||"") + ")");
+        if(m.media && m.media.caption) lines.push("*" + m.media.caption + "*");
+      } else if(m.type==="video"){
+        lines.push("🎬 [视频](" + (m.media&&m.media.url||"") + ")");
+        if(m.media && m.media.caption) lines.push("*" + m.media.caption + "*");
+      } else {
+        lines.push("*(非文字消息)*");
+      }
+      lines.push("");
+      lines.push("---");
+    });
+    var md = lines.join("\n");
+    var name = (c.title ? c.title.replace(/[\\\/:*?"<>|]/g,"_") : "对话") + "-" + new Date().toISOString().slice(0,10) + ".md";
+    downloadText(name, md);
   }catch(e){ toast("导出失败："+((e&&e.message)||e)); }
 }
 function importChats(){
@@ -5865,6 +6173,7 @@ function closeDlg(){ document.getElementById("dlgMask").classList.remove("show")
 function phoneASR(cb){
   if(hasNative() && typeof NativeBridge.voiceInputIntent==="function"){
     window.__onAsrResult = function(t){
+      window.__onAsrResult = null;
       if(typeof cb==="function") cb(t || "");
     };
     var r = NativeBridge.voiceInputIntent();
