@@ -2883,13 +2883,14 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.62";
+var APP_VERSION = "0.4.63";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.4.63", date:"2026-08-03", items:["热修白屏：finish 残留未定义 finalText→改 sumText"] },
   { v:"0.4.62", date:"2026-08-03", items:["热修 0.4.61 白屏：残留未定义引用，改传 null"] },
   { v:"0.4.61", date:"2026-08-03", items:["修复检查更新：多通道取最新清单，抗 CDN 陈旧缓存", "热更安装包 app.js 改为由当前 index.html 现生成，根治「装新版却装回旧 web」；readUpdate 多通道聚合取最新，单 CDN 陈旧不再卡死"] },
   { v:"0.4.60", date:"2026-08-03", items:["修复寒暄误判：短文本不再一律当问候，地名/单名词正常对话", "删除 isSmallTalk 的「≤5字无动作词即判寒暄」激进兜底，改纯精确问候词表匹配，避免「康腾」等被误当打招呼而跳过文件读取/联网"] },
@@ -4971,10 +4972,10 @@ function isSmallTalk(t){
       function finish(sumText){
         clearTimeout(chatTimer); clearRetry(aiMsg.id);
       aiMsg.text = (sumText && sumText.trim()) || "（已完成）";
-        SESSION_STATS.ms += (Date.now()-_loopT0); SESSION_STATS.tokens += estTokens(finalText);
-        runLog("agent","思维循环完成 · ~"+estTokens(finalText)+" token"); renderStats();
+        SESSION_STATS.ms += (Date.now()-_loopT0); SESSION_STATS.tokens += estTokens(sumText);
+        runLog("agent","思维循环完成 · ~"+estTokens(sumText)+" token"); renderStats();
         setGenState(false); activeAbort=null; abortReason=null;
-        finalizeChat(aiMsg, finalText, attachments);
+        finalizeChat(aiMsg, sumText, attachments);
         if(pendingGuide){ var g=pendingGuide; pendingGuide=null; setTimeout(function(){ doChat(g); }, 30); }
       }
 
