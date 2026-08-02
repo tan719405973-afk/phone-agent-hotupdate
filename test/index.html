@@ -2883,13 +2883,14 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.59";
+var APP_VERSION = "0.4.60";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.4.60", date:"2026-08-03", items:["修复寒暄误判：短文本不再一律当问候，地名/单名词正常对话", "删除 isSmallTalk 的「≤5字无动作词即判寒暄」激进兜底，改纯精确问候词表匹配，避免「康腾」等被误当打招呼而跳过文件读取/联网"] },
   { v:"0.4.59", date:"2026-08-02", items:["删除思维可视化：不再渲染思考过程/计划/反思气泡（保留规划→执行→反思→总结逻辑）"] },
   { v:"0.4.58", date:"2026-08-02", items:["重打包 APK（烤入 web 0.4.58）；更新通道多候选+超时60s根治卡死", "更新通道多候选回退：jsdelivr 优先→raw→github.io 兜底，点「更新」不再因单通道慢而失败/转圈", "修复 TOOL_CAPS 模板字符串内反引号提前闭合导致的脚本语法错误（BLOCK 1 白屏风险）", "沿用 v0.4.57 自主模式+生图、v0.4.56 联网意图检测、v0.4.55 联网抓网页等全部 web 逻辑"] },
   { v:"0.4.57", date:"2026-08-01", items:["自主模式修复（纯 web 热更，APK 仍 0.4.50）：修复 FILE_LIST/MKDIR/DELETE 工具解析缺失导致文件操作失灵", "新增生图能力：AI 可调用图像生成工具产出图片"] },
@@ -4760,15 +4761,14 @@ function extractObservations(text){
 function doChat(text, attachments){
   attachments = attachments || [];
   /* v0.4.53 寒暄/无任务识别：纯打招呼、闲聊、空内容、或无明确任务的短句，直接友好回复不进循环 */
-  function isSmallTalk(t){
-    if(!t || typeof t !== "string") return false;
-    var s = t.trim().toLowerCase().replace(/[\s!！。.~？?，,、。]/g,"");
-    if(!s) return false;
-    var greet = ["你好","您好","hi","hello","hey","哈喽","嗨","在吗","在不在","在么","你是谁","你叫什么","你是什么","早上好","下午好","晚上好","晚安","早安","哈哈","谢谢","感谢","多谢","辛苦了","辛苦您","在的","测试","在不在呀","喂"];
-    if(greet.indexOf(s) >= 0) return true;
-    if(s.length <= 5 && !/写|改|创|建|查|搜|找|读|删|列|整|生|分|译|总|算|帮|请|如|怎|什|为|如何|能不能|可以|需要|我想|我要|帮我/.test(s)) return true;
-    return false;
-  }
+function isSmallTalk(t){
+  if(!t || typeof t !== "string") return false;
+  var s = t.trim().toLowerCase().replace(/[\s!！。.~？?，,、。]/g,"");
+  if(!s) return false;
+  var greet = ["你好","您好","hi","hello","hey","哈喽","嗨","在吗","在不在","在么","你是谁","你叫什么","你是什么","早上好","下午好","晚上好","晚安","早安","哈哈","谢谢","感谢","多谢","辛苦了","辛苦您","在的","测试","在不在呀","喂"];
+  /* v0.4.58：删除短文本一律判寒暄的兜底规则（误把地名/文件名/单名词当问候，如"康腾"→寒暄），只保留精确问候词匹配 */
+  return greet.indexOf(s) >= 0;
+}
   function pickGreeting(){
     var h = new Date().getHours();
     var t = (h>=5&&h<11)?"早上好":(h>=11&&h<14)?"中午好":(h>=14&&h<18)?"下午好":(h>=18||h<5)?"晚上好":"你好";
