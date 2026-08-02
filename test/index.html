@@ -2916,13 +2916,14 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.64";
+var APP_VERSION = "0.4.65";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.4.65", date:"2026-08-03", items:["更新安装通道：raw 首选+装前校验版本，根治 jsdelivr 边缘缓存装回旧版", "更新检测/安装：raw 放第一通道(直连git最新无CDN陈旧)；doInstallUpdate 装前比对目标版本，不符换通道重试"] },
   { v:"0.4.64", date:"2026-08-03", items:["创作页加润文提示词按钮+风格卡片(缩略图走生图模型)；长视频后台异步不超时可续等", "创作页：润文按钮(按生图/图生图/视频润色提示词)+一键还原；风格卡片(文字上缩略图下，可自定义增删，缩略图由生图模型现画)", "长视频：去掉3分钟硬超时，改后台异步轮询(约60分钟上限)，切页/重启App自动续等，出片落回原对话并通知"] },
   { v:"0.4.63", date:"2026-08-03", items:["热修白屏：finish 残留未定义 finalText→改 sumText"] },
   { v:"0.4.62", date:"2026-08-03", items:["热修 0.4.61 白屏：残留未定义引用，改传 null"] },
@@ -5636,8 +5637,9 @@ function updateBaseList(){
     if(u === "https://tan719405973-afk.github.io/phone-agent-hotupdate") u = DEFAULT_UPDATE_BASE;
     list.push(u);
   }
-  list.push("https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test");
+  // v0.4.65：raw 放第一（永远直连 git 最新、无 CDN 边缘缓存）；jsdelivr 降为补充通道
   list.push("https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test");
+  list.push("https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test");
   list.push(DEFAULT_UPDATE_BASE);
   return list;
 }
@@ -5743,6 +5745,7 @@ function checkUpdate(){
       var _note = (u.webNote||"有新版可用");
       var _noteDisp = _note.length>50 ? _note.slice(0,50)+"…" : _note;
       showConfirm("网页热更：v"+APP_VERSION+" → v"+u.webVer, _noteDisp+"（点击更新将下载并立即应用，无需重装）", function(){
+        window.__PA_TARGET_WEB__ = u.webVer;  // v0.4.65：记录目标版本，供 doInstallUpdate 装前校验
         doInstallUpdate(bases);
       });
       return;
@@ -5751,13 +5754,17 @@ function checkUpdate(){
   });
 }
 function doInstallUpdate(bases){
-  /* v0.4.58：bases 为更新通道数组（updateBaseList），逐通道重试；超时 60s 根治慢通道卡死 */
+  /* v0.4.65：bases 为更新通道数组（updateBaseList），逐通道重试；
+     关键修复：装前校验 __PA_APPHtml__ 内的 APP_VERSION 是否等于目标版本（__PA_TARGET_WEB__），
+     若某通道返回陈旧的旧版 app.js（如 jsdelivr 边缘节点缓存），主动换下一通道重试，
+     彻底根治「清单已更新、装进去却是旧版」的复发。 */
   var list = Array.isArray(bases) ? bases : [bases];
+  var target = window.__PA_TARGET_WEB__ || "";
   var idx = 0;
   toast("正在下载更新…");
   function tryOne(){
     if(idx >= list.length){
-      toast("更新失败：所有更新通道都无法下载（确认网络可访问更新地址）");
+      toast("更新失败：所有通道都未返回目标版本 v"+target+"（可能 CDN 缓存未刷新），请稍后重试");
       return;
     }
     var base = list[idx++];
@@ -5765,6 +5772,14 @@ function doInstallUpdate(bases){
       .then(function(){
         var html = window.__PA_APPHtml__;
         if(!html || html.length < 500) throw new Error("下载到的网页内容异常");
+        // 版本校验：已知目标版本且装入版本不符 → 换下一通道
+        var m = html.match(/APP_VERSION\s*=\s*\\?["']?([0-9]+\.[0-9]+\.[0-9]+)/);
+        var got = m ? m[1] : "";
+        if(target && got && got !== target){
+          console.warn("[update] 通道返回 v"+got+" ≠ 目标 v"+target+"，换下一通道");
+          if(idx < list.length){ tryOne(); return; }
+          throw new Error("所有通道均返回非目标版本 v"+got);
+        }
         if(!hasNative()){
           window.open(base+"/index.html", "_blank");
           toast("当前为浏览器预览，请在手机 App 内更新");

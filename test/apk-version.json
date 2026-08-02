@@ -4,7 +4,7 @@
   "apkUrl": "https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test/phone-agent-release-0.4.58.apk",
   "apkUrl2": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.58.apk",
   "apkMd5": "46c365c4d8939457da9d70033dce7f62",
-  "note": "创作页加润文提示词按钮+风格卡片(缩略图走生图模型)；长视频后台异步不超时可续等",
-  "webVersion": "0.4.64",
-  "webNote": "创作页加润文提示词按钮+风格卡片(缩略图走生图模型)；长视频后台异步不超时可续等"
+  "note": "更新安装通道：raw 首选+装前校验版本，根治 jsdelivr 边缘缓存装回旧版",
+  "webVersion": "0.4.65",
+  "webNote": "更新安装通道：raw 首选+装前校验版本，根治 jsdelivr 边缘缓存装回旧版"
 }
