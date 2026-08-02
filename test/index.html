@@ -2883,13 +2883,14 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.61";
+var APP_VERSION = "0.4.62";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.4.62", date:"2026-08-03", items:["热修 0.4.61 白屏：残留未定义引用，改传 null"] },
   { v:"0.4.61", date:"2026-08-03", items:["修复检查更新：多通道取最新清单，抗 CDN 陈旧缓存", "热更安装包 app.js 改为由当前 index.html 现生成，根治「装新版却装回旧 web」；readUpdate 多通道聚合取最新，单 CDN 陈旧不再卡死"] },
   { v:"0.4.60", date:"2026-08-03", items:["修复寒暄误判：短文本不再一律当问候，地名/单名词正常对话", "删除 isSmallTalk 的「≤5字无动作词即判寒暄」激进兜底，改纯精确问候词表匹配，避免「康腾」等被误当打招呼而跳过文件读取/联网"] },
   { v:"0.4.59", date:"2026-08-02", items:["删除思维可视化：不再渲染思考过程/计划/反思气泡（保留规划→执行→反思→总结逻辑）"] },
@@ -4909,7 +4910,7 @@ function isSmallTalk(t){
         if(round >= AGENT_LOOP_MAX_ROUNDS) return doSummarize(planText);
         var obsText = observations.length ? ("\n【已完成的步骤与结果】\n"+observations.join("\n")) : "";
         var actPrompt = { role:"user", content:"根据以上计划和用户需求，现在请逐步执行。\n\n工具格式提醒（严格按此格式输出，否则前端无法解析）：\n· 搜索 → [WEB_SEARCH]关键词[/WEB_SEARCH]（返回标题+网址+摘要，引擎自动回退 Bing→百度→DuckDuckGo）\n· 打开网页 → [WEB_OPEN]完整网址[/WEB_OPEN]（返回正文，网址须含 https://）\n· 抓取原始数据 → [WEB_FETCH]完整网址[/WEB_FETCH]（直接 GET 返回原始文本/JSON，适合 API、RSS、数据接口）\n· 读文件 → [FILE_READ]\npath: 相对工作区根目录的路径\n[/FILE_READ]\n· 写/创建文件 → [FILE_WRITE]\npath: 相对工作区根目录的路径\ncontent:\n文件完整内容\n[/FILE_WRITE]\n· 列目录 → [FILE_LIST]\ndir: 目录路径[/FILE_LIST]（省略 dir 则列根目录）\n· 新建目录 → [FILE_MKDIR]\ndir: 目录路径[/FILE_MKDIR]\n· 删除文件 → [FILE_DELETE]\npath: 相对路径[/FILE_DELETE]\n\n结果会在下一轮自动返回给你；完成后说明这一步结果。如果所有任务都已达成，请只输出「DONE」并简要说明，不要继续调工具。\n联网抓回的内容可能很长，最后总结只用与问题相关的要点。\n"+obsText };
-        return agentCall(hist.concat([{role:"user", content:userContent}], conv, [actPrompt]), thinkDelta, ac).then(function(actText){
+        return agentCall(hist.concat([{role:"user", content:userContent}], conv, [actPrompt]), null, ac).then(function(actText){
           return parseWebBlocks(actText, webResults).then(function(webbed){
             var cleaned = parseFileWriteBlocks(webbed);
             var base = cleaned || webbed || actText;
@@ -4937,7 +4938,7 @@ function isSmallTalk(t){
         if(reflectCount > REFLECT_MAX_ROUNDS){ }
         var obsText = observations.join("\n");
         var refPrompt = { role:"user", content:"请基于以上执行结果做一次自检：用户的目标是否真正达成了？文件是否都写对了、内容是否完整？如果有遗漏或失败，请指出并给出修正步骤（如需写文件修正，用 [FILE_WRITE]\npath: 路径\ncontent: 内容\n[/FILE_WRITE] 格式输出；需联网查证用 [WEB_SEARCH]关键词[/WEB_SEARCH]）；如果已达成，请只回复「OK」。" + (obsText ? ("\n【执行结果】\n"+obsText) : "") };
-          return agentCall(hist.concat([{role:"user", content:userContent}], conv, [refPrompt]), thinkDelta, ac).then(function(refText){
+          return agentCall(hist.concat([{role:"user", content:userContent}], conv, [refPrompt]), null, ac).then(function(refText){
           return parseWebBlocks(refText, webResults).then(function(webbed){
           var cleaned = parseFileWriteBlocks(webbed);
           var obs = extractObservations(cleaned || refText);
