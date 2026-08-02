@@ -2883,13 +2883,15 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.57";
+var APP_VERSION = "0.4.58";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.4.58", date:"2026-08-02", items:["重打包 APK（烤入 web 0.4.58）；更新通道多候选+超时60s根治卡死", "更新通道多候选回退：jsdelivr 优先→raw→github.io 兜底，点「更新」不再因单通道慢而失败/转圈", "修复 TOOL_CAPS 模板字符串内反引号提前闭合导致的脚本语法错误（BLOCK 1 白屏风险）", "沿用 v0.4.57 自主模式+生图、v0.4.56 联网意图检测、v0.4.55 联网抓网页等全部 web 逻辑"] },
+  { v:"0.4.57", date:"2026-08-01", items:["自主模式修复（纯 web 热更，APK 仍 0.4.50）：修复 FILE_LIST/MKDIR/DELETE 工具解析缺失导致文件操作失灵", "新增生图能力：AI 可调用图像生成工具产出图片"] },
   { v:"0.4.56", date:"2026-08-01", items:["紧急修复 v0.4.55 真机回归（纯 web 热更，APK 仍 0.4.50）：用户问「重庆天气」等极简联网查询，被 planPrompt 的「或没提出具体任务」模糊兜底误导为寒暄场景，模型直接回「早上好」而未联网查天气", "新增 detectWebIntent 联网意图检测器：基于关键词（天气/搜索/价格/新闻/交通/物流 等）识别用户明显需要联网查询的意图，命中即在 planPrompt 顶部强制注入「必须用 [WEB_SEARCH]/[WEB_OPEN] 联网查证后再作答，严禁凭记忆编」", "收窄 planPrompt 寒暄短路条件：只对「你好/在吗/你是谁/嗨/哈喽/晚安」等纯招呼词回「直接回答：」；任何含查询/操作/创作/疑问的句子（哪怕只几字如「天气」「价格」「写文件」）都视为真实任务，必须规划执行步骤并走 actPhase——严禁把任务型问句当寒暄", "actPrompt 措辞缓和：v0.4.55 的「严禁回贴整页/不重复用户问题」改成「只用相关要点整理简洁答案即可」，避免模型因怕违规而不敢回答"] },
   { v:"0.4.55", date:"2026-08-01", items:["修复联网抓网页返回整页导航/侧边栏垃圾、且答非所问/重复一句的设计缺陷（纯 web 热更，APK 仍 0.4.50）", "htmlToText 由「只去 script/style 再整页截取前 4000 字」升级为 DOM 解析：剔除 nav/header/footer/aside/广告等噪声容器，优选 main/article/常见正文容器、回退取最长文本块，只留主体正文；[WEB_OPEN] 切片上限 4000→6000", "新增 webResults 通道：联网抓取到的网页正文单独收集，喂给总结模型 doSummarize，终结「总结阶段拿不到抓取内容、只能泛泛说『已帮你查』」的答非所问", "可见思考块不再贴整段网页原文：联网结果只显示「已读取 N 字」状态，原文留给模型内部作答用，用户不再看到一大片无关导航", "act/总结提示词加约束：联网结果只提炼与问题相关要点作答，严禁回贴整页原文、不重复用户问题原句，根治「一句老是重复」"] },
   { v:"0.4.54", date:"2026-08-01", items:["紧急修复（纯 web 热更，APK 仍 0.4.50）：v0.4.53 寒暄短路分支漏清生成态——回复「你好」后 activeAbort 残留非空，导致之后所有发送被 onSend 的生成中拦截逻辑吞掉，表现为「第一次能聊、之后打字进不了会话」", "修复：寒暄短路分支补齐与 finish() 一致的清理（stopTicker / clearTimeout(chatTimer) / activeAbort=null / abortReason=null / setGenState(false)），对话状态彻底复位，后续输入正常进入会话，不再被误判为「生成中」拦截", "沿用 v0.4.53 全部逻辑（寒暄友好回复 isSmallTalk/pickGreeting、循环空转检测 idleStreak、plan 去重渲染），仅修正状态复位缺陷，无功能回退"] },
@@ -4020,7 +4022,7 @@ var TOOL_CAPS = `【身份定位（最重要，请牢记）】
   · 读取 → [FILE_READ]
 path: 相对路径
 [/FILE_READ]
-    前端自动调 wsRead，把原文以「【已读取 xxx】```原文```」形式插回对话供你参考。
+    前端自动调 wsRead，把原文以「【已读取 xxx】原文」形式插回对话供你参考。
   · 写入/覆盖/创建 → [FILE_WRITE]
 path: 相对路径
 content:
@@ -5554,6 +5556,20 @@ function updateBaseUrl(){
   if(u === "https://tan719405973-afk.github.io/phone-agent-hotupdate") u = DEFAULT_UPDATE_BASE;
   return u;
 }
+/* v0.4.58：更新通道多候选——根治 github.io 国内直连慢/超时导致「点更新后失败/转圈」。
+   优先级：用户自定义(若有) → jsdelivr(国内 CDN 最快) → raw 直连兜底 → github.io(最慢放最后)。 */
+function updateBaseList(){
+  var u = (CFG.updateBase || "").trim().replace(/\/+$/,"");
+  var list = [];
+  if(u){
+    if(u === "https://tan719405973-afk.github.io/phone-agent-hotupdate") u = DEFAULT_UPDATE_BASE;
+    list.push(u);
+  }
+  list.push("https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test");
+  list.push("https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test");
+  list.push(DEFAULT_UPDATE_BASE);
+  return list;
+}
 /* 用 <script> 注入方式加载更新文件，绕过 GitHub Pages 等不返回 CORS 头的限制（fetch 会被跨域拦截） */
 function loadScript(url, ms){
   /* 【修复 v0.4.8】原实现用 <script src> 标签从 file:// 源直连加载外网脚本，
@@ -5581,23 +5597,40 @@ function loadScript(url, ms){
    消除「APK 与 web 双文件双分支」。 */
 function readUpdate(){
   return new Promise(function(resolve){
-    var base = updateBaseUrl();
-    if(!base){ resolve(null); return; }
-    var url = base + "/apk-version.json?t=" + Date.now();
-    nativeFetch(url, {method:"GET"})
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(j){
-        if(j && (j.versionCode || j.webVersion || j.version)){ resolve(j); return; }
-        // 清单缺失/异常：兜底用 version.js（旧格式 {version,note}）
-        loadScript(base+"/version.js?t="+Date.now(), 12000)
+    var list = updateBaseList();
+    if(!list.length){ resolve(null); return; }
+    var idx = 0;
+    function tryOne(){
+      if(idx >= list.length){
+        // 全部通道失败：兜底用 version.js（旧格式 {version,note}）
+        loadScript(list[list.length-1]+"/version.js?t="+Date.now(), 12000)
           .then(function(){ resolve(window.__PA_VER__ || null); })
           .catch(function(){ resolve(null); });
-      })
-      .catch(function(){
-        loadScript(base+"/version.js?t="+Date.now(), 12000)
-          .then(function(){ resolve(window.__PA_VER__ || null); })
-          .catch(function(){ resolve(null); });
-      });
+        return;
+      }
+      var base = list[idx++];
+      var url = base + "/apk-version.json?t=" + Date.now();
+      nativeFetch(url, {method:"GET"})
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(j){
+          if(j && (j.versionCode || j.webVersion || j.version)){ resolve(j); return; }
+          if(idx < list.length) tryOne();
+          else {
+            loadScript(base+"/version.js?t="+Date.now(), 12000)
+              .then(function(){ resolve(window.__PA_VER__ || null); })
+              .catch(function(){ resolve(null); });
+          }
+        })
+        .catch(function(){
+          if(idx < list.length) tryOne();
+          else {
+            loadScript(base+"/version.js?t="+Date.now(), 12000)
+              .then(function(){ resolve(window.__PA_VER__ || null); })
+              .catch(function(){ resolve(null); });
+          }
+        });
+    }
+    tryOne();
   });
 }
 /* 从统一清单解析 APK / web 是否可更新（两路共用，避免重复逻辑） */
@@ -5615,8 +5648,8 @@ function evalUpdate(j){
 }
 
 function checkUpdate(){
-  var base = updateBaseUrl();
-  if(!base){ toast("请先在「关于 → 检查更新地址」填写更新地址"); return; }
+  var bases = updateBaseList();
+  if(!bases.length){ toast("请先在「关于 → 检查更新地址」填写更新地址"); return; }
   toast("正在检查更新…");
   // 统一检查：APK 大更新优先，其次 web 静默热更（同一清单、同一函数）
   readUpdate().then(function(j){
@@ -5638,31 +5671,43 @@ function checkUpdate(){
       var _note = (u.webNote||"有新版可用");
       var _noteDisp = _note.length>50 ? _note.slice(0,50)+"…" : _note;
       showConfirm("网页热更：v"+APP_VERSION+" → v"+u.webVer, _noteDisp+"（点击更新将下载并立即应用，无需重装）", function(){
-        doInstallUpdate(base);
+        doInstallUpdate(bases);
       });
       return;
     }
     toast("已是最新：网页 v"+APP_VERSION+(window.__PA_APK_NAME__ ? " / 安装包 v"+window.__PA_APK_NAME__ : ""));
   });
 }
-function doInstallUpdate(base){
+function doInstallUpdate(bases){
+  /* v0.4.58：bases 为更新通道数组（updateBaseList），逐通道重试；超时 60s 根治慢通道卡死 */
+  var list = Array.isArray(bases) ? bases : [bases];
+  var idx = 0;
   toast("正在下载更新…");
-  loadScript(base+"/app.js?t="+Date.now(), 30000)
-    .then(function(){
-      var html = window.__PA_APPHtml__;
-      if(!html || html.length < 500) throw new Error("下载到的网页内容异常");
-      if(!hasNative()){
-        window.open(base+"/index.html", "_blank");
-        toast("当前为浏览器预览，请在手机 App 内更新");
-        return;
-      }
-      var r = NativeBridge.installUpdate(html);
-      if(r && r.indexOf("err:")===0) throw new Error(r.slice(4));
-      toast("更新完成，正在重启…");
-    })
-    .catch(function(e){
-      toast("更新失败："+(e&&e.message||e)+"（点「检查更新」可重试）");
-    });
+  function tryOne(){
+    if(idx >= list.length){
+      toast("更新失败：所有更新通道都无法下载（确认网络可访问更新地址）");
+      return;
+    }
+    var base = list[idx++];
+    loadScript(base+"/app.js?t="+Date.now(), 60000)
+      .then(function(){
+        var html = window.__PA_APPHtml__;
+        if(!html || html.length < 500) throw new Error("下载到的网页内容异常");
+        if(!hasNative()){
+          window.open(base+"/index.html", "_blank");
+          toast("当前为浏览器预览，请在手机 App 内更新");
+          return;
+        }
+        var r = NativeBridge.installUpdate(html);
+        if(r && r.indexOf("err:")===0) throw new Error(r.slice(4));
+        toast("更新完成，正在重启…");
+      })
+      .catch(function(e){
+        if(idx < list.length) tryOne();
+        else toast("更新失败："+(e&&e.message||e)+"（点「检查更新」可重试）");
+      });
+  }
+  tryOne();
 }
 /* 启动静默检查：有新版本仅提示，不自动下载（避免误耗流量） */
 function silentCheckUpdate(){

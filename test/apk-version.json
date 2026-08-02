@@ -1,10 +1,10 @@
 {
-  "versionCode": 20260756,
-  "versionName": "0.4.50",
-  "apkUrl": "https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test/phone-agent-release-0.4.50.apk",
-  "apkUrl2": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.50.apk",
-  "apkMd5": "3529c7d4e156b4a5f2b27462c984fe1f",
-  "note": "有新版可用",
-  "webVersion": "0.4.57",
-  "webNote": "有新版可用"
+  "versionCode": 20260802,
+  "versionName": "0.4.58",
+  "apkUrl": "https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test/phone-agent-release-0.4.58.apk",
+  "apkUrl2": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.58.apk",
+  "apkMd5": "46c365c4d8939457da9d70033dce7f62",
+  "note": "重打包 APK（烤入 web 0.4.58）；更新通道多候选+超时60s根治卡死",
+  "webVersion": "0.4.58",
+  "webNote": "重打包 APK（烤入 web 0.4.58）；更新通道多候选+超时60s根治卡死"
 }
