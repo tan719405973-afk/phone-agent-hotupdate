@@ -2916,13 +2916,14 @@ var qrcode = function() {
 </script>
 <script>
 /* ================= 配置 ================= */
-var APP_VERSION = "0.4.66";
+var APP_VERSION = "0.4.67";
 /* 会话上限（F43）：单会话文本消息达到此数触发历史总结；总结时保留最近 N 条 */
 var CONV_COMPACT_AT = 60;
 var CONV_KEEP_RECENT = 15;
 
 /* 更新日志（F41）：最新版本在前，设置 → 关于 → 更新日志 查看 */
 var CHANGELOG = [
+  { v:"0.4.67", date:"2026-08-03", items:["更新安装改取版本化文件名 app.<ver>.js，根治 jsdelivr 陈旧卡更新", "doInstallUpdate 按目标版本拉 app.<target>.js（全新路径，不受旧 app.js 的 purge 限流牵连）；回退仍用 unversioned app.js 兜底；与 rollbackTo 版本化一致"] },
   { v:"0.4.66", date:"2026-08-03", items:["修复生图/缩略图报「Key无效」：生图优先用当前对话接口", "mediaApi 旧逻辑盲选第一个 routable 接口(默认 agnes 空 key 在前)→生图/缩略图选中空 key→401；现改为优先当前对话接口(有 key 即生图)，符合「一个 key 含生图+视频」"] },
   { v:"0.4.65", date:"2026-08-03", items:["更新安装通道：raw 首选+装前校验版本，根治 jsdelivr 边缘缓存装回旧版", "更新检测/安装：raw 放第一通道(直连git最新无CDN陈旧)；doInstallUpdate 装前比对目标版本，不符换通道重试"] },
   { v:"0.4.64", date:"2026-08-03", items:["创作页加润文提示词按钮+风格卡片(缩略图走生图模型)；长视频后台异步不超时可续等", "创作页：润文按钮(按生图/图生图/视频润色提示词)+一键还原；风格卡片(文字上缩略图下，可自定义增删，缩略图由生图模型现画)", "长视频：去掉3分钟硬超时，改后台异步轮询(约60分钟上限)，切页/重启App自动续等，出片落回原对话并通知"] },
@@ -5774,7 +5775,11 @@ function doInstallUpdate(bases){
       return;
     }
     var base = list[idx++];
-    loadScript(base+"/app.js?t="+Date.now(), 60000)
+    /* v0.4.67：按目标版本取版本化文件名 versions/app.<ver>.js（如 versions/app.0.4.67.js，gen_hotdeploy 实际输出位置）。
+       每个新版本在 CDN 上是全新路径，不受旧 app.js 的 purge 限流牵连——根治「jsdelivr 陈旧 app.js 清不掉→装回旧版」。
+       无目标版本时回退 unversioned app.js 兜底。 */
+    var appFile = target ? ("versions/app."+target+".js") : "app.js";
+    loadScript(base+"/"+appFile+"?t="+Date.now(), 60000)
       .then(function(){
         var html = window.__PA_APPHtml__;
         if(!html || html.length < 500) throw new Error("下载到的网页内容异常");
