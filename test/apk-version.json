@@ -1,9 +1,9 @@
 {
-  "versionCode": 20260802,
-  "versionName": "0.4.58",
-  "apkUrl": "https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test/phone-agent-release-0.4.58.apk",
-  "apkUrl2": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.58.apk",
-  "apkMd5": "46c365c4d8939457da9d70033dce7f62",
+  "versionCode": 20260803,
+  "versionName": "0.4.67",
+  "apkUrl": "https://cdn.jsdelivr.net/gh/tan719405973-afk/phone-agent-hotupdate@main/test/phone-agent-release-0.4.67.apk",
+  "apkUrl2": "https://raw.githubusercontent.com/tan719405973-afk/phone-agent-hotupdate/main/test/phone-agent-release-0.4.67.apk",
+  "apkMd5": "a9d445e286b741d8658bbebcda06147b",
   "note": "更新安装改取版本化文件名 app.<ver>.js，根治 jsdelivr 陈旧卡更新",
   "webVersion": "0.4.67",
   "webNote": "更新安装改取版本化文件名 app.<ver>.js，根治 jsdelivr 陈旧卡更新"
